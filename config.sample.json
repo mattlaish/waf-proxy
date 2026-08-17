@@ -1,0 +1,105 @@
+{
+  "rules": "/etc/waf/coraza.conf",
+  "engine_mode": "DetectionOnly",
+  "read_timeout_sec": 15,
+  "idle_timeout_sec": 60,
+  "backend_timeout_sec": 30,
+
+  "nodes": [
+    { "name": "app1", "host": "127.0.0.1" }
+  ],
+
+  "pools": [
+    {
+      "name": "default-pool",
+      "scheme": "http",
+      "lb_method": "round_robin",
+      "monitor": { "type": "tcp", "interval_sec": 5, "timeout_sec": 2, "rise": 2, "fall": 3 },
+      "members": [ { "node": "app1", "port": 8080, "weight": 1 } ]
+    }
+  ],
+
+  "policies": [
+    {
+      "name": "default",
+      "rules_path": "/etc/waf/coraza.conf",
+      "paranoia_level": 1,
+      "request_body_limit": 0,
+      "exclusions": []
+    }
+  ],
+
+  "sites": [
+    {
+      "name": "default",
+      "listen": ":8443",
+      "hostnames": ["*"],
+      "pool": "default-pool",
+      "policy": "default",
+      "preserve_host": true,
+      "manage_ip": false,
+      "manage_interface": "",
+      "manage_prefix_len": 0,
+      "engine_mode": "",
+      "ai_mode": "off",
+      "tls_cert": "",
+      "tls_key": "",
+      "page_policies": []
+    }
+  ],
+
+  "users": [],
+
+  "ai": {
+    "enabled": false,
+    "provider": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "",
+    "model": "gpt-4o-mini",
+    "timeout_sec": 8,
+    "max_tokens": 300,
+    "only_on_match": true,
+    "sample_rate": 0,
+    "include_body": false,
+    "redact_headers": true,
+    "hash_client_ip": false,
+    "block_threshold": 85,
+    "block_ttl_sec": 900,
+    "workers": 2,
+    "queue_size": 512
+  },
+
+  "notify": {
+    "webhook_url": "",
+    "webhook_kind": "slack",
+    "on_suggestion": true,
+    "on_ai_block": true,
+    "on_member_down": true,
+    "on_sync": true,
+    "on_peer": true
+  },
+
+  "ha": {
+    "enabled": false,
+    "role": "primary",
+    "peer_url": "",
+    "peer_token": "",
+    "sync_config": true
+  },
+
+  "syslog": {
+    "enabled": false,
+    "host": "",
+    "port": 6514,
+    "protocol": "tls",
+    "format": "rfc5424",
+    "facility": 16,
+    "app_name": "waf-proxy",
+    "tls_skip_verify": false,
+    "send_waf": true,
+    "send_access": false,
+    "send_audit": true,
+    "send_notify": true,
+    "include_match_data": false
+  }
+}

@@ -1,0 +1,2022 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>waf-proxy console</title>
+<style>
+  :root{
+    --bg:#101519; --panel:#161C22; --raised:#1C242C; --line:#26303A;
+    --ink:#DCE3EA; --mut:#8494A2; --amber:#E8A33D; --red:#E5595E;
+    --green:#57B770; --blue:#5B9DD9;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);padding:0 20px 60px}
+  .wrap{max-width:1240px;margin:0 auto}
+  code{font-family:var(--mono);font-size:.92em;color:var(--ink)}
+
+  header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:22px 0 18px;border-bottom:1px solid var(--line)}
+  .lamp{width:14px;height:14px;border-radius:50%;background:var(--mut);flex:none;transition:background .3s, box-shadow .3s}
+  .lamp.on{background:var(--red);box-shadow:0 0 14px 2px color-mix(in srgb,var(--red) 55%,transparent)}
+  .lamp.detect{background:var(--amber);box-shadow:0 0 14px 2px color-mix(in srgb,var(--amber) 55%,transparent)}
+  .lamp.off{background:var(--mut)}
+  h1{font:600 16px var(--mono);letter-spacing:.04em}
+  h1 span{color:var(--mut);font-weight:400}
+  .selheading{font:11px var(--mono);color:var(--mut);letter-spacing:.1em}
+  .up{font:12px var(--mono);color:var(--mut);margin-left:auto}
+
+  .selector{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .selector button{appearance:none;border:0;background:transparent;color:var(--mut);
+    font:600 12px var(--mono);letter-spacing:.12em;padding:9px 18px;cursor:pointer}
+  .selector button + button{border-left:1px solid var(--line)}
+  .selector button:hover{color:var(--ink)}
+  .selector button.sel[data-mode="Off"]{background:var(--raised);color:var(--ink)}
+  .selector button.sel[data-mode="DetectionOnly"]{background:color-mix(in srgb,var(--amber) 18%,var(--raised));color:var(--amber)}
+  .selector button.sel[data-mode="On"]{background:color-mix(in srgb,var(--red) 18%,var(--raised));color:var(--red)}
+
+  .tabs{display:flex;gap:4px;margin-top:16px;border-bottom:1px solid var(--line)}
+  .tab{appearance:none;border:0;background:transparent;color:var(--mut);cursor:pointer;
+    font:600 12px var(--mono);letter-spacing:.1em;padding:10px 16px;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab:hover{color:var(--ink)}
+  .tab.sel{color:var(--amber);border-bottom-color:var(--amber)}
+  .view{display:none;margin-top:20px}
+  .view.sel{display:block}
+
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+  section + section{margin-top:20px}
+  .grid2{display:grid;grid-template-columns:minmax(360px,480px) 1fr;gap:20px}
+  @media(max-width:940px){.grid2{grid-template-columns:1fr}}
+  .dashstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .dashstats .stat{background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .dashstats .stat .n{font:600 20px var(--mono);color:var(--ink)}
+  .dashstats .stat .k{font:10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin-top:2px}
+  .dashlist{display:flex;flex-direction:column;gap:6px}
+  .dashrow{display:flex;align-items:center;gap:10px;background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}
+  .dashrow .nm{font-weight:600;color:var(--ink)}
+  .dashrow .meta{color:var(--mut);font:11px var(--mono)}
+  .dashrow .spacer{margin-left:auto}
+  .pill{font:10px var(--mono);padding:2px 7px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}
+  .pill.tls{border-color:color-mix(in srgb,var(--amber) 45%,transparent);color:var(--amber)}
+  .pill.detect{border-color:color-mix(in srgb,var(--amber) 45%,transparent);color:var(--amber)}
+  .pill.block{border-color:color-mix(in srgb,var(--red) 45%,transparent);color:var(--red)}
+  .pill.off{color:var(--mut)}
+  .listrow.sel{border-color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,var(--raised))}
+  .editbanner{font:600 12px var(--mono);color:var(--amber);margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .metgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .metcard{background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .metcard .top{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+  .metcard .lbl{font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+  .metcard .val{font:600 15px var(--mono);color:var(--ink);margin-left:auto}
+  .metcard canvas{width:100%;height:38px;display:block}
+  .eyebrow{font:600 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin-bottom:14px}
+
+  .field{margin-bottom:13px}
+  label{display:flex;align-items:baseline;gap:8px;font:500 12px var(--mono);color:var(--mut);margin-bottom:5px}
+  .restart{font-size:10px;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);
+    border-radius:4px;padding:0 5px;letter-spacing:.06em}
+  input[type=text],input[type=number],select{width:100%;background:var(--bg);border:1px solid var(--line);
+    border-radius:6px;color:var(--ink);font:13px var(--mono);padding:8px 10px}
+  select{appearance:auto}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .check{display:flex;align-items:center;gap:8px;font:13px var(--mono);color:var(--ink)}
+  .check input{accent-color:var(--amber);width:15px;height:15px}
+  .hint{font-size:12px;color:var(--mut);margin-top:4px;font-family:var(--sans)}
+
+  .actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);border-radius:7px;background:var(--raised);
+    color:var(--ink);font:600 12px var(--mono);letter-spacing:.06em;padding:9px 16px;cursor:pointer}
+  .btn:hover{border-color:var(--mut)}
+  .btn.sm{padding:6px 10px}
+  .btn.primary{background:var(--amber);border-color:var(--amber);color:#141414}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn.danger{color:var(--red)}
+  .btn.danger:hover{border-color:var(--red)}
+
+  .card{border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--bg)}
+  .cardhead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .cardhead input{flex:1;font-weight:600}
+  .modechip,.lbchip{font:600 10px var(--mono);letter-spacing:.06em;border-radius:4px;padding:2px 7px;white-space:nowrap}
+  .modechip.On{color:var(--red);border:1px solid color-mix(in srgb,var(--red) 45%,transparent)}
+  .modechip.DetectionOnly{color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent)}
+  .modechip.Off{color:var(--mut);border:1px solid var(--line)}
+  .lbchip{color:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 40%,transparent)}
+
+  /* members / nodes */
+  .member{display:grid;grid-template-columns:1.4fr .8fr .7fr auto auto;gap:8px;align-items:center;margin-bottom:8px}
+  .excl{display:grid;grid-template-columns:1.1fr 1.1fr 1fr 1.2fr auto;gap:8px;align-items:center;margin-bottom:8px}
+  .exclhead{grid-template-columns:1.1fr 1.1fr 1fr 1.2fr auto}
+  .noderow{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px;align-items:center;margin-bottom:8px}
+  .colhead{display:grid;gap:8px;font:600 10px var(--mono);letter-spacing:.1em;color:var(--mut);text-transform:uppercase;margin-bottom:6px}
+  .memberhead{grid-template-columns:1.4fr .8fr .7fr auto auto}
+  .nodehead{grid-template-columns:1fr 1.4fr auto}
+  .fpolicy{display:grid;grid-template-columns:1.15fr .9fr 1fr auto .65fr .65fr 1fr auto;gap:7px;align-items:center;margin-bottom:7px}
+  .fpolicy input,.fpolicy select{min-width:0}
+  @media(max-width:900px){.fpolicy{grid-template-columns:1fr 1fr}.fpolicy .fdel{justify-self:end}}
+  .hdot{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:none}
+  .hdot.up{background:var(--green);box-shadow:0 0 8px color-mix(in srgb,var(--green) 60%,transparent)}
+  .hdot.down{background:var(--red);box-shadow:0 0 8px color-mix(in srgb,var(--red) 60%,transparent)}
+  .mstatus{display:flex;align-items:center;gap:6px;font:11px var(--mono);color:var(--mut);white-space:nowrap}
+
+  .feedhead{display:flex;align-items:center;gap:10px}
+  td.mono{font-family:var(--mono);font-size:12px;word-break:break-all}
+  .gate{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% -10%, #16202b, var(--bg));padding:20px}
+  .gate[hidden]{display:none}
+  .gatecard{width:min(380px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 24px;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+  .gatecard h1{font:600 17px var(--mono);letter-spacing:.04em;margin-bottom:20px;text-align:center}
+  .gatecard h1 span{color:var(--mut);font-weight:400}
+  .gor{display:flex;align-items:center;gap:10px;color:var(--mut);font:11px var(--mono);letter-spacing:.1em;text-transform:uppercase;margin:6px 0}
+  .gor:before,.gor:after{content:"";height:1px;background:var(--line);flex:1}
+  .gate-err{color:var(--red);font:12px var(--mono);margin-top:12px;min-height:16px;text-align:center}
+  .signout{appearance:none;border:1px solid var(--line);background:var(--raised);color:var(--mut);border-radius:8px;padding:6px 10px;cursor:pointer;font:600 11px var(--mono);letter-spacing:.06em}
+  .signout:hover{color:var(--ink);border-color:var(--mut)}
+  .feedhead .count{font:12px var(--mono);color:var(--mut);margin-left:auto}
+  table{width:100%;border-collapse:collapse;font:12px var(--mono)}
+  th{color:var(--mut);text-align:left;font-weight:500;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-all}
+  tr:hover td{background:var(--raised)}
+  .sev{border-radius:4px;padding:1px 6px;font-size:11px;white-space:nowrap}
+  .sev.critical,.sev.emergency,.sev.alert{background:color-mix(in srgb,var(--red) 20%,transparent);color:var(--red)}
+  .sev.error,.sev.warning{background:color-mix(in srgb,var(--amber) 20%,transparent);color:var(--amber)}
+  .sev.notice,.sev.info,.sev.debug{background:color-mix(in srgb,var(--blue) 20%,transparent);color:var(--blue)}
+  .empty{color:var(--mut);font:13px var(--mono);padding:26px 0;text-align:center}
+
+  /* site map tree */
+  .maphead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .maphead h3{font:600 14px var(--mono)}
+  .maphead .meta{font:12px var(--mono);color:var(--mut)}
+  .maphead .spacer{margin-left:auto}
+  .crawlbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+  .crawlbar label{margin:0;color:var(--mut)} .crawlbar input{width:74px}
+  .crawling{color:var(--amber);font:12px var(--mono)}
+  .tree{font:13px var(--mono)}
+  .tree details{margin-left:14px;border-left:1px solid var(--line);padding-left:8px}
+  .tree > details{margin-left:0;border-left:0;padding-left:0}
+  .tree summary{cursor:pointer;list-style:none;padding:2px 0;display:flex;align-items:center;gap:8px}
+  .tree summary::-webkit-details-marker{display:none}
+  .tree summary::before{content:"▸";color:var(--mut);font-size:11px}
+  .tree details[open] > summary::before{content:"▾"}
+  .leaf{margin-left:14px;border-left:1px solid var(--line);padding:2px 0 2px 8px;display:flex;align-items:center;gap:8px}
+  .seg{color:var(--ink)} .seg.dir{color:var(--blue)}
+  .tag{font-size:10px;border-radius:4px;padding:0 5px;white-space:nowrap}
+  .tag.method,.tag.hits{color:var(--mut);border:1px solid var(--line)}
+  .tag.src-seen{color:var(--green);border:1px solid color-mix(in srgb,var(--green) 40%,transparent)}
+  .tag.src-crawled{color:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 40%,transparent)}
+  .tag.src-both{color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent)}
+  .tag.code2{color:var(--green)} .tag.code3{color:var(--blue)} .tag.code4{color:var(--amber)} .tag.code5{color:var(--red)}
+
+  .strip{display:flex;gap:20px;flex-wrap:wrap;font:12px var(--mono);color:var(--mut);margin-top:14px}
+  .strip b{color:var(--ink);font-weight:500}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--raised);
+    border:1px solid var(--line);border-radius:8px;padding:10px 18px;font:13px var(--mono);
+    opacity:0;pointer-events:none;transition:opacity .25s;max-width:90vw}
+  #toast.show{opacity:1}
+  #toast.err{border-color:var(--red);color:var(--red)}
+  #toast.warn{border-color:var(--amber);color:var(--amber)}
+  .fbrow{display:flex;gap:6px}
+  .bellwrap{position:relative}
+  .bell{position:relative;appearance:none;border:1px solid var(--line);background:var(--raised);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:15px}
+  .bell:hover{border-color:var(--mut)}
+  .badge{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border-radius:10px;font:600 10px var(--mono);padding:1px 5px;min-width:16px;text-align:center}
+  .bellpanel{position:absolute;right:0;top:42px;width:min(420px,90vw);max-height:70vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;z-index:40;box-shadow:0 12px 40px rgba(0,0,0,.4)}
+  .bellhead{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);font:600 12px var(--mono);letter-spacing:.04em}
+  .bellhead .btn{margin-left:0}
+  .bellhead span{margin-right:auto}
+  .belllist{padding:6px}
+  .bellitem{padding:9px 10px;border-radius:7px;border-left:3px solid var(--mut);margin-bottom:5px;background:var(--bg)}
+  .bellitem.unread{background:var(--raised)}
+  .bellitem.warn{border-left-color:var(--amber)} .bellitem.alert{border-left-color:var(--red)} .bellitem.info{border-left-color:var(--blue)}
+  .bellitem .bt{display:flex;align-items:baseline;gap:8px}
+  .bellitem .bt b{font:600 12px var(--mono)} .bellitem .bt .tm{margin-left:auto;color:var(--mut);font:11px var(--mono)}
+  .bellitem .bb{font-size:12px;color:var(--mut);margin-top:3px}
+  .bellitem .ba{display:flex;gap:6px;margin-top:7px}
+  .fbrow input{flex:1}
+  .fbmodal{position:fixed;inset:0;background:rgba(8,11,14,.7);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .fbmodal[hidden]{display:none}
+  .fbpanel{width:min(680px,100%);max-height:80vh;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .fbhead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .fbtitle{font:600 13px var(--mono);letter-spacing:.04em}
+  .fbhead .btn{margin-left:auto}
+  .fbbar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .fbpath{font:12px var(--mono);color:var(--mut);word-break:break-all}
+  .fblist{overflow-y:auto;padding:6px}
+  .fbrow2{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;font:13px var(--mono)}
+  .fbrow2:hover{background:var(--raised)}
+  .fbrow2.dim{opacity:.38;cursor:default}
+  .fbrow2.dim:hover{background:transparent}
+  .fbsize{margin-left:auto;color:var(--mut);font-size:11px}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="gate" class="gate">
+  <form class="gatecard" id="gateform">
+    <h1>waf-proxy <span>/ console</span></h1>
+    <div class="field"><label for="g_user">Username</label><input type="text" id="g_user" autocomplete="username" spellcheck="false"></div>
+    <div class="field"><label for="g_pass">Password</label><input type="password" id="g_pass" autocomplete="current-password"></div>
+    <div class="gor"><span>or</span></div>
+    <div class="field"><label for="g_token">Admin token</label><input type="password" id="g_token" autocomplete="off" placeholder="break-glass — printed at startup"></div>
+    <button class="btn primary" id="g_go" type="submit" style="width:100%;margin-top:6px">Sign in</button>
+    <div class="gate-err" id="g_err"></div>
+  </form>
+</div>
+
+<div class="wrap" id="wrap" style="display:none">
+  <header>
+    <div class="lamp off" id="lamp" title="global engine state"></div>
+    <h1>waf-proxy <span>/ console</span></h1>
+    <span class="selheading">GLOBAL&nbsp;ENGINE</span>
+    <div class="selector" role="radiogroup" aria-label="Global rule engine mode">
+      <button data-mode="Off">OFF</button>
+      <button data-mode="DetectionOnly">DETECT</button>
+      <button data-mode="On">BLOCK</button>
+    </div>
+    <div class="up" id="uptime">—</div>
+    <button class="signout" id="signout" title="Sign out"><span id="whoami-hdr">—</span> · sign out</button>
+    <div class="bellwrap">
+      <button class="bell" id="bell" title="Notifications" aria-label="Notifications">🔔<span class="badge" id="bellbadge" hidden>0</span></button>
+      <div class="bellpanel" id="bellpanel" hidden>
+        <div class="bellhead"><span>Notifications</span><button class="btn sm" id="bellread">Mark all read</button><button class="btn sm" id="bellclear">Clear</button></div>
+        <div class="belllist" id="belllist"></div>
+        <div class="empty" id="bellempty" style="padding:18px">Nothing yet.</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="strip" id="strip"></div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab sel" data-view="config">DASHBOARD</button>
+    <button class="tab" data-view="sites">SITES</button>
+    <button class="tab" data-view="pools">POOLS&nbsp;&amp;&nbsp;NODES</button>
+    <button class="tab" data-view="policies">POLICIES</button>
+    <button class="tab" data-view="logs">LOGS</button>
+    <button class="tab" data-view="setup">SETUP&nbsp;/&nbsp;AI</button>
+    <button class="tab" data-view="users">USERS</button>
+    <button class="tab" data-view="map">SITE&nbsp;MAP</button>
+  </nav>
+
+  <!-- ══ CONFIG ══ -->
+  <div id="view-config" class="view sel">
+    <!-- ══ DASHBOARD ══ -->
+    <div class="grid2" id="dash" style="margin-bottom:8px">
+      <section>
+        <div class="feedhead"><div class="eyebrow" style="margin:0">Overview</div><div class="up" id="dash_uptime"></div></div>
+        <div class="dashstats" id="dash_stats"></div>
+        <div class="eyebrow" style="margin:18px 0 8px">System &amp; traffic</div>
+        <div class="metgrid" id="dash_metrics"></div>
+        <div class="eyebrow" style="margin:18px 0 8px">Sites</div>
+        <div id="dash_sites" class="dashlist"></div>
+        <div class="eyebrow" style="margin:16px 0 8px">Pools &amp; members</div>
+        <div id="dash_pools" class="dashlist"></div>
+      </section>
+      <section>
+        <div class="feedhead">
+          <div class="eyebrow" style="margin:0">Live WAF activity</div>
+          <div class="count" id="homecount"></div>
+          <button class="btn sm" id="homemore" style="margin-left:8px">Open full logs</button>
+        </div>
+        <div style="overflow-x:auto;margin-top:10px">
+          <table><thead><tr><th>Time</th><th>Site</th><th>Client</th><th>Sev</th><th>Rule</th><th>URI</th><th>Message</th></tr></thead><tbody id="homefeed"></tbody></table>
+          <div class="empty" id="home-empty">No WAF events yet — the engine is running; this fills as rules match traffic.</div>
+        </div>
+      </section>
+    </div>
+
+  </div>
+
+  <!-- ══ SITES ══ -->
+  <div id="view-sites" class="view">
+    <div class="grid2">
+      <section>
+        <div class="feedhead"><div class="eyebrow" style="margin:0">Your sites</div>
+          <button class="btn sm primary" id="addsite" style="margin-left:auto">+ New site</button></div>
+        <div id="site_list" class="dashlist" style="margin-top:12px"></div>
+        <div class="hint" style="margin-top:12px">
+          A site is a listener: a <b>listen address</b> this device binds, the <b>hostnames</b>
+          it answers for, and the <b>pool</b> it forwards to. Click a site to edit it, or
+          <b>+ New site</b> to add one. Changes aren't live until you <b>Apply</b>.
+        </div>
+        <div class="actions" style="margin-top:14px">
+          <button class="btn" id="save">Save draft</button>
+          <button class="btn primary" id="applybtn">Apply (go live)</button>
+          <button class="btn" id="reload">Reload rules</button>
+        </div>
+        <div class="hint" id="applystate" style="color:var(--amber)"></div>
+        <details style="margin-top:14px">
+          <summary style="cursor:pointer;color:var(--mut)">Advanced — connection timeouts</summary>
+          <div class="row3" style="margin-top:10px">
+            <div class="field"><label for="read_timeout_sec">Client read (s)</label><input type="number" id="read_timeout_sec" min="1"></div>
+            <div class="field"><label for="idle_timeout_sec">Idle (s)</label><input type="number" id="idle_timeout_sec" min="1"></div>
+            <div class="field"><label for="backend_timeout_sec">Backend (s)</label><input type="number" id="backend_timeout_sec" min="1"></div>
+          </div>
+        </details>
+      </section>
+      <section>
+        <div id="sites"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ══ POOLS & NODES ══ -->
+  <div id="view-pools" class="view">
+    <section>
+      <div class="eyebrow">Nodes</div>
+      <div class="hint" style="margin-bottom:10px">A node is one backend server, addressed by IP or hostname (no port). Reused across pools.</div>
+      <div class="colhead nodehead"><span>Name</span><span>Host / IP</span><span></span></div>
+      <div id="nodes"></div>
+      <div class="actions"><button class="btn" id="addnode">+ Add node</button><button class="btn primary" id="nodes_save">Save &amp; apply</button></div>
+    </section>
+
+    <div class="grid2" style="margin-top:20px">
+      <section>
+        <div class="feedhead"><div class="eyebrow" style="margin:0">Your pools</div>
+          <button class="btn sm primary" id="addpool" style="margin-left:auto">+ New pool</button></div>
+        <div id="pool_list" class="dashlist" style="margin-top:12px"></div>
+        <div class="actions" style="margin-top:14px">
+          <button class="btn" id="pools_save">Save draft</button>
+          <button class="btn primary" id="pools_apply">Apply (go live)</button>
+        </div>
+        <div class="hint" style="margin-top:12px">
+          A pool load-balances across its members (a node + port + weight). The <b>monitor</b>
+          marks members up/down; traffic only goes to healthy ones (fail-open if all down).
+          Click a pool to edit it. Green/red dots update live.
+        </div>
+      </section>
+      <section>
+        <div id="pools"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ══ POLICIES ══ -->
+  <div id="view-policies" class="view">
+    <div class="grid2">
+      <section>
+        <div class="feedhead"><div class="eyebrow" style="margin:0">Your policies</div>
+          <button class="btn sm primary" id="addpolicy" style="margin-left:auto">+ New policy</button></div>
+        <div id="policy_list" class="dashlist" style="margin-top:12px"></div>
+        <div class="actions" style="margin-top:14px">
+          <button class="btn" id="pol_save">Save draft</button>
+          <button class="btn primary" id="pol_apply">Apply (go live)</button>
+        </div>
+        <div class="hint" style="margin-top:12px">A policy is a named ruleset + tuning: a SecLang rules file (usually including CRS), a paranoia level, a body limit, and path-scoped exclusions. Sites reference a policy. Click one to edit it.</div>
+      </section>
+      <section>
+        <div id="policies"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ══ LOGS ══ -->
+  <div id="view-logs" class="view">
+    <section>
+      <div class="crawlbar" style="margin-bottom:12px">
+        <button class="btn sm logmode sel" data-mode="events">WAF events</button>
+        <button class="btn sm logmode" data-mode="access">Access</button>
+        <input type="text" id="logfilter" placeholder="filter: text, IP, path, rule id…" spellcheck="false" style="flex:1;min-width:160px">
+        <select id="logsev"><option value="">any severity</option><option>CRITICAL</option><option>ERROR</option><option>WARNING</option><option>NOTICE</option></select>
+        <label class="check" style="margin:0"><input type="checkbox" id="logpause"> pause</label>
+        <div class="count" id="logcount"></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="logtable"><thead id="loghead"></thead><tbody id="logbody"></tbody></table>
+        <div class="empty" id="log-empty">No log entries yet — send some traffic through the proxy.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══ SETUP / AI ══ -->
+  <div id="view-setup" class="view">
+    <div class="grid2">
+      <section>
+        <div class="eyebrow">LLM connector</div>
+        <div class="field check"><input type="checkbox" id="ai_enabled"><label for="ai_enabled" style="margin:0">Enable AI analysis</label></div>
+        <div class="row">
+          <div class="field"><label>Provider</label><select id="ai_provider">
+            <option value="openai">OpenAI-compatible</option>
+            <option value="anthropic">Anthropic</option></select></div>
+          <div class="field"><label>Model</label><input type="text" id="ai_model" spellcheck="false" placeholder="gpt-4o-mini"></div>
+        </div>
+        <div class="field"><label>API base URL</label><input type="text" id="ai_base_url" spellcheck="false" placeholder="https://api.openai.com/v1"></div>
+        <div class="field"><label>API key <span id="ai_keyset" class="restart" style="border-color:var(--line);color:var(--mut)">not set</span></label>
+          <input type="password" id="ai_api_key" spellcheck="false" placeholder="leave blank to keep current key"></div>
+        <div class="row3">
+          <div class="field"><label>Timeout (s)</label><input type="number" id="ai_timeout_sec" min="1" max="60"></div>
+          <div class="field"><label>Max tokens</label><input type="number" id="ai_max_tokens" min="1"></div>
+          <div class="field" style="display:flex;align-items:flex-end"><button class="btn sm" id="ai_test">Test connection</button></div>
+        </div>
+        <div class="hint">Works with OpenAI, or any OpenAI-compatible endpoint (vLLM, Ollama, llama.cpp, a local gateway). Point it at a <b>self-hosted</b> model to keep traffic on-prem.</div>
+      </section>
+
+      <section>
+        <div class="eyebrow">Analysis policy</div>
+        <div class="field check"><input type="checkbox" id="ai_only_on_match"><label for="ai_only_on_match" style="margin:0">Only analyze WAF-flagged requests</label></div>
+        <div class="field"><label>Sample rate of other requests (%)</label><input type="number" id="ai_sample_rate" min="0" max="100"></div>
+        <div class="row">
+          <div class="field"><label>Block threshold (score ≥)</label><input type="number" id="ai_block_threshold" min="1" max="100"></div>
+          <div class="field"><label>Block TTL (s)</label><input type="number" id="ai_block_ttl_sec" min="1"></div>
+        </div>
+        <div class="eyebrow" style="margin-top:8px">Privacy / redaction</div>
+        <div class="field check"><input type="checkbox" id="ai_redact_headers"><label for="ai_redact_headers" style="margin:0">Redact headers (strip auth/cookies, send only a safe subset)</label></div>
+        <div class="field check"><input type="checkbox" id="ai_hash_client_ip"><label for="ai_hash_client_ip" style="margin:0">Send hashed client IP instead of raw</label></div>
+        <div class="field check"><input type="checkbox" id="ai_include_body"><label for="ai_include_body" style="margin:0">Include request body <span style="color:var(--red)">(may contain PHI/secrets)</span></label></div>
+        <div class="field"><label>Trusted proxy CIDRs (comma-separated)</label><input type="text" id="ai_trusted_proxies" spellcheck="false" placeholder="10.0.0.0/8, 192.168.50.10/32"></div>
+        <div class="actions"><button class="btn primary" id="ai_save">Save &amp; apply</button></div>
+        <div class="hint" style="margin-top:6px">
+          <b style="color:var(--amber)">Heads up:</b> analysis is asynchronous — the AI never sits in the request path. It can only <i>add</i> a site-scoped, time-boxed block and fails open on errors. Forwarded client IPs are accepted only from the trusted proxy CIDRs above. Common credential headers and sensitive query parameters are redacted, but request metadata may still be sensitive; keep CRS doing deterministic blocking.
+        </div>
+      </section>
+    </div>
+
+    <section>
+      <div class="grid2" style="gap:20px">
+        <div>
+          <div class="eyebrow">High availability</div>
+          <div class="field check"><input type="checkbox" id="ha_enabled"><label for="ha_enabled" style="margin:0">Enable HA peer sync</label></div>
+          <div class="row">
+            <div class="field"><label>Role</label><select id="ha_role"><option value="primary">primary</option><option value="secondary">secondary</option></select></div>
+            <div class="field" style="display:flex;align-items:flex-end"><div class="check"><input type="checkbox" id="ha_sync_config"><label for="ha_sync_config" style="margin:0">Sync config to peer</label></div></div>
+          </div>
+          <div class="field"><label>Peer admin URL</label><input type="text" id="ha_peer_url" spellcheck="false" placeholder="https://10.0.0.6:9090"></div>
+          <div class="field"><label>Peer admin token <span id="ha_tokenset" class="restart" style="border-color:var(--line);color:var(--mut)">not set</span></label>
+            <input type="password" id="ha_peer_token" spellcheck="false" placeholder="leave blank to keep current"></div>
+          <div class="strip" id="ha_status" style="margin-top:4px"></div>
+          <div class="actions"><button class="btn primary" id="ha_save">Save &amp; apply</button><button class="btn" id="ha_syncnow">Sync now</button></div>
+          <div class="hint">waf-proxy syncs config and computes an <b>active/standby</b> role from peer health. Actual VIP failover belongs to keepalived/VRRP or your load balancer — point its health check at <code>/healthz</code> and read role from <code>/api/ha</code>. Blocklist state is intentionally not shared.</div>
+        </div>
+        <div>
+          <div class="eyebrow">Notifications</div>
+          <div class="field"><label>Webhook URL (optional)</label><input type="text" id="nt_webhook_url" spellcheck="false" placeholder="https://hooks.slack.com/..."></div>
+          <div class="field"><label>Webhook format</label><select id="nt_webhook_kind"><option value="slack">Slack / Teams text</option><option value="generic">Generic JSON</option></select></div>
+          <div class="field check"><input type="checkbox" id="nt_on_suggestion"><label for="nt_on_suggestion" style="margin:0">Policy-fit suggestions</label></div>
+          <div class="field check"><input type="checkbox" id="nt_on_ai_block"><label for="nt_on_ai_block" style="margin:0">AI blocks</label></div>
+          <div class="field check"><input type="checkbox" id="nt_on_member_down"><label for="nt_on_member_down" style="margin:0">Pool member down</label></div>
+          <div class="field check"><input type="checkbox" id="nt_on_sync"><label for="nt_on_sync" style="margin:0">Config sync results</label></div>
+          <div class="field check"><input type="checkbox" id="nt_on_peer"><label for="nt_on_peer" style="margin:0">HA peer up/down</label></div>
+          <div class="actions"><button class="btn primary" id="nt_save">Save &amp; apply</button></div>
+          <div class="hint">Events always show in the bell; the webhook is an extra fan-out. Suggestions never auto-apply — they arrive with a one-click apply button.</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="eyebrow">Syslog forwarding to SIEM</div>
+      <div class="grid2" style="gap:20px">
+        <div>
+          <div class="field check"><input type="checkbox" id="sl_enabled"><label for="sl_enabled" style="margin:0">Enable syslog forwarding</label></div>
+          <div class="row">
+            <div class="field"><label>SIEM host</label><input type="text" id="sl_host" spellcheck="false" placeholder="siem.internal"></div>
+            <div class="field"><label>Port</label><input type="number" id="sl_port" min="1" max="65535"></div>
+          </div>
+          <div class="row3">
+            <div class="field"><label>Protocol</label><select id="sl_protocol">
+              <option value="tls">TCP + TLS</option><option value="tcp">TCP</option><option value="udp">UDP</option></select></div>
+            <div class="field"><label>Format</label><select id="sl_format">
+              <option value="rfc5424">RFC 5424</option><option value="rfc3164">RFC 3164</option></select></div>
+            <div class="field"><label>Facility</label><input type="number" id="sl_facility" min="0" max="23"></div>
+          </div>
+          <div class="field"><label>App name / tag</label><input type="text" id="sl_appname" spellcheck="false" placeholder="waf-proxy"></div>
+          <div class="field check"><input type="checkbox" id="sl_tlsskip"><label for="sl_tlsskip" style="margin:0">Skip TLS verify (private CA / self-signed collector)</label></div>
+        </div>
+        <div>
+          <div class="eyebrow" style="margin-top:2px">Streams to forward</div>
+          <div class="field check"><input type="checkbox" id="sl_waf"><label for="sl_waf" style="margin:0">WAF events (rule matches)</label></div>
+          <div class="field check"><input type="checkbox" id="sl_access"><label for="sl_access" style="margin:0">Access log (all requests — high volume)</label></div>
+          <div class="field check"><input type="checkbox" id="sl_audit"><label for="sl_audit" style="margin:0">Audit (who changed what)</label></div>
+          <div class="field check"><input type="checkbox" id="sl_notify"><label for="sl_notify" style="margin:0">Notifications (AI blocks, HA, member down)</label></div>
+          <div class="eyebrow" style="margin-top:10px">Privacy</div>
+          <div class="field check"><input type="checkbox" id="sl_matchdata"><label for="sl_matchdata" style="margin:0">Include matched payload fragment <span style="color:var(--red)">(may contain PHI)</span></label></div>
+          <div class="actions"><button class="btn primary" id="sl_save">Save &amp; apply</button><button class="btn" id="sl_test">Send test</button></div>
+        </div>
+      </div>
+      <div class="hint"><b style="color:var(--amber)">Note:</b> forwarding is async and fail-open — a slow or unreachable SIEM never blocks traffic (lines are dropped, not queued forever). WAF logs can carry URIs, client IPs, and payload fragments; prefer <b>TCP+TLS</b> off-box, and the matched payload is omitted unless you opt in above.</div>
+    </section>
+
+    <section id="updatesec">
+      <div class="eyebrow">Signed self-update</div>
+      <div id="upd_off" class="hint" style="display:none">Signed updates aren't enabled in this build (no publisher key baked in, or not on localhost). Rebuild with a publisher public key, or set <code>WAF_PUBLISHER_KEY_FILE</code>, and access the console over <code>ssh -L</code>.</div>
+      <div id="upd_on" style="display:none">
+        <div class="strip" id="upd_status" style="margin-top:0"></div>
+        <div class="row" style="margin-top:12px">
+          <div class="field"><label>Upload signed package (.wafupdate)</label><input type="file" id="upd_file" accept=".wafupdate"></div>
+          <div class="field" style="display:flex;align-items:flex-end"><button class="btn" id="upd_stage">Verify &amp; stage</button></div>
+        </div>
+        <div id="upd_catalogwrap" style="display:none">
+          <div class="actions"><button class="btn sm" id="upd_catalog">Check online catalog</button></div>
+          <div id="upd_catalog_list"></div>
+        </div>
+        <div id="upd_staged" style="display:none;margin-top:12px">
+          <div class="eyebrow" style="margin:0 0 8px">Staged — review before installing</div>
+          <div id="upd_staged_body"></div>
+          <div class="actions">
+            <button class="btn primary" id="upd_install">Install</button>
+            <button class="btn" id="upd_discard">Discard</button>
+          </div>
+        </div>
+        <div class="actions" style="margin-top:14px">
+          <button class="btn" id="upd_rollback">Roll back</button>
+          <button class="btn danger" id="upd_restart" style="display:none">Restart into new binary</button>
+        </div>
+        <div class="hint"><b style="color:var(--amber)">How trust works:</b> packages are verified against the baked-in publisher <b>public</b> key (RSA/SHA-256) before anything is written — a bad signature, checksum, or unsafe path is rejected. The private key stays offline, so a stolen admin session still can't forge an update. Installing replaces the binary and requires a <b>restart</b>; the previous version is kept for one-click rollback. Admin-only, localhost-only.</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="feedhead"><div class="eyebrow" style="margin:0">AI blocklist</div><div class="count" id="bl_count"></div></div>
+      <div style="overflow-x:auto;margin-top:10px">
+        <table aria-label="AI blocklist"><thead><tr><th>IP</th><th>Site</th><th>Score</th><th>Expires</th><th>Reason</th><th></th></tr></thead>
+        <tbody id="blocklist"></tbody></table>
+        <div class="empty" id="bl_empty">No active AI blocks.</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="feedhead"><div class="eyebrow" style="margin:0">AI verdicts</div><div class="count" id="vd_count"></div></div>
+      <div style="overflow-x:auto;margin-top:10px">
+        <table aria-label="AI verdicts"><thead><tr><th>Time</th><th>Site</th><th>Client</th><th>Verdict</th><th>Score</th><th>Category</th><th>Action</th><th>Reason</th></tr></thead>
+        <tbody id="verdicts"></tbody></table>
+        <div class="empty" id="vd_empty">No verdicts yet.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══ USERS ══ -->
+  <div id="view-users" class="view">
+    <div class="grid2">
+      <section>
+        <div class="eyebrow">Current account</div>
+        <div id="whoami" class="strip" style="margin-top:0"></div>
+        <div class="actions"><button class="btn sm" id="selfpw">Change my password</button></div>
+        <div class="hint">Sign in happens on the login screen (username + password, or the break-glass admin token). Roles: <b>admin</b> (users + everything), <b>operator</b> (edit config/policies), <b>reviewer</b> (apply page policies &amp; profiles only), <b>viewer</b> (read-only).</div>
+      </section>
+      <section id="usermgmt">
+        <div class="eyebrow">Accounts</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody id="userlist"></tbody></table>
+          <div class="empty" id="user-empty">No accounts yet — add one below.</div></div>
+        <div class="eyebrow" style="margin-top:16px">Add account</div>
+        <div class="row3">
+          <div class="field"><label>Username</label><input type="text" id="nu_user" spellcheck="false"></div>
+          <div class="field"><label>Password</label><input type="password" id="nu_pass" placeholder="min 8 chars"></div>
+          <div class="field"><label>Role</label><select id="nu_role">
+            <option value="viewer">viewer</option><option value="reviewer">reviewer</option>
+            <option value="operator">operator</option><option value="admin">admin</option></select></div>
+        </div>
+        <div class="actions"><button class="btn primary" id="nu_add">Add user</button></div>
+      </section>
+    </div>
+    <section>
+      <div class="feedhead"><div class="eyebrow" style="margin:0">Audit trail</div><div class="count" id="audit_count"></div></div>
+      <div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead><tbody id="auditlist"></tbody></table>
+        <div class="empty" id="audit-empty">No activity recorded yet.</div></div>
+    </section>
+  </div>
+
+  <!-- ══ SITE MAP ══ -->
+  <div id="view-map" class="view">
+    <section id="dischosts" style="display:none">
+      <div class="feedhead"><div class="eyebrow" style="margin:0">Observed hostnames</div><div class="count" id="disc_count"></div></div>
+      <div class="hint" style="margin:6px 0">Hostnames actually arriving on each listener, from live traffic (passive — no crawling). <b style="color:var(--amber)">Undeclared</b> = reaching the box but no site claims it; create a site for it if it's yours.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Host</th><th>Listener</th><th>Status</th><th>Hits</th><th>Last seen</th></tr></thead><tbody id="disc_body"></tbody></table></div>
+    </section>
+    <section>
+      <div class="eyebrow">Site content map</div>
+      <div class="hint" style="margin-bottom:14px">
+        Paths are learned <b class="tag src-seen" style="font-family:var(--mono)">seen</b> as traffic
+        flows (always on) and <b class="tag src-crawled" style="font-family:var(--mono)">crawled</b> when
+        you run Discover — a polite spider that follows a site's own links via its pool. It maps what's
+        linked and reached; it doesn't brute-force hidden paths.
+      </div>
+      <div class="grid2">
+        <section style="padding:0;border:0;background:none">
+          <div class="eyebrow" style="margin:0 0 10px">Sites</div>
+          <div id="map_list" class="dashlist"></div>
+        </section>
+        <section style="padding:0;border:0;background:none">
+          <div id="maps"></div>
+          <div class="empty" id="maps-empty">No sites configured.</div>
+        </section>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="fb" class="fbmodal" hidden aria-modal="true" role="dialog">
+  <div class="fbpanel">
+    <div class="fbhead"><span class="fbtitle" id="fbtitle">Choose a file</span><button class="btn sm" id="fbclose">✕</button></div>
+    <div class="fbbar">
+      <button class="btn sm" id="fbup">↑ Up</button>
+      <span class="fbpath" id="fbpath"></span>
+      <label class="check" style="margin-left:auto;color:var(--mut)"><input type="checkbox" id="fbcerts" checked> cert/key files only</label>
+    </div>
+    <div class="fblist" id="fblist"></div>
+  </div>
+</div>
+<div id="pp" class="fbmodal" hidden aria-modal="true" role="dialog">
+  <div class="fbpanel">
+    <div class="fbhead"><span class="fbtitle">Page policy</span><button class="btn sm" id="ppclose">✕</button></div>
+    <div style="padding:16px">
+      <div class="field"><label>Bound path <span id="pp_site" class="restart" style="border-color:var(--line);color:var(--mut)"></span></label>
+        <input type="text" id="pp_path" spellcheck="false" placeholder="/path"></div>
+      <div class="row3">
+        <div class="field"><label>Match</label><select id="pp_match"><option value="prefix">prefix</option><option value="exact">exact</option></select></div>
+        <div class="field"><label>Action</label><select id="pp_action">
+          <option value="">Tune (WAF rules)</option>
+          <option value="deny">Block path (virtual patch)</option></select></div>
+        <div class="field" id="pp_statuswrap"><label>Block response</label><select id="pp_status">
+          <option value="403">403 Forbidden</option>
+          <option value="404">404 Not Found (hide)</option></select></div>
+      </div>
+      <div id="pp_tune">
+      <div class="row">
+        <div class="field"><label>Engine mode</label><select id="pp_mode">
+          <option value="">inherit site</option><option value="Off">Off</option>
+          <option value="DetectionOnly">Detect</option><option value="On">Block</option></select></div>
+        <div class="field"><label>Paranoia</label><select id="pp_pl">
+          <option value="0">inherit</option><option value="1">PL1</option><option value="2">PL2</option>
+          <option value="3">PL3</option><option value="4">PL4</option></select></div>
+      </div>
+      <div class="field"><label>Exclude rule IDs (comma)</label><input type="text" id="pp_excl" spellcheck="false" placeholder="941100,942100"></div>
+      <div class="field"><label>Methods (comma-separated)</label><input type="text" id="pp_methods" spellcheck="false" placeholder="POST"></div>
+      <div class="field" id="pp_formwrap" style="display:none"><label>Discovered POST form action</label><select id="pp_formaction"></select></div>
+      <div class="field">
+        <label>Field policies <button class="btn sm" type="button" id="pp_addfield" style="margin-left:auto">+ Field</button></label>
+        <div class="hint" style="margin-bottom:8px">Discover seeds fields from HTML forms. Excluded rule IDs apply only to that field, not the whole page.</div>
+        <div id="pp_fields"></div>
+      </div>
+      </div>
+      <div class="field"><label>Note</label><input type="text" id="pp_note" spellcheck="false"></div>
+      <div class="hint" id="pp_hint">Compiles to path-gated SecLang inside the site engine. Mode + exclusions are exact from phase 1; paranoia reliably affects body (phase-2) rules. <b>Block path</b> denies the URL (and sub-paths if prefix) before it reaches the backend — it enforces even if the site runs DetectionOnly.</div>
+      <div class="actions">
+        <button class="btn primary" id="pp_save">Save &amp; apply</button>
+        <button class="btn danger" id="pp_delete">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast" role="status"></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s??"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const globalFields = ["read_timeout_sec","idle_timeout_sec","backend_timeout_sec"];
+  let cfg=null, engineMode="DetectionOnly", sites=[], nodes=[], pools=[], policies=[], interfaces=[];
+
+  // ── auth ──
+  function getToken(){ return sessionStorage.getItem("waf_token")||""; }
+  async function api(path, opts={}){
+    opts.headers = Object.assign({"Authorization":"Bearer "+getToken(),"Content-Type":"application/json"}, opts.headers||{});
+    const r = await fetch(path, opts);
+    if (r.status===401){ sessionStorage.removeItem("waf_token"); showGate(); throw new Error("session expired — sign in again"); }
+    if (!r.ok) throw new Error((await r.text()).trim()||("HTTP "+r.status));
+    return r.json();
+  }
+  function toast(msg, cls=""){ const t=$("toast"); t.textContent=msg; t.className="show "+cls; clearTimeout(t._h); t._h=setTimeout(()=>t.className="",4000); }
+
+  // ── tabs ──
+  let mapActive=false;
+  document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+    document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("sel", x===t));
+    const v=t.dataset.view;
+    document.querySelectorAll(".view").forEach(x=>x.classList.toggle("sel", x.id==="view-"+v));
+    mapActive = v==="map";
+    if (v==="config") loadDashboard();      // landing = dashboard
+    if (v==="sites") renderSites();          // master-detail site editor
+    if (v==="pools"){ renderNodes(); renderPools(); pollPools(); }
+    if (v==="policies") renderPolicies();
+    if (v==="logs") pollLogs();
+    if (v==="setup"){ pollAI(); loadUpdate(); }
+    if (v==="users"){ loadWhoami(); loadUsers(); loadAudit(); }
+    if (mapActive) pollMap();
+  });
+
+  // ── global engine ──
+  function paintMode(){
+    document.querySelectorAll("header .selector button").forEach(b=>b.classList.toggle("sel", b.dataset.mode===engineMode));
+    const l=$("lamp"); l.className="lamp "+(engineMode==="On"?"on":engineMode==="DetectionOnly"?"detect":"off");
+  }
+  document.querySelectorAll("header .selector button").forEach(b => b.onclick = async () => {
+    const prev=engineMode; engineMode=b.dataset.mode; paintMode();
+    try{ await saveConfig(); toast("global engine → "+engineMode, engineMode==="On"?"warn":""); }
+    catch(e){ engineMode=prev; paintMode(); toast(e.message,"err"); }
+  });
+
+  // ── sites ──
+  function poolOptions(sel){
+    if(!pools.length) return `<option value="">(no pools defined)</option>`;
+    const known = pools.some(p=>p.name===sel);
+    const placeholder = known ? "" : `<option value="" selected>— select pool —</option>`;
+    return placeholder + pools.map(p=>`<option value="${esc(p.name)}" ${p.name===sel?"selected":""}>${esc(p.name)}</option>`).join("");
+  }
+  function policyOptions(sel){
+    if(!policies.length) return `<option value="">(no policies defined)</option>`;
+    const known = policies.some(p=>p.name===sel);
+    const placeholder = known ? "" : `<option value="" selected>— select policy —</option>`;
+    return placeholder + policies.map(p=>`<option value="${esc(p.name)}" ${p.name===sel?"selected":""}>${esc(p.name)}</option>`).join("");
+  }
+  function interfaceOptions(sel){
+    const usable=interfaces.filter(x=>x.up&&!x.loopback);
+    const configured=usable.find(x=>x.plane==="data");
+    let out=`<option value="" ${!sel?"selected":""}>${configured?"Configured data plane: "+esc(configured.name):"Auto-detect by subnet (legacy)"}</option>`;
+    out+=usable.map(x=>{
+      const disabled=x.plane==="management";
+      const label=`${x.name} — ${x.plane||"interface"}${x.addresses&&x.addresses.length?" — "+x.addresses.join(", "):" — no address"}`;
+      return `<option value="${esc(x.name)}" ${x.name===sel?"selected":""} ${disabled?"disabled":""}>${esc(label)}</option>`;
+    }).join("");
+    if(sel&&!usable.some(x=>x.name===sel)) out+=`<option value="${esc(sel)}" selected>${esc(sel)} — unavailable</option>`;
+    return out;
+  }
+  function siteCard(s,i){
+    const mode=s.engine_mode||""; const eff=mode||engineMode;
+    return `<div class="card" data-i="${i}">
+      <div class="cardhead">
+        <input type="text" data-f="name" value="${esc(s.name)}" placeholder="site name" aria-label="Site name">
+        <span class="modechip ${eff}">${eff==="DetectionOnly"?"DETECT":eff.toUpperCase()}</span>
+        ${s._new?'<span class="pill detect">NEW — not applied</span>':''}
+      </div>
+      <div class="row">
+        <div class="field"><label>Listen address <span class="modechip Off" style="border-color:var(--line)">applies live</span></label>
+          <input type="text" data-f="listen" spellcheck="false" value="${esc(s.listen)}" placeholder=":443"></div>
+        <div class="field"><label>Pool</label><select data-f="pool">${poolOptions(s.pool)}</select></div>
+      </div>
+      <div class="field"><label>Policy</label><select data-f="policy">${policyOptions(s.policy)}</select></div>
+      <div class="field"><label>Hostnames (comma-separated)</label>
+        <input type="text" data-f="hostnames" spellcheck="false" value="${esc((s.hostnames||[]).join(", "))}" placeholder="app.example.com, *.example.com"></div>
+      <div class="row">
+        <div class="field"><label>Engine mode</label>
+          <select data-f="engine_mode">
+            <option value="" ${mode===""?"selected":""}>Inherit global</option>
+            <option value="Off" ${mode==="Off"?"selected":""}>Off</option>
+            <option value="DetectionOnly" ${mode==="DetectionOnly"?"selected":""}>Detect</option>
+            <option value="On" ${mode==="On"?"selected":""}>Block</option>
+          </select></div>
+        <div class="field"><label>AI enforcement</label>
+          <select data-f="ai_mode">
+            <option value="off" ${(!s.ai_mode||s.ai_mode==="off")?"selected":""}>Off</option>
+            <option value="advisory" ${s.ai_mode==="advisory"?"selected":""}>Advisory (log only)</option>
+            <option value="block" ${s.ai_mode==="block"?"selected":""}>Block (drop traffic)</option>
+          </select></div>
+      </div>
+      <div class="field" style="display:flex;align-items:center;padding-top:2px">
+        <div class="check"><input type="checkbox" data-f="preserve_host" ${s.preserve_host?"checked":""} id="ph${i}"><label for="ph${i}" style="margin:0">Forward client Host</label></div>
+        <div class="check"><input type="checkbox" data-f="manage_ip" ${s.manage_ip?"checked":""} id="mip${i}"><label for="mip${i}" style="margin:0">Assign listen IP to interface</label></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Managed IP interface</label>
+          <select data-f="manage_interface">${interfaceOptions(s.manage_interface||"")}</select>
+          <div class="hint">Choose the data-plane NIC. Management interfaces cannot be selected.</div></div>
+        <div class="field"><label>Managed IP prefix length</label>
+          <input type="number" min="0" max="128" data-f="manage_prefix_len" value="${Number(s.manage_prefix_len)||0}" placeholder="0">
+          <div class="hint">0 inherits the selected NIC prefix; set explicitly for an unnumbered NIC.</div></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>TLS certificate</label>
+          <div class="fbrow"><input type="text" data-f="tls_cert" spellcheck="false" value="${esc(s.tls_cert||"")}" placeholder="/etc/waf/tls/site/fullchain.pem"><button type="button" class="btn sm browse">Browse</button></div></div>
+        <div class="field"><label>TLS key</label>
+          <div class="fbrow"><input type="text" data-f="tls_key" spellcheck="false" value="${esc(s.tls_key||"")}" placeholder="/etc/waf/tls/site/privkey.pem"><button type="button" class="btn sm browse">Browse</button></div></div>
+      </div>
+    </div>`;
+  }
+  let selectedSite = -1;
+  function siteListRow(s,i){
+    const eff=s.engine_mode||engineMode;
+    const chip=eff==="On"?"block":(eff==="DetectionOnly"?"detect":"off");
+    return `<div class="dashrow listrow ${i===selectedSite?'sel':''}" data-sel="${i}" style="cursor:pointer">
+      <span class="nm">${esc(s.name||'(unnamed)')}</span>
+      <span class="meta">${esc(s.listen||'')}</span>
+      ${s._new?'<span class="pill detect">NEW</span>':''}
+      <span class="spacer"></span>
+      <button class="btn danger sm" data-del="${i}" title="Delete site">✕</button>
+    </div>`;
+  }
+  function renderSites(){
+    // left: master list
+    if($("site_list")){
+      $("site_list").innerHTML = sites.length
+        ? sites.map(siteListRow).join("")
+        : `<div class="dashrow"><span class="meta">No sites yet — click + New site</span></div>`;
+      document.querySelectorAll('#site_list [data-sel]').forEach(r=>r.onclick=e=>{
+        if(e.target.closest('[data-del]')) return;
+        syncSites(); selectedSite=+r.dataset.sel; renderSites();
+      });
+      document.querySelectorAll('#site_list [data-del]').forEach(b=>b.onclick=e=>{
+        e.stopPropagation();
+        const i=+b.dataset.del;
+        if(!confirm(`Delete site "${sites[i]&&sites[i].name||''}"? (takes effect on Apply)`)) return;
+        syncSites(); sites.splice(i,1);
+        if(selectedSite>=sites.length) selectedSite=sites.length-1;
+        renderSites();
+      });
+    }
+    // right: detail editor (single selected site)
+    if($("sites")){
+      if(selectedSite<0 || selectedSite>=sites.length){
+        $("sites").innerHTML = `<div class="empty">Select a site on the left to edit it, or click <b>+ New site</b>.</div>`;
+      } else {
+        const s=sites[selectedSite];
+        const banner=`<div class="editbanner">${s._new?'Creating new site':'Editing'} <b>${esc(s.name||'(unnamed)')}</b>${s._new?' — not applied yet':''}</div>`;
+        $("sites").innerHTML = banner + siteCard(s, selectedSite);
+        document.querySelectorAll('#sites .browse').forEach(b=>b.onclick=()=>{
+          const input=b.closest(".field").querySelector("input[data-f]");
+          openBrowser(input, input.dataset.f==="tls_key"?"Choose TLS key":"Choose TLS certificate");
+        });
+      }
+    }
+  }
+  function syncSites(){
+    document.querySelectorAll("#sites .card").forEach(card=>{
+      const s=sites[+card.dataset.i]; if(!s) return;
+      card.querySelectorAll("[data-f]").forEach(el=>{
+        const f=el.dataset.f;
+        if(f==="hostnames") s.hostnames=el.value.split(",").map(x=>x.trim()).filter(Boolean);
+        else if(f==="preserve_host") s.preserve_host=el.checked;
+        else if(f==="manage_ip") s.manage_ip=el.checked;
+        else if(f==="manage_prefix_len") s.manage_prefix_len=Number(el.value||0);
+        else s[f]=el.value.trim();
+      });
+    });
+  }
+  $("addsite").onclick=()=>{ syncSites(); sites.push({name:"site-"+(sites.length+1),listen:"",hostnames:[],pool:"",policy:"",preserve_host:true,engine_mode:"",ai_mode:"off",tls_cert:"",tls_key:"",manage_ip:false,manage_interface:"",manage_prefix_len:0,_new:true}); selectedSite=sites.length-1; renderSites(); };
+
+  // ── nodes ──
+  function nodeRow(n,i){
+    return `<div class="noderow" data-i="${i}">
+      <input type="text" data-f="name" value="${esc(n.name)}" placeholder="web1" aria-label="Node name">
+      <input type="text" data-f="host" spellcheck="false" value="${esc(n.host)}" placeholder="192.168.1.20" aria-label="Node host">
+      <button class="btn danger sm" data-del="${i}">✕</button></div>`;
+  }
+  function renderNodes(){
+    $("nodes").innerHTML = nodes.map(nodeRow).join("") || `<div class="empty" style="padding:12px">No nodes yet.</div>`;
+    document.querySelectorAll('#nodes [data-del]').forEach(b=>b.onclick=()=>{ syncNodes(); nodes.splice(+b.dataset.del,1); renderNodes(); renderPools(); });
+  }
+  function syncNodes(){
+    document.querySelectorAll("#nodes .noderow").forEach(row=>{
+      const n=nodes[+row.dataset.i]; if(!n) return;
+      row.querySelectorAll("[data-f]").forEach(el=>n[el.dataset.f]=el.value.trim());
+    });
+  }
+  $("addnode").onclick=()=>{ syncNodes(); nodes.push({name:"node-"+(nodes.length+1),host:""}); renderNodes(); };
+
+  // ── pools ──
+  function nodeOptions(sel){
+    if(!nodes.length) return `<option value="">(define a node first)</option>`;
+    const known = nodes.some(n=>n.name===sel);
+    // If the stored value isn't a real node (renamed/deleted), don't silently
+    // keep it — force an explicit "select node" so it can't persist a phantom.
+    const placeholder = known ? "" : `<option value="" selected>— select node —</option>`;
+    return placeholder + nodes.map(n=>`<option value="${esc(n.name)}" ${n.name===sel?"selected":""}>${esc(n.name)}</option>`).join("");
+  }
+  function memberRow(m,pi,j){
+    return `<div class="member" data-j="${j}">
+      <select data-f="node">${nodeOptions(m.node)}</select>
+      <input type="number" data-f="port" min="1" max="65535" value="${m.port||""}" placeholder="port" aria-label="Port">
+      <input type="number" data-f="weight" min="1" value="${m.weight||1}" placeholder="wt" aria-label="Weight">
+      <span class="mstatus" data-pi="${pi}" data-j="${j}"></span>
+      <button class="btn danger sm" data-delm="${j}">✕</button></div>`;
+  }
+  function poolCard(p,pi){
+    const mon=p.monitor||{type:"none"};
+    const membersHTML = (p.members||[]).map((m,j)=>memberRow(m,pi,j)).join("");
+    return `<div class="card" data-i="${pi}">
+      <div class="cardhead">
+        <input type="text" data-f="name" value="${esc(p.name)}" placeholder="pool name" aria-label="Pool name">
+        <span class="lbchip">${esc(p.lb_method||"round_robin")}</span>
+        ${p._new?'<span class="pill detect">NEW — not applied</span>':''}
+      </div>
+      <div class="row3">
+        <div class="field"><label>Scheme</label><select data-f="scheme">
+          <option value="http" ${p.scheme==="http"?"selected":""}>http</option>
+          <option value="https" ${p.scheme==="https"?"selected":""}>https</option></select></div>
+        <div class="field"><label>LB method</label><select data-f="lb_method">
+          <option value="round_robin" ${p.lb_method==="round_robin"?"selected":""}>round robin</option>
+          <option value="least_conn" ${p.lb_method==="least_conn"?"selected":""}>least conn</option>
+          <option value="ip_hash" ${p.lb_method==="ip_hash"?"selected":""}>ip hash</option>
+          <option value="random" ${p.lb_method==="random"?"selected":""}>random</option></select></div>
+        <div class="field"><label>Monitor</label><select data-fm="type">
+          <option value="none" ${mon.type==="none"||!mon.type?"selected":""}>none</option>
+          <option value="tcp" ${mon.type==="tcp"?"selected":""}>tcp</option>
+          <option value="http" ${mon.type==="http"?"selected":""}>http</option></select></div>
+      </div>
+      <div class="row intv" style="${mon.type&&mon.type!=="none"?"":"display:none"};max-width:340px">
+        <div class="field"><label>Check interval (s)</label><input type="number" data-fm="interval_sec" value="${mon.interval_sec||5}" min="1"></div>
+        <div class="field"><label>Timeout (s)</label><input type="number" data-fm="timeout_sec" value="${mon.timeout_sec||2}" min="1"></div>
+      </div>
+      <div class="row httponly" style="${mon.type==="http"?"":"display:none"};max-width:340px">
+        <div class="field"><label>HTTP path</label><input type="text" data-fm="path" value="${esc(mon.path||"/")}" placeholder="/healthz"></div>
+        <div class="field"><label>Expect status</label><input type="number" data-fm="expect_status" value="${mon.expect_status||200}" placeholder="200"></div>
+      </div>
+      <label style="margin-top:6px">Members</label>
+      <div class="colhead memberhead"><span>Node</span><span>Port</span><span>Weight</span><span>Health</span><span></span></div>
+      <div class="members">${membersHTML}</div>
+      <div class="actions"><button class="btn sm addm">+ Add member</button></div>
+    </div>`;
+  }
+  let selectedPool = -1;
+  function poolListRow(p,pi){
+    const n=(p.members||[]).length;
+    return `<div class="dashrow listrow ${pi===selectedPool?'sel':''}" data-selp="${pi}" style="cursor:pointer">
+      <span class="nm">${esc(p.name||'(unnamed)')}</span>
+      <span class="meta">${esc(p.lb_method||'round_robin')} · ${n} member${n===1?'':'s'}</span>
+      ${p._new?'<span class="pill detect">NEW</span>':''}
+      <span class="spacer"></span>
+      <button class="btn danger sm" data-delp="${pi}" title="Delete pool">✕</button>
+    </div>`;
+  }
+  function renderPools(){
+    if($("pool_list")){
+      $("pool_list").innerHTML = pools.length
+        ? pools.map(poolListRow).join("")
+        : `<div class="dashrow"><span class="meta">No pools yet — click + New pool</span></div>`;
+      document.querySelectorAll('#pool_list [data-selp]').forEach(r=>r.onclick=e=>{
+        if(e.target.closest('[data-delp]')) return;
+        syncPools(); selectedPool=+r.dataset.selp; renderPools();
+      });
+      document.querySelectorAll('#pool_list [data-delp]').forEach(b=>b.onclick=e=>{
+        e.stopPropagation();
+        const pi=+b.dataset.delp;
+        if(!confirm(`Delete pool "${pools[pi]&&pools[pi].name||''}"? (takes effect on Apply)`)) return;
+        syncPools(); pools.splice(pi,1);
+        if(selectedPool>=pools.length) selectedPool=pools.length-1;
+        renderPools();
+      });
+    }
+    if($("pools")){
+      if(selectedPool<0 || selectedPool>=pools.length){
+        $("pools").innerHTML = `<div class="empty">Select a pool on the left to edit it, or click <b>+ New pool</b>.</div>`;
+      } else {
+        const p=pools[selectedPool];
+        const banner=`<div class="editbanner">${p._new?'Creating new pool':'Editing'} <b>${esc(p.name||'(unnamed)')}</b>${p._new?' — not applied yet':''}</div>`;
+        $("pools").innerHTML = banner + poolCard(p, selectedPool);
+        const card=$("pools").querySelector(".card");
+        card.querySelector(".addm").onclick=()=>{ syncPools(); pools[selectedPool].members.push({node:"",port:8080,weight:1}); renderPools(); };
+        card.querySelectorAll("[data-delm]").forEach(b=>b.onclick=()=>{ syncPools(); pools[selectedPool].members.splice(+b.dataset.delm,1); renderPools(); });
+        const monSel=card.querySelector('[data-fm="type"]');
+        monSel.onchange=()=>{
+          const t=monSel.value;
+          card.querySelector(".intv").style.display     = t==="none"?"none":"";
+          card.querySelector(".httponly").style.display = t==="http"?"":"none";
+        };
+      }
+    }
+  }
+  function syncPools(){
+    document.querySelectorAll("#pools .card").forEach(card=>{
+      const p=pools[+card.dataset.i]; if(!p) return;
+      card.querySelectorAll(":scope > .cardhead > [data-f], :scope > .row3 > .field > [data-f]").forEach(el=>p[el.dataset.f]=el.value);
+      // name is text; keep trimmed
+      p.name=(p.name||"").trim();
+      p.monitor=p.monitor||{};
+      card.querySelectorAll("[data-fm]").forEach(el=>{
+        const f=el.dataset.fm;
+        p.monitor[f] = (el.type==="number") ? Number(el.value||0) : el.value.trim();
+      });
+      const ms=[];
+      card.querySelectorAll(".member").forEach(row=>{
+        const m={};
+        row.querySelectorAll("[data-f]").forEach(el=> m[el.dataset.f] = el.type==="number"?Number(el.value||0):el.value);
+        ms.push({node:m.node, port:Number(m.port||0), weight:Number(m.weight||1)});
+      });
+      p.members=ms;
+    });
+  }
+  $("addpool").onclick=()=>{ syncPools(); pools.push({name:"pool-"+(pools.length+1),scheme:"http",lb_method:"round_robin",monitor:{type:"tcp",interval_sec:5,timeout_sec:2,rise:2,fall:3},members:[],_new:true}); selectedPool=pools.length-1; renderPools(); };
+
+  // ── policies ──
+  function exclRow(x,j){
+    return `<div class="excl" data-j="${j}">
+      <input type="text" data-xf="path_prefix" spellcheck="false" value="${esc(x.path_prefix||"")}" placeholder="/path (blank = whole site)">
+      <input type="text" data-xf="rule_ids" spellcheck="false" value="${esc((x.rule_ids||[]).join(","))}" placeholder="941100,942100">
+      <input type="text" data-xf="targets" spellcheck="false" value="${esc((x.targets||[]).join(","))}" placeholder="ARGS:x (optional)">
+      <input type="text" data-xf="note" spellcheck="false" value="${esc(x.note||"")}" placeholder="note">
+      <button class="btn danger sm" data-delx="${j}">✕</button></div>`;
+  }
+  function policyCard(p,pi){
+    const excl=(p.exclusions||[]).map((x,j)=>exclRow(x,j)).join("");
+    const pl=p.paranoia_level??1;
+    return `<div class="card" data-i="${pi}">
+      <div class="cardhead">
+        <input type="text" data-f="name" value="${esc(p.name)}" placeholder="policy name" aria-label="Policy name">
+        <span class="lbchip">PL${pl}</span>
+        ${p._new?'<span class="pill detect">NEW — not applied</span>':''}
+      </div>
+      <div class="field"><label>SecLang rules file</label>
+        <div class="fbrow"><input type="text" data-f="rules_path" spellcheck="false" value="${esc(p.rules_path||"")}" placeholder="/etc/waf/coraza.conf"><button type="button" class="btn sm browsep">Browse</button></div></div>
+      <div class="row">
+        <div class="field"><label>Paranoia level</label><select data-f="paranoia_level">
+          <option value="0" ${pl===0?"selected":""}>inherit file</option>
+          <option value="1" ${pl===1?"selected":""}>PL1</option>
+          <option value="2" ${pl===2?"selected":""}>PL2</option>
+          <option value="3" ${pl===3?"selected":""}>PL3</option>
+          <option value="4" ${pl===4?"selected":""}>PL4</option></select></div>
+        <div class="field"><label>Request body limit (bytes)</label><input type="number" data-f="request_body_limit" min="0" value="${p.request_body_limit||0}"></div>
+      </div>
+      <label style="margin-top:6px">Exclusions</label>
+      <div class="colhead exclhead"><span>Path prefix</span><span>Rule IDs</span><span>Targets</span><span>Note</span><span></span></div>
+      <div class="excls">${excl}</div>
+      <div class="actions"><button class="btn sm addx">+ Add exclusion</button></div>
+    </div>`;
+  }
+  let selectedPolicy = -1;
+  function policyListRow(p,pi){
+    const n=(p.exclusions||[]).length;
+    return `<div class="dashrow listrow ${pi===selectedPolicy?'sel':''}" data-selpol="${pi}" style="cursor:pointer">
+      <span class="nm">${esc(p.name||'(unnamed)')}</span>
+      <span class="meta">PL${p.paranoia_level??1} · ${n} exclusion${n===1?'':'s'}</span>
+      ${p._new?'<span class="pill detect">NEW</span>':''}
+      <span class="spacer"></span>
+      <button class="btn danger sm" data-delpol="${pi}" title="Delete policy">✕</button>
+    </div>`;
+  }
+  function renderPolicies(){
+    if($("policy_list")){
+      $("policy_list").innerHTML = policies.length
+        ? policies.map(policyListRow).join("")
+        : `<div class="dashrow"><span class="meta">No policies yet — click + New policy</span></div>`;
+      document.querySelectorAll('#policy_list [data-selpol]').forEach(r=>r.onclick=e=>{
+        if(e.target.closest('[data-delpol]')) return;
+        syncPolicies(); selectedPolicy=+r.dataset.selpol; renderPolicies();
+      });
+      document.querySelectorAll('#policy_list [data-delpol]').forEach(b=>b.onclick=e=>{
+        e.stopPropagation();
+        const pi=+b.dataset.delpol;
+        if(!confirm(`Delete policy "${policies[pi]&&policies[pi].name||''}"? (takes effect on Apply)`)) return;
+        syncPolicies(); policies.splice(pi,1);
+        if(selectedPolicy>=policies.length) selectedPolicy=policies.length-1;
+        renderPolicies();
+      });
+    }
+    if($("policies")){
+      if(selectedPolicy<0 || selectedPolicy>=policies.length){
+        $("policies").innerHTML = `<div class="empty">Select a policy on the left to edit it, or click <b>+ New policy</b>.</div>`;
+      } else {
+        const p=policies[selectedPolicy];
+        const banner=`<div class="editbanner">${p._new?'Creating new policy':'Editing'} <b>${esc(p.name||'(unnamed)')}</b>${p._new?' — not applied yet':''}</div>`;
+        $("policies").innerHTML = banner + policyCard(p, selectedPolicy);
+        const card=$("policies").querySelector(".card");
+        card.querySelector(".addx").onclick=()=>{ syncPolicies(); policies[selectedPolicy].exclusions=policies[selectedPolicy].exclusions||[]; policies[selectedPolicy].exclusions.push({path_prefix:"",rule_ids:[],targets:[],note:""}); renderPolicies(); };
+        card.querySelectorAll("[data-delx]").forEach(b=>b.onclick=()=>{ syncPolicies(); policies[selectedPolicy].exclusions.splice(+b.dataset.delx,1); renderPolicies(); });
+        card.querySelector(".browsep").onclick=()=>{ const input=card.querySelector('input[data-f="rules_path"]'); openBrowser(input,"Choose SecLang rules file",syncPolicies); };
+      }
+    }
+  }
+  function parseIDs(s){ return (s||"").split(",").map(x=>parseInt(x.trim(),10)).filter(n=>Number.isFinite(n)&&n>0); }
+  function syncPolicies(){
+    document.querySelectorAll("#policies .card").forEach(card=>{
+      const p=policies[+card.dataset.i]; if(!p) return;
+      p.name=(card.querySelector('[data-f="name"]').value||"").trim();
+      p.rules_path=(card.querySelector('[data-f="rules_path"]').value||"").trim();
+      p.paranoia_level=Number(card.querySelector('[data-f="paranoia_level"]').value||0);
+      p.request_body_limit=Number(card.querySelector('[data-f="request_body_limit"]').value||0);
+      const xs=[];
+      card.querySelectorAll(".excl").forEach(row=>{
+        const g=f=>row.querySelector(`[data-xf="${f}"]`).value;
+        xs.push({
+          path_prefix:g("path_prefix").trim(),
+          rule_ids:parseIDs(g("rule_ids")),
+          targets:g("targets").split(",").map(x=>x.trim()).filter(Boolean),
+          note:g("note").trim()
+        });
+      });
+      p.exclusions=xs;
+    });
+  }
+  $("addpolicy").onclick=()=>{ syncPolicies(); policies.push({name:"policy-"+(policies.length+1),rules_path:"coraza.conf",paranoia_level:1,request_body_limit:0,exclusions:[],_new:true}); selectedPolicy=policies.length-1; renderPolicies(); };
+
+  // live pool health
+  async function pollPools(){
+    try{
+      const st = await api("/api/pools");
+      const byName={}; st.forEach(p=>byName[p.name]=p);
+      document.querySelectorAll("#pools .card").forEach(card=>{
+        const p=pools[+card.dataset.i]; const live=p&&byName[p.name]; if(!live) return;
+        // Index live status by node name so the dot follows the NODE, not the
+        // row position (rows get reordered/edited; positional matching is wrong).
+        const byNode={}; (live.members||[]).forEach(m=>{ byNode[m.node]=m; });
+        card.querySelectorAll(".mstatus").forEach(span=>{
+          const row=span.closest(".member");
+          const sel=row&&row.querySelector('select[data-f="node"]');
+          const node=sel?sel.value:"";
+          const m=node?byNode[node]:null;
+          span.innerHTML = m ? `<span class="hdot ${m.healthy?"up":"down"}"></span>${m.active} conn` : "";
+        });
+      });
+    }catch(e){}
+  }
+
+  // ── config load/save ──
+  function fill(c){
+    cfg=c; engineMode=c.engine_mode||"DetectionOnly";
+    sites=(c.sites||[]).map(x=>Object.assign({},x));
+    nodes=(c.nodes||[]).map(x=>Object.assign({},x));
+    pools=(c.pools||[]).map(x=>Object.assign({},x,{monitor:Object.assign({},x.monitor),members:(x.members||[]).map(m=>Object.assign({},m))}));
+    policies=(c.policies||[]).map(x=>Object.assign({},x,{exclusions:(x.exclusions||[]).map(e=>Object.assign({},e,{rule_ids:(e.rule_ids||[]).slice(),targets:(e.targets||[]).slice()}))}));
+    globalFields.forEach(f=>$(f).value = c[f] ?? "");
+    fillAI(c.ai); fillHA(c.ha); fillNotify(c.notify); fillSyslog(c.syslog);
+    paintMode(); renderSites();
+  }
+  function collect(){
+    syncSites(); syncNodes(); syncPools(); syncPolicies();
+    const c=Object.assign({}, cfg);
+    globalFields.forEach(f=>{ const el=$(f); c[f]= el.type==="number"?Number(el.value||0):el.value.trim(); });
+    c.engine_mode=engineMode; c.sites=sites; c.nodes=nodes; c.pools=pools; c.policies=policies;
+    c.ai=collectAI(); c.ha=collectHA(); c.notify=collectNotify(); c.syslog=collectSyslog();
+    return c;
+  }
+  async function saveConfig(){
+    // Draft save: persists work-in-progress without applying to the live engine.
+    // Never blocked by incomplete cross-references — build incrementally.
+    const res=await api("/api/config?draft=1",{method:"PUT",body:JSON.stringify(collect())});
+    fill(res.config);
+    if (document.querySelector('.tab[data-view="pools"]').classList.contains("sel")){ renderNodes(); renderPools(); }
+    if (document.querySelector('.tab[data-view="policies"]').classList.contains("sel")){ renderPolicies(); }
+    // Reflect whether the draft is complete enough to Apply.
+    const ab=$("applybtn");
+    if(ab){
+      ab.disabled=!res.apply_ready;
+      ab.title=res.apply_ready?"Apply this config to the live engine":(res.apply_error||"Config not yet complete");
+    }
+    const st=$("applystate");
+    if(st) st.textContent=res.apply_ready?"draft saved — ready to apply":"draft saved — "+(res.apply_error||"incomplete");
+    return res;
+  }
+  async function applyConfig(){
+    // Full apply: validates everything and pushes to the live engine.
+    const res=await api("/api/config",{method:"PUT",body:JSON.stringify(collect())});
+    fill(res.config);
+    if (document.querySelector('.tab[data-view="pools"]').classList.contains("sel")){ renderNodes(); renderPools(); }
+    if (document.querySelector('.tab[data-view="policies"]').classList.contains("sel")){ renderPolicies(); }
+    const st=$("applystate"); if(st) st.textContent="applied — live";
+    return res;
+  }
+  $("save").onclick=()=>saveConfig().then(()=>toast("draft saved")).catch(e=>toast(e.message,"err"));
+  $("applybtn").onclick=()=>applyConfig().then(()=>toast("applied — now live")).catch(e=>toast(e.message,"err"));
+  const draftSave=(msg)=>saveConfig().then(()=>toast(msg)).catch(e=>toast(e.message,"err"));
+  const liveApply=()=>applyConfig().then(()=>toast("applied — now live")).catch(e=>toast(e.message,"err"));
+  $("nodes_save").onclick=()=>draftSave("nodes — draft saved");
+  $("pools_save").onclick=()=>draftSave("pools — draft saved");
+  $("pools_apply").onclick=liveApply;
+  $("pol_save").onclick=()=>draftSave("policies — draft saved");
+  $("pol_apply").onclick=liveApply;
+  $("reload").onclick=()=>api("/api/reload",{method:"POST"}).then(()=>toast("rules reloaded")).catch(e=>toast(e.message,"err"));
+
+  // ── site map ──
+  function codeClass(c){ c=Number(c)||0; return c>=500?"code5":c>=400?"code4":c>=300?"code3":c>=200?"code2":""; }
+  function tags(n){ let t=""; if(!n.is_dir||n.hits>0) t+=`<span class="tag hits">${n.hits} hits</span>`;
+    if(n.methods&&n.methods.length) t+=`<span class="tag method">${esc(n.methods.join("·"))}</span>`;
+    if(n.last_code) t+=`<span class="tag ${codeClass(n.last_code)}">${n.last_code}</span>`;
+    if(n.source) t+=`<span class="tag src-${n.source}">${n.source}</span>`; return t; }
+  function ppBind(site,full){ return curPagePol[site+"|"+full]; }
+  function renderNode(site,n,depth){
+    const pp=ppBind(site,n.full);
+    const badge=pp?(pp.action==="deny"
+      ?`<span class="tag" style="border-color:var(--red);color:var(--red)" title="blocked (virtual patch, ${pp.deny_status||403})">blocked</span>`
+      :`<span class="tag src-crawled" title="bound page policy${pp.source?" ("+esc(pp.source)+")":""}">policy</span>`):"";
+    const gear=`<button class="btn sm ppedit" data-site="${esc(site)}" data-full="${esc(n.full)}" title="Edit page policy">⚙</button>`;
+    const label=`<span class="seg ${n.is_dir?"dir":""}">${esc(n.name)}${n.is_dir&&n.name!=="/"?"/":""}</span>`;
+    if(!n.is_dir) return `<div class="leaf" data-full="${esc(n.full)}">${label}${tags(n)}${badge}${gear}</div>`;
+    const kids=(n.children||[]).map(c=>renderNode(site,c,depth+1)).join("");
+    return `<details data-full="${esc(n.full)}" ${depth<2?"open":""}><summary>${label}${tags(n)}${badge}${gear}</summary>${kids}</details>`;
+  }
+  function captureOpen(c){ const o=new Set(); c.querySelectorAll("details[open]").forEach(d=>o.add(d.dataset.full)); return o; }
+  function restoreOpen(c,o){ c.querySelectorAll("details").forEach(d=>{ if(o.has(d.dataset.full)) d.open=true; }); }
+  function sitePanel(sm){
+    const c=sm.crawl||{};
+    const status=c.running?`<span class="crawling">crawling… ${c.pages} pages, depth ${c.depth}</span>`
+      :(c.error?`<span class="crawling" style="color:var(--red)">crawl error: ${esc(c.error)}</span>`:"");
+    const roots=(sm.tree.children||[]).map(ch=>renderNode(sm.site,ch,0)).join("")||`<div class="empty">Nothing mapped yet — send traffic or run Discover.</div>`;
+    return `<div class="card" data-site="${esc(sm.site)}">
+      <div class="maphead"><h3>${esc(sm.site)}</h3><span class="meta">${sm.nodes} paths</span><span class="spacer"></span>${status}</div>
+      <div class="crawlbar">
+        <label>pages</label><input type="number" class="cp" min="1" max="2000" value="200">
+        <label>depth</label><input type="number" class="cd" min="1" max="12" value="4">
+        <button class="btn primary sm crawl" ${c.running?"disabled":""}>Discover</button>
+        <button class="btn danger sm clear">Clear</button>
+        <button class="btn sm learnbtn" style="margin-left:auto">Suggest policy fit</button>
+        <button class="btn sm profbtn">Page profiles</button></div>
+      <div class="learnbox" style="display:none"></div>
+      <div class="profbox" style="display:none"></div>
+      <div class="tree">${roots}</div></div>`;
+  }
+  let curPagePol={};
+  async function loadDiscovered(){
+    try{
+      const hosts=await api("/api/discovered");
+      if(!hosts.length){ $("dischosts").style.display="none"; return; }
+      $("dischosts").style.display="";
+      const undeclared=hosts.filter(h=>!h.declared).length;
+      $("disc_count").textContent=undeclared?undeclared+" undeclared":hosts.length+" hosts";
+      $("disc_body").innerHTML=hosts.map(h=>`<tr>
+        <td class="mono">${esc(h.host)}</td><td class="mono">${esc(h.listener)}</td>
+        <td>${h.declared?'<span class="tag src-crawled">declared</span>':'<span class="tag" style="border-color:var(--amber);color:var(--amber)">undeclared</span>'}</td>
+        <td>${h.hits}</td><td>${esc(h.last_seen||"")}</td></tr>`).join("");
+    }catch(e){}
+  }
+
+  let selectedMap = "";
+  async function pollMap(){
+    if(!mapActive) return;
+    loadDiscovered();
+    try{
+      const maps=await api("/api/sitemap");
+      $("maps-empty").style.display=maps.length?"none":"";
+      // default selection: first site, or keep current if still present
+      if(!maps.some(m=>m.site===selectedMap)) selectedMap = maps.length?maps[0].site:"";
+      // left: site list with path counts
+      $("map_list").innerHTML = maps.length
+        ? maps.map(m=>`<div class="dashrow listrow ${m.site===selectedMap?'sel':''}" data-selmap="${esc(m.site)}" style="cursor:pointer">
+            <span class="nm">${esc(m.site)}</span><span class="spacer"></span>
+            <span class="meta">${m.nodes||0} paths</span></div>`).join("")
+        : `<div class="dashrow"><span class="meta">No sites configured</span></div>`;
+      document.querySelectorAll('#map_list [data-selmap]').forEach(r=>r.onclick=()=>{ selectedMap=r.dataset.selmap; pollMap(); });
+
+      // right: only the selected site's tree
+      const sm=maps.find(m=>m.site===selectedMap);
+      if(!sm){ $("maps").innerHTML=""; return; }
+      // load bound page policies for this site (badges + prefill)
+      curPagePol={};
+      try{ const pps=await api("/api/pagepolicy?site="+encodeURIComponent(sm.site));
+        (pps||[]).forEach(pp=>{ curPagePol[sm.site+"|"+pp.path]=pp; }); }catch(e){}
+      const host=$("maps"); const openBy={};
+      host.querySelectorAll(".card").forEach(card=>openBy[card.dataset.site]=captureOpen(card));
+      host.innerHTML=sitePanel(sm);
+      const card=host.querySelector(".card");
+      if(card){
+        const name=card.dataset.site;
+        if(openBy[name]) restoreOpen(card,openBy[name]);
+        card.querySelector(".crawl").onclick=async()=>{
+          const pages=+card.querySelector(".cp").value||200, depth=+card.querySelector(".cd").value||4;
+          try{ await api("/api/crawl",{method:"POST",body:JSON.stringify({site:name,max_pages:pages,max_depth:depth})}); toast("discovering "+name+"…"); setTimeout(pollMap,400); }
+          catch(e){ toast(e.message,"err"); }
+        };
+        card.querySelector(".clear").onclick=async()=>{ try{ await api("/api/sitemap/clear?site="+encodeURIComponent(name)); toast("cleared "+name); pollMap(); }catch(e){ toast(e.message,"err"); } };
+        card.querySelector(".learnbtn").onclick=()=>{ if(learnOpen[name]){ learnOpen[name]=false; const b=card.querySelector(".learnbox"); b.style.display="none"; b.innerHTML=""; } else { loadLearn(name, card.querySelector(".learnbox")); } };
+        card.querySelector(".profbtn").onclick=()=>{ if(profOpen[name]){ profOpen[name]=false; const b=card.querySelector(".profbox"); b.style.display="none"; b.innerHTML=""; } else { loadProfiles(name, card.querySelector(".profbox")); } };
+        card.querySelectorAll(".ppedit").forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); e.preventDefault(); openPageEditor(b.dataset.site, b.dataset.full); });
+        // survive auto-refresh: re-open panels that were open before this re-render
+        if(learnOpen[name]) loadLearn(name, card.querySelector(".learnbox"));
+        if(profOpen[name]) loadProfiles(name, card.querySelector(".profbox"));
+      }
+    }catch(e){}
+  }
+
+  // ── page profiles (learn content → suggest → review → apply) ──
+  let profileCatalog=null;
+  async function ensureCatalog(){ if(!profileCatalog){ try{ profileCatalog=await api("/api/profiles"); }catch(e){ profileCatalog=[]; } } return profileCatalog; }
+  function profSelect(sel){ return (profileCatalog||[]).map(p=>`<option value="${esc(p.name)}" ${p.name===sel?"selected":""}>${esc(p.label||p.name)}</option>`).join(""); }
+  function confColor(c){ return c>=85?"var(--green)":c>=60?"var(--amber)":"var(--mut)"; }
+  async function loadProfiles(site, box){
+    profOpen[site]=true;
+    box.style.display="";
+    box.innerHTML=`<div class="hint">reading content + structure…</div>`;
+    try{
+      await ensureCatalog();
+      const sugg=await api("/api/profiles/suggest?site="+encodeURIComponent(site));
+      let html=`<div class="crawlbar" style="margin-bottom:10px">
+        <span class="hint" style="margin:0">Auto-apply at confidence ≥</span>
+        <input type="number" class="pthr" min="1" max="100" value="90" style="width:64px">
+        <label class="check" style="margin:0"><input type="checkbox" class="pllm"> review with LLM</label>
+        <button class="btn primary sm pauto" style="margin-left:auto">Auto-apply high confidence</button></div>`;
+      if(!sugg.length){ html+=`<div class="empty">No pages classified yet — run <b>Discover</b> so the crawler can read form/field/content structure.</div>`; box.innerHTML=html; wireAuto(site,box); return; }
+      html+=`<table><thead><tr><th>Page</th><th>Suggested</th><th>Conf</th><th>Why</th><th>Bound</th><th></th></tr></thead><tbody>`;
+      sugg.forEach(s=>{
+        const crawled=s.crawled?"":' <span class="tag" title="not crawled — weaker signal">passive</span>';
+        html+=`<tr data-path="${esc(s.path)}"><td>${esc(s.path)}${crawled}</td>`+
+          `<td><select class="profsel">${profSelect(s.profile)}</select></td>`+
+          `<td><b style="color:${confColor(s.confidence)}">${s.confidence}</b></td>`+
+          `<td>${esc(s.rationale)}</td>`+
+          `<td>${s.bound?`<span class="tag src-crawled">${esc(s.bound)}</span>`:""}</td>`+
+          `<td><button class="btn sm applyprof">Apply</button></td></tr>`;
+      });
+      html+=`</tbody></table>`;
+      box.innerHTML=html;
+      box.querySelectorAll(".applyprof").forEach(b=>b.onclick=async()=>{
+        const tr=b.closest("tr"), path=tr.dataset.path, profile=tr.querySelector(".profsel").value;
+        try{ await api("/api/profiles/apply",{method:"POST",body:JSON.stringify({site,path,profile})});
+          toast(`bound ${profile} → ${path}`); loadProfiles(site,box); pollMap(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      wireAuto(site,box);
+    }catch(e){ box.innerHTML=`<div class="hint" style="color:var(--red)">${esc(e.message)}</div>`; }
+  }
+  function wireAuto(site,box){
+    const btn=box.querySelector(".pauto"); if(!btn) return;
+    btn.onclick=async()=>{
+      const threshold=+box.querySelector(".pthr").value||90, use_llm=box.querySelector(".pllm").checked;
+      btn.disabled=true; btn.textContent="applying…";
+      try{
+        const r=await api("/api/profiles/auto",{method:"POST",body:JSON.stringify({site,threshold,use_llm})});
+        toast(`auto-applied ${r.applied.length}, skipped ${r.skipped.length}${r.llm?" (LLM-reviewed)":""}`);
+        loadProfiles(site,box); pollMap();
+      }catch(e){ toast(e.message,"err"); }
+      btn.disabled=false; btn.textContent="Auto-apply high confidence";
+    };
+  }
+
+  // ── page-policy editor ──
+  let ppSite=null, ppFields=[], ppSourcePath="", ppDiscovered=[];
+  function suggestedFieldProfile(f){
+    const t=(f.type||"").toLowerCase(), n=(f.name||"").toLowerCase();
+    if(t==="password") return "password";
+    if(t==="email") return "email";
+    if(t==="number"||t==="range") return "numeric";
+    if(t==="textarea"||/(comment|message|description|body|content|note)/.test(n)) return "free_text";
+    return "identifier";
+  }
+  function fieldPolicyRow(f,i){
+    return `<div class="fpolicy" data-fi="${i}">
+      <input type="text" data-ff="name" value="${esc(f.name||"")}" placeholder="field name">
+      <select data-ff="source"><option value="ARGS_POST" ${(!f.source||f.source==="ARGS_POST")?"selected":""}>POST form / JSON</option><option value="ARGS" ${f.source==="ARGS"?"selected":""}>Any argument</option></select>
+      <select data-ff="profile">
+        <option value="" ${!f.profile?"selected":""}>length only</option>
+        <option value="identifier" ${f.profile==="identifier"?"selected":""}>identifier</option>
+        <option value="password" ${f.profile==="password"?"selected":""}>password</option>
+        <option value="free_text" ${f.profile==="free_text"?"selected":""}>free text</option>
+        <option value="email" ${f.profile==="email"?"selected":""}>email</option>
+        <option value="numeric" ${f.profile==="numeric"?"selected":""}>numeric</option>
+      </select>
+      <label class="check" style="margin:0"><input type="checkbox" data-ff="required" ${f.required?"checked":""}>required</label>
+      <input type="number" min="0" data-ff="min_length" value="${Number(f.min_length)||0}" title="Minimum length" placeholder="min">
+      <input type="number" min="0" data-ff="max_length" value="${Number(f.max_length)||0}" title="Maximum length" placeholder="max">
+      <input type="text" data-ff="exclude_rule_ids" value="${esc((f.exclude_rule_ids||[]).join(","))}" placeholder="field-only rule IDs">
+      <button class="btn danger sm fdel" type="button" data-fdel="${i}">✕</button>
+    </div>`;
+  }
+  function renderPPFields(){
+    $("pp_fields").innerHTML=ppFields.length?ppFields.map(fieldPolicyRow).join(""):`<div class="empty">No field policies. Run Discover or add one manually.</div>`;
+    $("pp_fields").querySelectorAll("[data-fdel]").forEach(b=>b.onclick=()=>{ syncPPFields(); ppFields.splice(+b.dataset.fdel,1); renderPPFields(); });
+  }
+  function syncPPFields(){
+    document.querySelectorAll("#pp_fields .fpolicy").forEach(row=>{
+      const f=ppFields[+row.dataset.fi]; if(!f) return;
+      row.querySelectorAll("[data-ff]").forEach(el=>{
+        const k=el.dataset.ff;
+        if(k==="required") f[k]=el.checked;
+        else if(k==="min_length"||k==="max_length") f[k]=Number(el.value||0);
+        else if(k==="exclude_rule_ids") f[k]=(el.value||"").split(",").map(x=>parseInt(x.trim(),10)).filter(n=>n>0);
+        else f[k]=el.value.trim();
+      });
+    });
+  }
+  function resolvedFormAction(action,pagePath){
+    try{ return new URL(action||pagePath,"http://waf.local"+pagePath).pathname; }
+    catch(e){ return pagePath; }
+  }
+  function seedDiscoveredAction(action){
+    syncPPFields();
+    const known=new Set(ppFields.map(f=>(f.source||"ARGS_POST")+":"+f.name));
+    ppDiscovered.filter(f=>f.method==="POST"&&resolvedFormAction(f.action,ppSourcePath)===action).forEach(f=>{
+      const key="ARGS_POST:"+f.name;
+      if(known.has(key)) return;
+      known.add(key);
+      ppFields.push({name:f.name,source:"ARGS_POST",profile:suggestedFieldProfile(f),required:!!f.required,min_length:0,max_length:0,exclude_rule_ids:[]});
+    });
+    renderPPFields();
+  }
+  $("pp_formaction").onchange=()=>{
+    const action=$("pp_formaction").value;
+    $("pp_path").value=action;
+    $("pp_methods").value="POST";
+    seedDiscoveredAction(action);
+  };
+  $("pp_addfield").onclick=()=>{ syncPPFields(); ppFields.push({name:"",source:"ARGS_POST",profile:"identifier",required:false,min_length:0,max_length:0,exclude_rule_ids:[]}); renderPPFields(); };
+  function ppToggle(){ const deny=$("pp_action").value==="deny"; $("pp_tune").style.display=deny?"none":""; $("pp_statuswrap").style.display=deny?"":"none"; }
+  async function openPageEditor(site,path){
+    ppSite=site; ppSourcePath=path; ppDiscovered=[];
+    $("pp_formwrap").style.display="none";
+    const ex=curPagePol[site+"|"+path];
+    $("pp_site").textContent=site;
+    $("pp_path").value=path;
+    $("pp_match").value=(ex&&ex.match)||"prefix";
+    $("pp_action").value=(ex&&ex.action)||"";
+    $("pp_status").value=String((ex&&ex.deny_status)||403);
+    $("pp_mode").value=(ex&&ex.mode)||"";
+    $("pp_pl").value=String((ex&&ex.paranoia_level)||0);
+    $("pp_excl").value=ex&&ex.exclude_rule_ids?ex.exclude_rule_ids.join(","):"";
+    $("pp_methods").value=ex&&ex.methods&&ex.methods.length?ex.methods.join(","):"POST";
+    ppFields=(ex&&ex.fields?ex.fields:[]).map(f=>Object.assign({},f,{exclude_rule_ids:(f.exclude_rule_ids||[]).slice()}));
+    renderPPFields();
+    $("pp_note").value=(ex&&ex.note)||"";
+    $("pp_delete").style.display=ex?"":"none";
+    ppToggle();
+    $("pp").hidden=false;
+    try{
+      const found=await api("/api/forms?site="+encodeURIComponent(site)+"&path="+encodeURIComponent(path));
+      if(ppSite!==site||$("pp_path").value!==path) return;
+      ppDiscovered=found||[];
+      const actions=[...new Set(ppDiscovered.filter(f=>f.method==="POST").map(f=>resolvedFormAction(f.action,path)))];
+      $("pp_formwrap").style.display=actions.length?"":"none";
+      $("pp_formaction").innerHTML=actions.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join("");
+      if(actions.length){
+        const selected=actions.includes(path)?path:actions[0];
+        $("pp_formaction").value=selected;
+        if(!ex) $("pp_path").value=selected;
+        seedDiscoveredAction(selected);
+      }
+    }catch(e){}
+  }
+  $("pp_action").onchange=ppToggle;
+  function closePageEditor(){ $("pp").hidden=true; ppSite=null; }
+  $("ppclose").onclick=closePageEditor;
+  $("pp").onclick=(e)=>{ if(e.target===$("pp")) closePageEditor(); };
+  $("pp_save").onclick=async()=>{
+    syncPPFields();
+    const deny=$("pp_action").value==="deny";
+    const policy={
+      path:$("pp_path").value.trim(), match:$("pp_match").value,
+      action:$("pp_action").value, deny_status:deny?Number($("pp_status").value||403):0,
+      mode:deny?"":$("pp_mode").value, paranoia_level:deny?0:Number($("pp_pl").value||0),
+      exclude_rule_ids:deny?[]:($("pp_excl").value||"").split(",").map(x=>parseInt(x.trim(),10)).filter(n=>n>0),
+      methods:deny?[]:($("pp_methods").value||"POST").split(",").map(x=>x.trim().toUpperCase()).filter(Boolean),
+      fields:deny?[]:ppFields.filter(f=>f.name),
+      note:$("pp_note").value.trim(), source:"manual"
+    };
+    if(!policy.path){ toast("path required","err"); return; }
+    try{ await api("/api/pagepolicy/upsert",{method:"POST",body:JSON.stringify({site:ppSite,policy})});
+      toast("page policy saved"); closePageEditor(); pollMap(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  $("pp_delete").onclick=async()=>{
+    try{ await api("/api/pagepolicy/delete",{method:"POST",body:JSON.stringify({site:ppSite,path:$("pp_path").value.trim()})});
+      toast("page policy deleted"); closePageEditor(); pollMap(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+
+  // ── policy-fit learner ──
+  function riskColor(r){ return r==="hostile"?"var(--red)":r==="elevated"?"var(--amber)":r==="benign"?"var(--green)":"var(--mut)"; }
+  let learnOpen = {};   // site -> true when the learner panel is open
+  let profOpen = {};    // site -> true when the profile panel is open
+  async function loadLearn(site, box){
+    learnOpen[site]=true;
+    box.style.display="";
+    box.innerHTML=`<div class="hint">analyzing…</div>`;
+    try{
+      const rec=await api("/api/learn?site="+encodeURIComponent(site));
+      const plNote = rec.suggest_paranoia>0 ? ` · suggested paranoia <b>PL${rec.suggest_paranoia}</b>` : "";
+      let html=`<div class="hint" style="margin-bottom:8px">${esc(rec.summary)}${plNote}</div>`;
+      if(!rec.pages||!rec.pages.length){ html+=`<div class="empty">No per-page findings yet — send more traffic through the WAF.</div>`; box.innerHTML=html; return; }
+      html+=`<table><thead><tr><th>Page</th><th>Risk</th><th>Hits</th><th>Findings</th><th>Suggestion</th><th></th></tr></thead><tbody>`;
+      rec.pages.forEach((pg,idx)=>{
+        const findings=(pg.findings||[]).map(f=>`<span class="tag ${f.kind==="attack"?"code5":f.kind==="likely_fp"?"code4":""}" title="${f.clients} clients">${f.rule_id}×${f.count}</span>`).join(" ");
+        const canApply=(pg.suggest_exclusions||[]).length>0;
+        const applyBtn=canApply?`<button class="btn sm applyx" data-site="${esc(site)}" data-path="${esc(pg.path)}" data-ids="${esc((pg.suggest_exclusions||[]).join(","))}">Exclude ${pg.suggest_exclusions.length} rule(s)</button>`:"";
+        html+=`<tr><td>${esc(pg.path)}</td><td><span style="color:${riskColor(pg.risk)}">${esc(pg.risk)}</span></td><td>${pg.hits}</td><td>${findings}</td><td>${esc(pg.suggest_note||"")}</td><td>${applyBtn}</td></tr>`;
+      });
+      html+=`</tbody></table>`;
+      box.innerHTML=html;
+      box.querySelectorAll(".applyx").forEach(b=>b.onclick=async()=>{
+        const ids=b.dataset.ids.split(",").map(x=>+x).filter(Boolean);
+        try{
+          const r=await api("/api/learn/apply",{method:"POST",body:JSON.stringify({site:b.dataset.site,path:b.dataset.path,rule_ids:ids,note:"learned: "+b.dataset.path})});
+          toast(`excluded ${ids.length} rule(s) on ${b.dataset.path} → policy ${r.policy}`);
+          b.disabled=true; b.textContent="applied";
+        }catch(e){ toast(e.message,"err"); }
+      });
+    }catch(e){ box.innerHTML=`<div class="hint" style="color:var(--red)">${esc(e.message)}</div>`; }
+  }
+
+  // ── file browser (cert/key picker) ──
+  let fbTarget=null, fbPath="", fbCerts=true, fbSync=null, fbFilter=true;
+  const certExt=[".pem",".crt",".cer",".key",".der",".p12",".pfx",".ca-bundle",".conf"];
+  function isCertFile(name){ const n=name.toLowerCase(); return certExt.some(e=>n.endsWith(e))||n.includes("fullchain")||n.includes("privkey")||n.includes("cert")||n.includes("coraza")||n.includes("crs"); }
+  function fmtSize(n){ if(n<1024) return n+" B"; if(n<1048576) return (n/1024).toFixed(0)+" K"; return (n/1048576).toFixed(1)+" M"; }
+  function joinPath(base,name){ return base.endsWith("/") ? base+name : base+"/"+name; }
+  function openBrowser(input,title,sync){ fbTarget=input; fbSync=sync||null; $("fbtitle").textContent=title||"Choose a file"; $("fb").hidden=false; loadDir(input.value||""); }
+  function closeBrowser(){ $("fb").hidden=true; fbTarget=null; fbSync=null; }
+  async function loadDir(path){
+    try{
+      const r=await api("/api/fs?path="+encodeURIComponent(path));
+      fbPath=r.path; $("fbpath").textContent=r.path;
+      $("fbup").style.visibility=r.parent?"visible":"hidden"; $("fbup").dataset.parent=r.parent||"";
+      renderFB(r.entries);
+    }catch(e){ toast(e.message,"err"); }
+  }
+  function renderFB(entries){
+    const list=$("fblist");
+    list.innerHTML = entries.map(e=>{
+      const cert=!e.is_dir&&isCertFile(e.name);
+      const dim=(!e.is_dir&&fbCerts&&!cert)?" dim":"";
+      const icon=e.is_dir?"📁":"📄";
+      const size=e.is_dir?"":`<span class="fbsize">${fmtSize(e.size)}</span>`;
+      return `<div class="fbrow2${dim}" data-dir="${e.is_dir?1:0}" data-name="${esc(e.name)}">${icon}<span>${esc(e.name)}</span>${size}</div>`;
+    }).join("") || `<div class="empty">(empty)</div>`;
+    list.querySelectorAll(".fbrow2").forEach(row=>row.onclick=()=>{
+      const name=row.dataset.name, isDir=row.dataset.dir==="1", full=joinPath(fbPath,name);
+      if(isDir){ loadDir(full); return; }
+      if(fbCerts && !isCertFile(name)) return;         // dimmed, not selectable
+      if(fbTarget){ fbTarget.value=full; if(fbSync) fbSync(); else syncSites(); }
+      toast("selected "+name);
+      closeBrowser();
+    });
+  }
+  $("fbclose").onclick=closeBrowser;
+  $("fb").onclick=e=>{ if(e.target===$("fb")) closeBrowser(); };
+  $("fbup").onclick=()=>{ const p=$("fbup").dataset.parent; if(p) loadDir(p); };
+  $("fbcerts").onchange=()=>{ fbCerts=$("fbcerts").checked; loadDir(fbPath); };
+
+  // ── HA + notifications config ──
+  function fillHA(ha){
+    ha=ha||{};
+    $("ha_enabled").checked=!!ha.enabled;
+    $("ha_role").value=ha.role||"primary";
+    $("ha_sync_config").checked=ha.sync_config!==false;
+    $("ha_peer_url").value=ha.peer_url||"";
+    $("ha_peer_token").value="";
+  }
+  function collectHA(){
+    return { enabled:$("ha_enabled").checked, role:$("ha_role").value,
+      sync_config:$("ha_sync_config").checked, peer_url:$("ha_peer_url").value.trim(),
+      peer_token:$("ha_peer_token").value };
+  }
+  function fillNotify(nt){
+    nt=nt||{};
+    $("nt_webhook_url").value=nt.webhook_url||"";
+    $("nt_webhook_kind").value=nt.webhook_kind||"slack";
+    $("nt_on_suggestion").checked=nt.on_suggestion!==false;
+    $("nt_on_ai_block").checked=nt.on_ai_block!==false;
+    $("nt_on_member_down").checked=nt.on_member_down!==false;
+    $("nt_on_sync").checked=nt.on_sync!==false;
+    $("nt_on_peer").checked=nt.on_peer!==false;
+  }
+  function collectNotify(){
+    return { webhook_url:$("nt_webhook_url").value.trim(), webhook_kind:$("nt_webhook_kind").value,
+      on_suggestion:$("nt_on_suggestion").checked, on_ai_block:$("nt_on_ai_block").checked,
+      on_member_down:$("nt_on_member_down").checked, on_sync:$("nt_on_sync").checked, on_peer:$("nt_on_peer").checked };
+  }
+  $("ha_save").onclick=()=>saveConfig().then(()=>toast("HA settings — draft saved")).catch(e=>toast(e.message,"err"));
+  $("nt_save").onclick=()=>saveConfig().then(()=>toast("notifications — draft saved")).catch(e=>toast(e.message,"err"));
+  $("ha_syncnow").onclick=()=>api("/api/ha/sync",{method:"POST"}).then(()=>toast("sync triggered")).catch(e=>toast(e.message,"err"));
+
+  // ── notification bell ──
+  let bellOpen=false;
+  $("bell").onclick=(e)=>{ e.stopPropagation(); bellOpen=!bellOpen; $("bellpanel").hidden=!bellOpen; if(bellOpen) loadBell(); };
+  document.addEventListener("click",(e)=>{ if(bellOpen && !$("bellpanel").contains(e.target) && e.target!==$("bell")){ bellOpen=false; $("bellpanel").hidden=true; } });
+  $("bellread").onclick=async()=>{ await api("/api/notifications/read",{method:"POST",body:JSON.stringify({all:true})}); loadBell(); };
+  $("bellclear").onclick=async()=>{ await api("/api/notifications/dismiss",{method:"POST",body:JSON.stringify({all:true})}); loadBell(); };
+  async function loadBell(){
+    try{
+      const r=await api("/api/notifications?limit=100");
+      const items=r.items||[];
+      $("bellempty").style.display=items.length?"none":"";
+      $("belllist").innerHTML=items.map(n=>{
+        const applyBtn=n.action==="apply_exclusion"?`<button class="btn sm applyn" data-id="${n.id}">Apply</button>`:"";
+        return `<div class="bellitem ${n.level} ${n.read?"":"unread"}">
+          <div class="bt"><b>${esc(n.title)}</b><span class="tm">${esc(n.time)}</span></div>
+          <div class="bb">${esc(n.body)}</div>
+          <div class="ba">${applyBtn}<button class="btn sm dismn" data-id="${n.id}">Dismiss</button></div></div>`;
+      }).join("");
+      $("belllist").querySelectorAll(".applyn").forEach(b=>b.onclick=async()=>{
+        try{ await api("/api/notifications/apply",{method:"POST",body:JSON.stringify({id:+b.dataset.id})}); toast("applied"); loadBell(); }catch(e){ toast(e.message,"err"); }
+      });
+      $("belllist").querySelectorAll(".dismn").forEach(b=>b.onclick=async()=>{ await api("/api/notifications/dismiss",{method:"POST",body:JSON.stringify({id:+b.dataset.id})}); loadBell(); });
+      await api("/api/notifications/read",{method:"POST",body:JSON.stringify({all:true})}); // opening marks read
+    }catch(e){}
+  }
+
+  // ── landing-page live WAF feed ──
+  async function pollHome(){
+    if(!document.querySelector('.tab[data-view="config"]').classList.contains("sel")) return;
+    loadDashboard();
+    try{
+      const rows=await api("/api/matches?limit=25");
+      $("homecount").textContent=rows.length?rows.length+" recent":"";
+      $("home-empty").style.display=rows.length?"none":"";
+      $("homefeed").innerHTML=rows.map(r=>`<tr>
+        <td>${esc(r.time)}</td><td>${esc(r.site)}</td><td>${esc(r.client)}</td>
+        <td><span class="sev ${sevClass(r.severity)}">${esc(r.severity||"")}</span></td>
+        <td>${r.rule_id}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td></tr>`).join("");
+    }catch(e){}
+  }
+  function modePill(m){
+    const cls=m==="On"?"block":(m==="DetectionOnly"?"detect":"off");
+    const label=m==="On"?"BLOCK":(m==="DetectionOnly"?"DETECT":"OFF");
+    return `<span class="pill ${cls}">${label}</span>`;
+  }
+  function fmtBps(b){ if(b>=1e6)return (b/1e6).toFixed(1)+" MB/s"; if(b>=1e3)return (b/1e3).toFixed(1)+" KB/s"; return Math.round(b)+" B/s"; }
+  function spark(canvas, data, color){
+    if(!canvas) return;
+    const dpr=window.devicePixelRatio||1, w=canvas.clientWidth, h=canvas.clientHeight;
+    canvas.width=w*dpr; canvas.height=h*dpr;
+    const ctx=canvas.getContext("2d"); ctx.scale(dpr,dpr); ctx.clearRect(0,0,w,h);
+    if(!data.length) return;
+    const max=Math.max(...data,1e-9), n=data.length;
+    ctx.beginPath();
+    data.forEach((v,i)=>{ const x=n>1?i/(n-1)*w:0, y=h-(v/max)*(h-4)-2; i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
+    ctx.fillStyle=color.replace("rgb","rgba").replace(")",",0.12)"); ctx.fill();
+  }
+  async function loadMetrics(){
+    try{
+      const m=await api("/api/metrics");
+      const h=m.history||[], cur=m.current||{};
+      const defs=[
+        {lbl:"CPU",   key:"cpu_pct",      val:(cur.cpu_pct||0).toFixed(0)+"%",              col:"rgb(120,170,255)"},
+        {lbl:"Memory",key:"mem_mb",       val:(cur.mem_mb||0).toFixed(0)+" MB",            col:"rgb(130,200,160)"},
+        {lbl:"Requests",key:"req_per_sec",val:(cur.req_per_sec||0).toFixed(1)+"/s",        col:"rgb(220,190,120)"},
+        {lbl:"Net out",key:"out_bps",     val:fmtBps(cur.out_bps||0),                       col:"rgb(200,150,220)"},
+        {lbl:"Net in", key:"in_bps",      val:fmtBps(cur.in_bps||0),                        col:"rgb(160,160,220)"},
+        {lbl:"TLS handshakes",key:"tls_hs_per_sec",val:(cur.tls_hs_per_sec||0).toFixed(1)+"/s",col:"rgb(230,140,140)"},
+      ];
+      const host=$("dash_metrics"); if(!host) return;
+      // build cards once, then just redraw
+      if(host.children.length!==defs.length){
+        host.innerHTML=defs.map((d,i)=>`<div class="metcard"><div class="top"><span class="lbl">${d.lbl}</span><span class="val" id="metv${i}"></span></div><canvas id="metc${i}"></canvas></div>`).join("");
+      }
+      defs.forEach((d,i)=>{ $("metv"+i).textContent=d.val; spark(document.getElementById("metc"+i), h.map(s=>s[d.key]||0), d.col); });
+    }catch(e){}
+  }
+  async function loadDashboard(){
+    loadMetrics();
+    try{
+      const [st,pools]=await Promise.all([api("/api/status"),api("/api/pools").catch(()=>[])]);
+      $("dash_uptime").textContent="up "+(st.uptime||"");
+      $("dash_stats").innerHTML=[
+        ["sites",(st.sites||[]).length],["pools",st.pools],["nodes",st.nodes],["matches",st.match_count]
+      ].map(([k,n])=>`<div class="stat"><div class="n">${n}</div><div class="k">${k}</div></div>`).join("");
+      // sites
+      $("dash_sites").innerHTML=(st.sites||[]).map(s=>`<div class="dashrow">
+        <span class="nm">${esc(s.name)}</span>
+        <span class="meta">${esc(s.listen)}</span>
+        ${s.tls?'<span class="pill tls">TLS</span>':'<span class="pill">HTTP</span>'}
+        <span class="spacer"></span>${modePill(s.engine)}
+      </div>`).join("")||`<div class="dashrow"><span class="meta">no sites configured</span></div>`;
+      // pools with live member health
+      $("dash_pools").innerHTML=(pools||[]).map(p=>{
+        const dots=(p.members||[]).map(m=>`<span class="hdot ${m.healthy?"up":"down"}" title="${esc(m.node)} ${esc(m.target)}"></span>`).join(" ");
+        const up=(p.members||[]).filter(m=>m.healthy).length, tot=(p.members||[]).length;
+        return `<div class="dashrow"><span class="nm">${esc(p.name)}</span>
+          <span class="meta">${esc(p.method||"")}</span>
+          <span class="spacer"></span>${dots} <span class="meta">${up}/${tot} up</span></div>`;
+      }).join("")||`<div class="dashrow"><span class="meta">no pools configured</span></div>`;
+    }catch(e){}
+  }
+  $("homemore").onclick=()=>{ document.querySelector('.tab[data-view="logs"]').click(); };
+
+  // ── logs (WAF events + access) ──
+  let logMode="events";
+  function sevClass(s){ s=(s||"").toUpperCase(); return s==="CRITICAL"?"critical":s==="ERROR"?"critical":s==="WARNING"?"warning":s==="NOTICE"?"notice":"debug"; }
+  function statusColor(c){ return c>=500?"var(--red)":c>=400?"var(--amber)":c>=300?"var(--blue)":"var(--green)"; }
+  function logMatchesFilter(row, q){ if(!q) return true; return JSON.stringify(row).toLowerCase().includes(q); }
+  async function pollLogs(){
+    if(!document.querySelector('.tab[data-view="logs"]').classList.contains("sel")) return;
+    if($("logpause").checked) return;
+    const q=($("logfilter").value||"").trim().toLowerCase();
+    const sev=$("logsev").value;
+    try{
+      if(logMode==="events"){
+        $("logsev").style.display="";
+        let rows=await api("/api/matches?limit=250");
+        if(sev) rows=rows.filter(r=>(r.severity||"").toUpperCase()===sev);
+        rows=rows.filter(r=>logMatchesFilter(r,q));
+        $("loghead").innerHTML=`<tr><th>Time</th><th>Site</th><th>Client</th><th>Sev</th><th>Rule</th><th>Ph</th><th>URI</th><th>Message</th></tr>`;
+        $("logbody").innerHTML=rows.map(r=>`<tr>
+          <td>${esc(r.time)}</td><td>${esc(r.site)}</td><td>${esc(r.client)}</td>
+          <td><span class="sev ${sevClass(r.severity)}">${esc(r.severity||"")}</span></td>
+          <td>${r.rule_id}</td><td>${r.phase}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td></tr>`).join("");
+        $("logcount").textContent=rows.length+" events";
+        $("log-empty").style.display=rows.length?"none":"";
+      } else {
+        $("logsev").style.display="none";
+        let rows=await api("/api/access?limit=300");
+        rows=rows.filter(r=>logMatchesFilter(r,q));
+        $("loghead").innerHTML=`<tr><th>Time</th><th>Site</th><th>Client</th><th>Method</th><th>Path</th><th>Status</th></tr>`;
+        $("logbody").innerHTML=rows.map(r=>`<tr>
+          <td>${esc(r.time)}</td><td>${esc(r.site)}</td><td>${esc(r.client)}</td>
+          <td>${esc(r.method)}</td><td class="mono">${esc(r.path)}</td>
+          <td><b style="color:${statusColor(r.status)}">${r.status}</b></td></tr>`).join("");
+        $("logcount").textContent=rows.length+" requests";
+        $("log-empty").style.display=rows.length?"none":"";
+      }
+    }catch(e){}
+  }
+  document.querySelectorAll(".logmode").forEach(b=>b.onclick=()=>{
+    document.querySelectorAll(".logmode").forEach(x=>x.classList.remove("sel"));
+    b.classList.add("sel"); logMode=b.dataset.mode; pollLogs();
+  });
+  $("logfilter").addEventListener("input",()=>pollLogs());
+  $("logsev").addEventListener("change",()=>pollLogs());
+
+  // ── auth gate ──
+  function showGate(){ const g=$("gate"); if(g){ g.hidden=false; } const w=$("wrap"); if(w) w.style.display="none"; }
+  function showConsole(){ const g=$("gate"); if(g){ g.hidden=true; } const w=$("wrap"); if(w) w.style.display=""; }
+  async function gateSignIn(e){
+    if(e) e.preventDefault();
+    $("g_err").textContent="";
+    const u=$("g_user").value.trim(), p=$("g_pass").value, tok=$("g_token").value.trim();
+    try{
+      if(u && p){
+        const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u,password:p})});
+        if(!r.ok) throw new Error((await r.text()).trim()||"invalid credentials");
+        const data=await r.json();
+        sessionStorage.setItem("waf_token", data.token);
+      } else if(tok){
+        const r=await fetch("/api/whoami",{headers:{Authorization:"Bearer "+tok}});
+        if(!r.ok) throw new Error("invalid admin token");
+        sessionStorage.setItem("waf_token", tok);
+      } else {
+        throw new Error("enter username + password, or an admin token");
+      }
+      $("g_user").value=""; $("g_pass").value=""; $("g_token").value="";
+      showConsole();
+      startConsole();
+    }catch(err){ $("g_err").textContent=err.message; }
+  }
+  $("gateform").addEventListener("submit", gateSignIn);
+  $("signout").onclick=async()=>{
+    try{ await api("/api/logout",{method:"POST"}); }catch(e){}
+    sessionStorage.removeItem("waf_token");
+    location.reload();
+  };
+
+  // ── users / accounts / audit ──
+  let curUser=null;
+  async function loadWhoami(){
+    try{ curUser=await api("/api/whoami"); }catch(e){ curUser=null; }
+    const hdr=$("whoami-hdr"); if(hdr) hdr.textContent=curUser?curUser.user:"—";
+    const w=$("whoami"); if(w && curUser){ w.innerHTML=`<div>signed in as <b>${esc(curUser.user)}</b></div><div>role <b>${esc(curUser.role||"—")}</b></div>`; }
+    const um=$("usermgmt"); if(um) um.style.display=(curUser&&curUser.can_manage_users)?"":"none";
+  }
+  const roleOpts=(sel)=>["viewer","reviewer","operator","admin"].map(r=>`<option value="${r}" ${r===sel?"selected":""}>${r}</option>`).join("");
+  async function loadUsers(){
+    if(!curUser||!curUser.can_manage_users) return;
+    try{
+      const users=await api("/api/users");
+      $("user-empty").style.display=users.length?"none":"";
+      $("userlist").innerHTML=users.map(u=>`<tr data-u="${esc(u.username)}">
+        <td>${esc(u.username)}</td>
+        <td><select class="urole">${roleOpts(u.role)}</select></td>
+        <td>${u.disabled?'<span class="tag" style="border-color:var(--amber);color:var(--amber)">disabled</span>':'<span class="tag src-crawled">active</span>'}</td>
+        <td style="white-space:nowrap">
+          <button class="btn sm usave">Save</button>
+          <button class="btn sm utoggle">${u.disabled?"Enable":"Disable"}</button>
+          <button class="btn sm upw">Reset pw</button>
+          <button class="btn sm danger udel">✕</button></td></tr>`).join("");
+      $("userlist").querySelectorAll("tr").forEach(tr=>{
+        const u=tr.dataset.u;
+        tr.querySelector(".usave").onclick=async()=>{ try{ await api("/api/users/update",{method:"POST",body:JSON.stringify({username:u,role:tr.querySelector(".urole").value})}); toast("updated "+u); loadUsers(); loadAudit(); }catch(e){ toast(e.message,"err"); } };
+        tr.querySelector(".utoggle").onclick=async()=>{ const dis=tr.querySelector(".utoggle").textContent==="Disable"; try{ await api("/api/users/update",{method:"POST",body:JSON.stringify({username:u,disabled:dis})}); toast((dis?"disabled ":"enabled ")+u); loadUsers(); loadAudit(); }catch(e){ toast(e.message,"err"); } };
+        tr.querySelector(".upw").onclick=async()=>{ const p=prompt("New password for "+u+" (min 8 chars):"); if(!p) return; try{ await api("/api/users/password",{method:"POST",body:JSON.stringify({username:u,password:p})}); toast("password reset for "+u); loadAudit(); }catch(e){ toast(e.message,"err"); } };
+        tr.querySelector(".udel").onclick=async()=>{ if(!confirm("Delete user "+u+"?")) return; try{ await api("/api/users/delete",{method:"POST",body:JSON.stringify({username:u})}); toast("deleted "+u); loadUsers(); loadAudit(); }catch(e){ toast(e.message,"err"); } };
+      });
+    }catch(e){}
+  }
+  $("selfpw").onclick=async()=>{
+    if(!curUser||curUser.user==="(token)"){ toast("token session has no password to change","err"); return; }
+    const p=prompt("New password for "+curUser.user+" (min 8 chars):"); if(!p) return;
+    try{ await api("/api/users/password",{method:"POST",body:JSON.stringify({username:curUser.user,password:p})}); toast("password changed"); loadAudit(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  $("nu_add").onclick=async()=>{
+    const username=$("nu_user").value.trim(), password=$("nu_pass").value, role=$("nu_role").value;
+    if(!username||!password){ toast("username and password required","err"); return; }
+    try{ await api("/api/users/create",{method:"POST",body:JSON.stringify({username,password,role})});
+      $("nu_user").value=""; $("nu_pass").value=""; toast("added "+username); loadUsers(); loadAudit(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  async function loadAudit(){
+    try{
+      const a=await api("/api/audit?limit=200");
+      $("audit_count").textContent=a.length?a.length+" entries":"";
+      $("audit-empty").style.display=a.length?"none":"";
+      $("auditlist").innerHTML=a.map(e=>`<tr><td>${esc(e.time)}</td><td>${esc(e.user)}</td><td>${esc(e.action)}</td><td>${esc(e.detail||"")}</td></tr>`).join("");
+    }catch(e){}
+  }
+
+  // ── syslog forwarding ──
+  function fillSyslog(s){
+    s=s||{};
+    $("sl_enabled").checked=!!s.enabled;
+    $("sl_host").value=s.host||"";
+    $("sl_port").value=s.port??6514;
+    $("sl_protocol").value=s.protocol||"tls";
+    $("sl_format").value=s.format||"rfc5424";
+    $("sl_facility").value=s.facility??16;
+    $("sl_appname").value=s.app_name||"";
+    $("sl_tlsskip").checked=!!s.tls_skip_verify;
+    $("sl_waf").checked=s.send_waf!==false;
+    $("sl_access").checked=!!s.send_access;
+    $("sl_audit").checked=s.send_audit!==false;
+    $("sl_notify").checked=s.send_notify!==false;
+    $("sl_matchdata").checked=!!s.include_match_data;
+  }
+  function collectSyslog(){
+    return {
+      enabled:$("sl_enabled").checked, host:$("sl_host").value.trim(), port:+$("sl_port").value||6514,
+      protocol:$("sl_protocol").value, format:$("sl_format").value, facility:+$("sl_facility").value||16,
+      app_name:$("sl_appname").value.trim(), tls_skip_verify:$("sl_tlsskip").checked,
+      send_waf:$("sl_waf").checked, send_access:$("sl_access").checked,
+      send_audit:$("sl_audit").checked, send_notify:$("sl_notify").checked,
+      include_match_data:$("sl_matchdata").checked
+    };
+  }
+  $("sl_save").onclick=()=>saveConfig().then(()=>toast("syslog — draft saved")).catch(e=>toast(e.message,"err"));
+  $("sl_test").onclick=async()=>{
+    try{ await api("/api/syslog/test",{method:"POST"}); toast("test message sent — check your SIEM"); }
+    catch(e){ toast("test failed: "+e.message,"err"); }
+  };
+
+  // ── signed self-update ──
+  async function loadUpdate(){
+    try{
+      const st=await api("/api/update/status");
+      $("upd_off").style.display="none"; $("upd_on").style.display="";
+      const fp=st.key_fingerprint?st.key_fingerprint.slice(0,16)+"…":"—";
+      $("upd_status").innerHTML=`<div>current <b>v${esc(st.current_version||"?")}</b></div>`+
+        `<div>publisher key <b>${esc(fp)}</b></div>`+
+        `<div>catalog <b>${st.catalog_url?esc(st.catalog_url):"upload-only"}</b></div>`+
+        `<div>backup <b>${st.has_backup?"available":"none"}</b></div>`;
+      $("upd_catalogwrap").style.display=st.catalog_url?"":"none";
+      $("upd_rollback").style.display=st.has_backup?"":"none";
+      if(st.staged){ renderStaged(st.staged, null); } else { $("upd_staged").style.display="none"; }
+    }catch(e){
+      // 404 = feature disabled (no key / not localhost); anything else = show off state too
+      $("upd_on").style.display="none"; $("upd_off").style.display="";
+    }
+  }
+  function renderStaged(staged, summary){
+    $("upd_staged").style.display="";
+    let html=`<div>version <b>${esc(staged.version||(summary&&summary.version)||"?")}</b></div>`;
+    const notes=(staged.notes)||(summary&&summary.notes);
+    if(notes) html+=`<div class="hint" style="margin:4px 0">${esc(notes)}</div>`;
+    if(summary&&summary.files){
+      html+=`<table style="margin-top:6px"><thead><tr><th>File</th><th>Action</th></tr></thead><tbody>`+
+        summary.files.map(f=>`<tr><td class="mono">${esc(f.path)}</td><td>${f.action==="replace"?'<span style="color:var(--amber)">replace</span>':"add"}</td></tr>`).join("")+
+        `</tbody></table>`;
+    }
+    if(summary&&summary.needs_restart) html+=`<div class="hint" style="color:var(--amber);margin-top:6px">Installing requires a restart.</div>`;
+    $("upd_staged_body").innerHTML=html;
+  }
+  $("upd_stage").onclick=async()=>{
+    const f=$("upd_file").files[0];
+    if(!f){ toast("choose a .wafupdate file","err"); return; }
+    try{
+      const buf=await f.arrayBuffer();
+      const r=await fetch("/api/update/stage",{method:"POST",headers:{Authorization:"Bearer "+getToken()},body:buf});
+      const data=await r.json();
+      if(!r.ok) throw new Error(data.error||"verification failed");
+      toast("verified & staged v"+data.version);
+      renderStaged({version:data.version,notes:data.notes}, data);
+      $("upd_restart").style.display="none";
+    }catch(e){ toast(e.message,"err"); }
+  };
+  $("upd_catalog").onclick=async()=>{
+    try{
+      const c=await api("/api/update/catalog");
+      if(c.error){ toast(c.error,"err"); return; }
+      const pkgs=c.packages||[];
+      $("upd_catalog_list").innerHTML=pkgs.length?
+        `<table><thead><tr><th>Version</th><th>Released</th><th>Notes</th><th></th></tr></thead><tbody>`+
+        pkgs.map(p=>`<tr><td>${esc(p.version)}</td><td>${esc(p.released||"")}</td><td>${esc(p.notes||"")}</td>`+
+        `<td><button class="btn sm upd_dl" data-fn="${esc(p.filename)}">Download &amp; stage</button></td></tr>`).join("")+
+        `</tbody></table>`:`<div class="empty">No packages listed.</div>`;
+      $("upd_catalog_list").querySelectorAll(".upd_dl").forEach(b=>b.onclick=async()=>{
+        try{ const data=await api("/api/update/download",{method:"POST",body:JSON.stringify({filename:b.dataset.fn})});
+          toast("verified & staged v"+data.version); renderStaged({version:data.version,notes:data.notes}, data); }
+        catch(e){ toast(e.message,"err"); }
+      });
+    }catch(e){ toast(e.message,"err"); }
+  };
+  $("upd_install").onclick=async()=>{
+    if(!confirm("Install the staged update? This replaces files on disk; a restart will be required.")) return;
+    try{ const data=await api("/api/update/install",{method:"POST"});
+      toast("installed v"+data.version); $("upd_staged").style.display="none";
+      if(data.restart_required) $("upd_restart").style.display="";
+      loadUpdate();
+    }catch(e){ toast(e.message,"err"); }
+  };
+  $("upd_discard").onclick=async()=>{ try{ await api("/api/update/discard",{method:"POST"}); $("upd_staged").style.display="none"; toast("discarded"); }catch(e){ toast(e.message,"err"); } };
+  $("upd_rollback").onclick=async()=>{
+    if(!confirm("Roll back to the previous version? A restart will be required.")) return;
+    try{ const data=await api("/api/update/rollback",{method:"POST"}); toast("rolled back ("+(data.restored||[]).length+" files)"); $("upd_restart").style.display=""; loadUpdate(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  $("upd_restart").onclick=async()=>{
+    if(!confirm("Restart into the new binary now? The console will disconnect briefly.")) return;
+    try{ await api("/api/update/restart",{method:"POST"}); toast("restarting — reconnect in a few seconds"); setTimeout(()=>location.reload(),6000); }
+    catch(e){ toast(e.message,"err"); }
+  };
+
+  // ── AI setup ──
+  function fillAI(ai){
+    ai=ai||{};
+    $("ai_enabled").checked=!!ai.enabled;
+    $("ai_provider").value=ai.provider||"openai";
+    $("ai_model").value=ai.model||"";
+    $("ai_base_url").value=ai.base_url||"";
+    $("ai_api_key").value="";
+    $("ai_timeout_sec").value=ai.timeout_sec??8;
+    $("ai_max_tokens").value=ai.max_tokens??300;
+    $("ai_only_on_match").checked=ai.only_on_match!==false;
+    $("ai_sample_rate").value=ai.sample_rate??0;
+    $("ai_block_threshold").value=ai.block_threshold??85;
+    $("ai_block_ttl_sec").value=ai.block_ttl_sec??900;
+    $("ai_redact_headers").checked=ai.redact_headers!==false;
+    $("ai_hash_client_ip").checked=!!ai.hash_client_ip;
+    $("ai_include_body").checked=!!ai.include_body;
+    $("ai_trusted_proxies").value=(ai.trusted_proxy_cidrs||[]).join(", ");
+  }
+  function collectAI(){
+    const prev=cfg.ai||{};
+    return {
+      enabled:$("ai_enabled").checked,
+      provider:$("ai_provider").value,
+      model:$("ai_model").value.trim(),
+      base_url:$("ai_base_url").value.trim(),
+      api_key:$("ai_api_key").value,           // blank ⇒ server keeps current
+      timeout_sec:+$("ai_timeout_sec").value||8,
+      max_tokens:+$("ai_max_tokens").value||300,
+      only_on_match:$("ai_only_on_match").checked,
+      sample_rate:+$("ai_sample_rate").value||0,
+      block_threshold:+$("ai_block_threshold").value||85,
+      block_ttl_sec:+$("ai_block_ttl_sec").value||900,
+      redact_headers:$("ai_redact_headers").checked,
+      hash_client_ip:$("ai_hash_client_ip").checked,
+      include_body:$("ai_include_body").checked,
+      trusted_proxy_cidrs:$("ai_trusted_proxies").value.split(",").map(x=>x.trim()).filter(Boolean),
+      workers:prev.workers||2, queue_size:prev.queue_size||512
+    };
+  }
+  $("ai_save").onclick=()=>saveConfig().then(()=>toast("AI settings — draft saved")).catch(e=>toast(e.message,"err"));
+  $("ai_test").onclick=async()=>{
+    try{ const v=await api("/api/ai/test",{method:"POST",body:"{}"});
+      toast(`LLM ok → ${v.verdict} (${v.score}) ${v.category||""}`, v.verdict==="malicious"?"":"warn"); }
+    catch(e){ toast("test failed: "+e.message,"err"); }
+  };
+  function vsev(v){ return v==="malicious"?"critical":v==="suspicious"?"warning":v==="benign"?"notice":"debug"; }
+  function localTime(iso){ try{ return new Date(iso).toLocaleTimeString(); }catch(e){ return iso; } }
+  async function pollAI(){
+    try{
+      const bl=await api("/api/ai/blocklist");
+      $("bl_count").textContent=bl.length?bl.length+" active":"";
+      $("bl_empty").style.display=bl.length?"none":"";
+      $("blocklist").innerHTML=bl.map(b=>`<tr><td>${esc(b.ip)}</td><td>${esc(b.site)}</td><td>${b.score}</td><td>${esc(localTime(b.expires))}</td><td>${esc(b.reason)}</td><td><button class="btn danger sm" data-unblock="${esc(b.ip)}">unblock</button></td></tr>`).join("");
+      $("blocklist").querySelectorAll("[data-unblock]").forEach(btn=>btn.onclick=async()=>{
+        try{ await api("/api/ai/unblock",{method:"POST",body:JSON.stringify({ip:btn.dataset.unblock,site:btn.closest("tr").children[1].textContent})}); toast("unblocked "+btn.dataset.unblock); pollAI(); }catch(e){ toast(e.message,"err"); }
+      });
+      const vs=await api("/api/ai/verdicts?limit=60");
+      $("vd_count").textContent=vs.length?vs.length+" shown":"";
+      $("vd_empty").style.display=vs.length?"none":"";
+      $("verdicts").innerHTML=vs.map(v=>`<tr><td>${esc(v.time)}</td><td>${esc(v.site)}</td><td>${esc(v.client)}</td><td><span class="sev ${vsev(v.verdict)}">${esc(v.verdict)}</span></td><td>${v.score}</td><td>${esc(v.category)}</td><td>${esc(v.action)}</td><td>${esc(v.reason)}</td></tr>`).join("");
+    }catch(e){}
+  }
+
+  // ── status polling ──
+  async function poll(){
+    try{
+      const st=await api("/api/status");
+      $("uptime").textContent="up "+st.uptime+(st.version?"  ·  v"+st.version:"");
+      $("strip").innerHTML =
+        `<div>listeners <b>${st.listeners.length}</b></div>`+
+        `<div>sites <b>${st.sites.length}</b></div>`+
+        `<div>pools <b>${st.pools}</b></div>`+
+        `<div>nodes <b>${st.nodes}</b></div>`+
+        `<div>tls <b>${st.tls?"on":"OFF"}</b></div>`+
+        `<div>engine <b>${esc(st.engine_mode)}</b></div>`+
+        `<div>matches <b>${st.match_count}</b></div>`+
+        (st.restart_pending?`<div style="color:var(--amber)">restart pending</div>`:"");
+      const ks=$("ai_keyset"); if(ks){ ks.textContent=st.ai_key_set?"set":"not set"; ks.style.color=st.ai_key_set?"var(--green)":"var(--mut)"; }
+      const ts=$("ha_tokenset"); if(ts){ ts.textContent=st.ha_token_set?"set":"not set"; ts.style.color=st.ha_token_set?"var(--green)":"var(--mut)"; }
+      const badge=$("bellbadge"); if(badge){ if(st.notify_unread>0){ badge.hidden=false; badge.textContent=st.notify_unread; } else badge.hidden=true; }
+      const has=$("ha_status");
+      if(has){
+        if(st.ha_enabled && st.ha){ const h=st.ha;
+          has.innerHTML=`<div>peer <b style="color:${h.peer_up?"var(--green)":"var(--red)"}">${h.peer_up?"up":"down"}</b></div>`+
+            `<div>role <b>${esc(h.role||"solo")}</b></div>`+(h.last_sync?`<div>last sync <b>${esc(h.last_sync)}</b></div>`:"")+
+            (h.last_error?`<div style="color:var(--red)">${esc(h.last_error)}</div>`:"");
+        } else has.innerHTML=`<div>HA <b>disabled</b></div>`;
+      }
+    }catch(e){}
+  }
+
+  async function startConsole(){
+    try{
+      const loaded=await Promise.all([api("/api/config"),api("/api/interfaces").catch(()=>[])]);
+      interfaces=loaded[1]||[];
+      fill(loaded[0]);
+    }catch(e){ toast(e.message,"err"); }
+    loadWhoami();
+    pollHome();
+    poll(); setInterval(poll,5000);
+    // Site Map does not auto-refresh — it's not time-sensitive, and polling
+    // would rebuild the tree/panels under the user. Refresh on tab open and via
+    // the explicit Refresh button instead.
+    setInterval(()=>{ if(document.querySelector('.tab[data-view="pools"]').classList.contains("sel")) pollPools(); },3000);
+    setInterval(()=>{ if(document.querySelector('.tab[data-view="setup"]').classList.contains("sel")) pollAI(); },4000);
+    setInterval(pollLogs,3000);
+    setInterval(pollHome,4000);
+  }
+  async function resume(){
+    // If a stored token/session is still valid, go straight in; else show gate.
+    if(!getToken()){ showGate(); return; }
+    try{ await api("/api/whoami"); showConsole(); startConsole(); }
+    catch(e){ sessionStorage.removeItem("waf_token"); showGate(); }
+  }
+  resume();
+})();
+</script>
+</body>
+</html>

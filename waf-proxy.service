@@ -1,0 +1,81 @@
+[Unit]
+Description=waf-proxy — Coraza reverse-proxy WAF
+Documentation=file:/opt/waf-proxy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=waf
+Group=waf
+WorkingDirectory=/etc/waf
+ExecStart=/usr/local/bin/waf-proxy -config /etc/waf/config.json
+
+# Admin token: REQUIRED for a stable token across restarts.
+# Generate: openssl rand -hex 24
+# Prefer an EnvironmentFile (0600, root-owned) over inlining the secret here.
+EnvironmentFile=-/etc/waf/waf-proxy.env
+
+# Admin console bind address. Default is loopback-only (reach it via ssh -L).
+# To expose it to a management network, set an IP or 0.0.0.0 here AND set TLS
+# below. Signed-update endpoints stay localhost-only regardless.
+# Environment=WAF_ADMIN_ADDR=10.0.0.5:9090
+# Environment=WAF_ADMIN_TLS_CERT=/etc/waf/certs/admin.crt
+# Environment=WAF_ADMIN_TLS_KEY=/etc/waf/certs/admin.key
+
+# Graceful drain: /healthz goes 503 this many seconds BEFORE listeners close,
+# so keepalived/VRRP or a load balancer fails over first.
+Environment=WAF_DRAIN_SECONDS=3
+
+# Optional hardware watchdog / bypass-NIC heartbeat (see README).
+# Environment=WAF_WATCHDOG_DEVICE=/dev/watchdog
+# Environment=WAF_WATCHDOG_INTERVAL_SECONDS=10
+
+# Bind :80/:443 without running as root.
+# CAP_NET_BIND_SERVICE: bind privileged ports (80/443) as the unprivileged user.
+# CAP_NET_ADMIN: assign managed site listen IPs to the interface (manage_ip). If
+# you never use manage_ip, you may drop CAP_NET_ADMIN from both lines below.
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
+
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=30
+
+# ── hardening ──
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+# Go's net.Interfaces/InterfaceByName use Linux routing netlink. AF_NETLINK is
+# required for managed-IP interface discovery; CAP_NET_ADMIN still controls
+# whether addresses may actually be changed.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0077
+
+# waf-proxy writes config.json back on save; /etc/waf must stay writable.
+ReadWritePaths=/etc/waf
+# Audit log dir: systemd creates /var/log/waf (owned by the service user) and
+# makes it writable inside the sandbox. Matches SecAuditLog in coraza.conf.
+LogsDirectory=waf
+# Certificates live here (read-only to the service).
+ReadOnlyPaths=/etc/waf/certs /etc/waf/crs
+
+[Install]
+WantedBy=multi-user.target

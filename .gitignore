@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Secrets / local configuration
+.env
+*.pem
+*.key
+config.json
+
+# Go build output
+waf-proxy
+*.test
+*.out
+
+# Node / frontend
+node_modules/
+web/node_modules/
+web/dist/
+
+# Editor files
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.log
