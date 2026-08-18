@@ -13,10 +13,13 @@ with the required toolchains and Linux runtime dependencies.
 
 ## Repository State
 - Branch: `main`, tracking `origin/main`.
-- HEAD: `d4dba8d` (`Initial import of WAF proxy project`).
-- The worktree was clean before this handoff update.
-- The repository contains one imported commit; no later implementation history
-  is available to distinguish recently completed work from older code.
+- HEAD before this baseline work: `fbc968a` (`Update AI handoff with WAF project baseline`).
+- The worktree was clean before this baseline work. The current uncommitted
+  baseline diff is limited to dependency metadata (`go.mod`, new `go.sum`) and
+  this handoff update.
+- The repository contains one imported implementation commit plus one
+  documentation-only handoff commit; no later implementation history is
+  available to distinguish recently completed work from older code.
 - No credentials, private keys, generated binary, dependency directories, or
   local config were found tracked.
 
@@ -77,15 +80,43 @@ with the required toolchains and Linux runtime dependencies.
 - Inspected test inventory: 20 Go tests covering AI redaction/config/verdict and
   blocklist behavior, field-policy directive/validation/discovery behavior, and
   signed-update verification/path safety/apply/rollback.
-- Go tests, vet, build, and frontend build were **not run** because this host has
-  no `go`, `node`, or `npm` installed.
+- Reproducibility baseline on a Windows development host using the checksum-
+  verified official Go 1.26.0 toolchain:
+  - `go mod tidy` completed and generated `go.sum`; it normalized the `go`
+    directive to `1.22.0` and recorded Coraza's indirect dependencies in
+    `go.mod`.
+  - `go mod verify` — PASS (`all modules verified`).
+  - `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go vet ./...` — PASS.
+  - Linux root and `internal/sigupdate` test binaries compiled successfully via
+    `go test -c`; they cannot be executed on the Windows host.
+  - A Linux/amd64 static release-style binary built successfully with
+    `-trimpath` and stripped ldflags (13,955,234 bytes).
+  - Native Windows `go test ./...` — FAIL at root package compile because
+    `update.go` references `sigupdate.ReExec`, which has no Windows
+    implementation. `internal/sigupdate` tests themselves passed. This is a
+    portability defect, not a Linux deployment regression.
+- Linux VM verification on 2026-08-17 using Go 1.26.0:
+  - `VERSION=2026.08.17-ai2 COMMIT=local-ai-safety ./build.sh` — PASS through
+    `go mod tidy`, `go vet`, `go test`, and static binary build.
+  - `go test` passed for both `waf-proxy` and `waf-proxy/internal/sigupdate`.
+  - The service started successfully under systemd after allowing `AF_NETLINK`
+    in `RestrictAddressFamilies`, which Go requires for interface discovery.
+  - Managed-IP reconciliation was verified on data interface `ens37`: existing
+    `192.168.1.71/21` plus managed `192.168.1.80/21`; the service was active and
+    listening on both addresses at port 443.
+  - `/etc/waf/config.json` was verified as valid JSON and retained ownership
+    `waf:waf` with mode `0600`.
+- Frontend build was not run; the migration remains non-shipping and has known
+  dependency/lockfile gaps.
 
 ## Known Incomplete or Broken Areas
-- **Build/test baseline remains unproven** until Go >= 1.22 is available and
-  `go test ./...`, `go vet ./...`, and a build complete successfully.
-- **Dependency reproducibility is incomplete**: `go.mod` pins Coraza, but no
-  `go.sum` is tracked. `build.sh` runs `go mod tidy`, so the first build needs
-  network access and will modify the checkout.
+- **Dependency metadata is generated but not committed yet**: the current
+  baseline work adds `go.sum` and the tidy-expanded `go.mod`; review and commit
+  them together before treating builds as reproducible from a clean checkout.
+- **Windows builds are currently broken**: the root package unconditionally
+  references Unix-only `sigupdate.ReExec`. Linux is the deployment target and
+  passes vet/build plus VM tests, but either a Windows stub/build split or an
+  explicit unsupported-platform policy is still required.
 - **The Vite/Preact migration is intentionally incomplete** and must not replace
   `static/admin.html` yet. Most application tabs are stubs.
 - **The frontend manifest/config are inconsistent**: `web/vite.config.js`
@@ -98,9 +129,11 @@ with the required toolchains and Linux runtime dependencies.
   tests for config validation/migration, listener reconciliation and host/SNI
   routing, load-balancer algorithms and monitor state, admin auth/RBAC and draft
   Apply behavior, HA synchronization, or end-to-end WAF proxying.
-- Runtime validation requiring Linux/systemd, capabilities, real interfaces,
-  TLS files, backends, and OWASP CRS has not been performed. macOS cannot fully
-  validate `IP_FREEBIND`, managed IPs, the systemd sandbox, or watchdog behavior.
+- Linux/systemd validation now covers service startup, the systemd netlink
+  sandbox requirement, managed IP assignment, and two TLS listen sockets on a
+  real data interface. It does **not** yet constitute a full integration suite:
+  Host/SNI routing, WAF detection/blocking, pool failover, draft/live Apply,
+  graceful drain, HA, watchdog, and signed update still need repeatable tests.
 - The source comment near the top of `main.go` still says listener-set/TLS
   changes require restart, while the implementation and later documentation say
   listener changes reconcile live. This is a documentation inconsistency, not a
@@ -129,21 +162,29 @@ with the required toolchains and Linux runtime dependencies.
   the running runtime.
 
 ## Recommended Next Steps
-1. On a Go 1.22+ development host, run `go mod tidy`, review and commit the
-   resulting `go.sum`, then run `go test ./...`, `go vet ./...`, and
-   `CGO_ENABLED=0 go build ./...`.
-2. Add focused tests around configuration validation/migration and pool selection;
+1. Review and commit the baseline-only `go.mod`, `go.sum`, and handoff changes;
+   then verify the same clean-checkout dependency graph in CI or a fresh Linux
+   workspace.
+2. Decide and document Windows support. If supported, add the missing
+   `sigupdate.ReExec` platform handling and a Windows compile check; otherwise
+   make the Linux-only build constraint explicit.
+3. Add focused tests around configuration validation/migration and pool selection;
    these are high-value, low-architecture-risk seams in the request path.
-3. Decide whether the frontend migration is active. If yes, add
+4. Decide whether the frontend migration is active. If yes, add
    `@preact/preset-vite`, create/commit a lockfile, prove a clean build, and keep
    it non-shipping until feature parity. If no, clearly mark `web/` experimental.
-4. Perform a Linux integration smoke test with temporary ports/backend and a
-   local CRS checkout: startup, health endpoint, Host routing, WAF detection,
+5. Turn the successful Linux checks into a repeatable integration smoke test
+   with temporary ports/backend and a local CRS checkout: startup, health
+   endpoint, Host routing, WAF detection,
    pool failover, draft save, live Apply, and graceful drain.
-5. After those checks, reconcile documentation inconsistencies and choose the
+6. After those checks, reconcile documentation inconsistencies and choose the
    next focused feature or defect; avoid broad refactoring before test coverage
    protects runtime Apply and listener behavior.
 
-## Changes Made During This Review
-- Updated only `AI_HANDOFF.md` with this technical baseline.
-- No source, configuration, dependency, or architecture changes were made.
+## Changes Made During This Baseline
+- Generated and reviewed `go.sum` using `go mod tidy`; `go.mod` now includes the
+  tidy-normalized Go version and indirect dependency graph.
+- Updated this handoff with reproducibility, VM/systemd, managed-IP, and Windows
+  portability results.
+- No application source, runtime configuration, frontend, or architecture
+  changes were made. Hybrid Form Discovery remains explicitly out of scope.
