@@ -196,9 +196,13 @@ API: `GET /api/pagepolicy?site=` · `POST /api/pagepolicy/upsert {site,policy}` 
 
 ### Per-field policies for POST forms
 
-A page policy can also validate individual request fields. Run **Discover** so
-the crawler can seed field names and HTML input types, then open the page-policy
-editor from Site Map. Each field can set:
+A page policy can also validate individual request fields. Field discovery is
+hybrid: **Discover** supplies HTML form metadata, while real POST/PUT/PATCH
+traffic supplies field names for login-protected pages, SPAs, and APIs the
+crawler cannot reach. Passive discovery reads a bounded request-body prefix and
+retains names only—never field values or uploaded content. Crawler and passive
+results are merged as `crawled`, `passive`, or `both`; a human still reviews and
+applies every policy. Open the page-policy editor from Site Map to configure:
 
 - request source (`ARGS_POST` or all `ARGS`) and HTTP methods;
 - a safe built-in profile: identifier, password, free text, email, or numeric;
@@ -240,7 +244,10 @@ all non-excluded CRS targets continue to apply. The application must still use
 parameterized database queries and context-appropriate output encoding.
 
 API: `GET /api/forms?site=&path=` returns non-sensitive form shape discovered
-from HTML (names, types, methods, actions, required flags).
+from HTML and live write requests (names, types where known, methods, actions,
+required flags, and discovery source). The crawler also seeds itself with
+previously observed GET paths and follows same-origin form actions using GET;
+it never submits a form or authenticates as a user.
 
 ## Failure behaviour: fail-open, failover & health
 

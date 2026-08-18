@@ -9,17 +9,17 @@ architectural changes until the imported baseline has been verified on a host
 with the required toolchains and Linux runtime dependencies.
 
 ## Baseline Date
-2026-08-17 (Asia/Hong_Kong)
+2026-08-18 (Asia/Hong_Kong)
 
 ## Repository State
 - Branch: `main`, tracking `origin/main`.
-- HEAD before this baseline work: `fbc968a` (`Update AI handoff with WAF project baseline`).
-- The worktree was clean before this baseline work. The current uncommitted
-  baseline diff is limited to dependency metadata (`go.mod`, new `go.sum`) and
-  this handoff update.
-- The repository contains one imported implementation commit plus one
-  documentation-only handoff commit; no later implementation history is
-  available to distinguish recently completed work from older code.
+- HEAD: `c41388b` (`Establish reproducible Go dependency baseline`), tracking
+  `origin/main`.
+- The worktree was clean before the current Hybrid Form Discovery work. The
+  current uncommitted diff is focused on hybrid passive/crawler discovery,
+  shipping UI/docs, focused tests, and this handoff update.
+- The repository contains the imported implementation, documentation baseline,
+  and committed dependency reproducibility baseline.
 - No credentials, private keys, generated binary, dependency directories, or
   local config were found tracked.
 
@@ -108,11 +108,22 @@ with the required toolchains and Linux runtime dependencies.
     `waf:waf` with mode `0600`.
 - Frontend build was not run; the migration remains non-shipping and has known
   dependency/lockfile gaps.
+- Hybrid Form Discovery validation on 2026-08-18:
+  - New tests cover URL-encoded/JSON/multipart name-only parsing, value
+    non-retention, body restoration, passive+crawled merging, action indexing,
+    safe observed-GET crawl seeds, and same-origin form-action normalization.
+  - `go test -count=1 ./...` — PASS in an isolated Windows test copy using a
+    test-only Windows `ReExec` shim for the separately documented platform gap.
+  - `go vet ./...` — PASS in the same isolated test copy.
+  - `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go vet ./...` — PASS against the
+    actual source tree.
+  - Linux root and `internal/sigupdate` test binaries compiled successfully.
+  - Linux/amd64 static release-style build — PASS (13,979,810 bytes; SHA-256
+    `9C7AB8597E7A9B910548745EB3F65A33A938D37670874F78F28097FCB7802317`).
+  - Shipping `static/admin.html` inline JavaScript parsed successfully with
+    Node (`new Function` syntax check).
 
 ## Known Incomplete or Broken Areas
-- **Dependency metadata is generated but not committed yet**: the current
-  baseline work adds `go.sum` and the tidy-expanded `go.mod`; review and commit
-  them together before treating builds as reproducible from a clean checkout.
 - **Windows builds are currently broken**: the root package unconditionally
   references Unix-only `sigupdate.ReExec`. Linux is the deployment target and
   passes vet/build plus VM tests, but either a Windows stub/build split or an
@@ -160,11 +171,19 @@ with the required toolchains and Linux runtime dependencies.
 - Treat draft persistence and live Apply as separate operator workflows; changes
   to this behavior require focused tests because Apply rebuilds WAFs and swaps
   the running runtime.
+- Hybrid passive discovery captures at most 64 KiB for POST/PUT/PATCH supported
+  content types, restores the request body before Coraza/backend handling, and
+  persists only allow-listed field names after a backend response. Field values
+  and uploaded content are never placed in discovery state.
+- Crawler and passive fields merge by method/action/name with HTML metadata
+  authoritative for type and required flags. Discovery provenance is exposed as
+  `discovery_source` (`passive`, `crawled`, or `both`) so it cannot collide with
+  Page Policy's existing `source` (`ARGS_POST`/`ARGS`).
+- Active discovery seeds previously observed GET paths and follows same-origin
+  form actions with GET only; it still never submits forms or authenticates.
 
 ## Recommended Next Steps
-1. Review and commit the baseline-only `go.mod`, `go.sum`, and handoff changes;
-   then verify the same clean-checkout dependency graph in CI or a fresh Linux
-   workspace.
+1. Verify the committed dependency graph in CI or a fresh Linux workspace.
 2. Decide and document Windows support. If supported, add the missing
    `sigupdate.ReExec` platform handling and a Windows compile check; otherwise
    make the Linux-only build constraint explicit.
@@ -187,4 +206,28 @@ with the required toolchains and Linux runtime dependencies.
 - Updated this handoff with reproducibility, VM/systemd, managed-IP, and Windows
   portability results.
 - No application source, runtime configuration, frontend, or architecture
-  changes were made. Hybrid Form Discovery remains explicitly out of scope.
+  changes were made in the committed baseline.
+
+## Current Uncommitted Hybrid Form Discovery Work
+- Added privacy-safe passive field-name discovery for URL-encoded, top-level
+  JSON, and multipart write requests, with bounded capture and body restoration.
+- Passive observations are committed only after the request reaches a backend
+  and receives a response; WAF-blocked requests do not seed field suggestions.
+- Merged passive and crawler fields without retaining values, and indexed HTML
+  form metadata by resolved action path so `/login` policies can use forms
+  rendered on another page.
+- Extended crawler seeds with previously observed GET paths and same-origin form
+  actions; added completed pages/forms/fields counters.
+- Updated the shipping console to show completion summaries and discovery
+  provenance, and to seed POST/PUT/PATCH actions without confusing provenance
+  with Page Policy request source.
+- Added `hybrid_discovery_test.go` and updated the README. No Hybrid changes are
+  committed yet.
+
+## Recommended Next Step for Hybrid Discovery
+1. Review the current focused diff and test evidence; commit only after approval.
+2. Build/deploy on the Linux VM and submit a real login once. Confirm `/login`
+   exposes passive `username`/`password` fields, preserves backend request body,
+   and upgrades provenance to `both` after a successful Discover crawl.
+3. Keep policy application manual; do not auto-apply field suggestions during
+   the first runtime smoke test.
