@@ -63,11 +63,14 @@ type siteMap struct {
 }
 
 type crawlState struct {
-	Running bool      `json:"running"`
-	Started time.Time `json:"started,omitempty"`
-	Pages   int       `json:"pages"`
-	Depth   int       `json:"depth"`
-	Err     string    `json:"error,omitempty"`
+	Running  bool      `json:"running"`
+	Started  time.Time `json:"started,omitempty"`
+	Finished string    `json:"finished,omitempty"`
+	Pages    int       `json:"pages"`
+	Depth    int       `json:"depth"`
+	Forms    int       `json:"forms"`
+	Fields   int       `json:"fields"`
+	Err      string    `json:"error,omitempty"`
 }
 
 type siteMaps struct {
@@ -241,6 +244,26 @@ func (m *siteMaps) snapshot(name string) siteMapJSON {
 	return siteMapJSON{Site: name, Nodes: sm.nodes, Crawl: sm.crawl, Tree: sm.root.toJSON()}
 }
 
+func collectSeenGETPaths(node *pathNode, out *[]string) {
+	if node.full != "" && node.full != "/" && node.seen {
+		if _, ok := node.methods[http.MethodGet]; ok && !skipLink(node.full) {
+			*out = append(*out, node.full)
+		}
+	}
+	for _, child := range node.children {
+		collectSeenGETPaths(child, out)
+	}
+}
+
+func (sm *siteMap) seenGETPaths() []string {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	var out []string
+	collectSeenGETPaths(sm.root, &out)
+	sort.Strings(out)
+	return out
+}
+
 // ── crawler ─────────────────────────────────────────────────────────────
 
 type crawlOpts struct {
@@ -290,6 +313,7 @@ func (s *server) runCrawl(site SiteConfig, backend *url.URL, opts crawlOpts, sm 
 		sm.mu.Lock()
 		sm.crawl.Running = false
 		sm.crawl.Err = errMsg
+		sm.crawl.Finished = time.Now().Format(time.RFC3339)
 		sm.mu.Unlock()
 	}
 
@@ -324,6 +348,14 @@ func (s *server) runCrawl(site SiteConfig, backend *url.URL, opts crawlOpts, sm 
 	}
 	seen := map[string]bool{"/": true}
 	queue := []item{{"/", 0}}
+	// Previously observed GET paths are safe, high-value seeds for login and
+	// SPA routes that are not linked from the public root page.
+	for _, path := range sm.seenGETPaths() {
+		if !seen[path] {
+			seen[path] = true
+			queue = append(queue, item{path, 0})
+		}
+	}
 	pages := 0
 
 	for len(queue) > 0 {
@@ -340,11 +372,19 @@ func (s *server) runCrawl(site SiteConfig, backend *url.URL, opts crawlOpts, sm 
 		body, code, ct := s.fetchPage(ctx, client, backend, primary, cur.path)
 		pages++
 		s.maps.record(site.Name, "GET", cur.path, code, srcCrawled)
-		s.signals.noteContent(site.Name, cur.path, ct, body)
+		fields := s.signals.noteContent(site.Name, cur.path, ct, body)
+		var actions []string
+		formCount := 0
+		if strings.Contains(strings.ToLower(ct), "html") {
+			actions = discoverFormActions(body, cur.path)
+			formCount = len(formTagRE.FindAllStringSubmatch(body, -1))
+		}
 
 		sm.mu.Lock()
 		sm.crawl.Pages = pages
 		sm.crawl.Depth = cur.depth
+		sm.crawl.Forms += formCount
+		sm.crawl.Fields += len(fields)
 		sm.mu.Unlock()
 
 		time.Sleep(60 * time.Millisecond) // politeness
@@ -355,8 +395,15 @@ func (s *server) runCrawl(site SiteConfig, backend *url.URL, opts crawlOpts, sm 
 		// Resolve links against the CURRENT page so relative hrefs work.
 		base := *publicOrigin
 		base.Path = cur.path
+		var targets []string
 		for _, m := range hrefRe.FindAllStringSubmatch(body, -1) {
-			raw := strings.TrimSpace(m[1])
+			targets = append(targets, m[1])
+		}
+		// Form actions are discovery targets too. Fetches remain GET-only, so
+		// this cannot submit a form or mutate a conforming backend.
+		targets = append(targets, actions...)
+		for _, target := range targets {
+			raw := strings.TrimSpace(target)
 			if raw == "" || strings.HasPrefix(raw, "#") ||
 				strings.HasPrefix(raw, "mailto:") || strings.HasPrefix(raw, "javascript:") ||
 				strings.HasPrefix(raw, "tel:") || strings.HasPrefix(raw, "data:") {

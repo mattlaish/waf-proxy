@@ -850,13 +850,13 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 		}
 		pool := rt.pools[sc.Pool]
 		siteName := sc.Name
-		record := func(method, path, rawQuery, contentType string, code int) {
+		record := func(method, path, rawQuery, contentType string, code int, fields []DiscoveredField) {
 			s.maps.record(siteName, method, path, code, srcObserved)
 			s.learn.noteRequest(siteName, path, code)
-			s.signals.noteRequestShape(siteName, path, method, rawQuery, contentType)
+			s.signals.noteRequestShape(siteName, path, method, rawQuery, contentType, fields)
 		}
 		sr := &siteRuntime{
-			handler: s.logWrap(sc.Name, s.ai.wrap(sc, txhttp.WrapHandler(waf, buildProxy(pool, sc, cfg, s.log, record)))),
+			handler: s.logWrap(sc.Name, passiveDiscoveryWrap(s.ai.wrap(sc, txhttp.WrapHandler(waf, buildProxy(pool, sc, cfg, s.log, record))))),
 			cfg:     sc,
 			mode:    mode,
 		}
@@ -1291,7 +1291,7 @@ func sanitizeTarget(t string) string {
 
 // ── reverse proxy (pooled) ──────────────────────────────────────────────
 
-func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger, record func(method, path, rawQuery, contentType string, code int)) *httputil.ReverseProxy {
+func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger, record func(method, path, rawQuery, contentType string, code int, fields []DiscoveredField)) *httputil.ReverseProxy {
 	backendTO := time.Duration(cfg.BackendTimeoutSec) * time.Second
 	base := &http.Transport{
 		Proxy: nil,
@@ -1337,7 +1337,8 @@ func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger
 				resp.Header.Set("X-Content-Type-Options", "nosniff")
 			}
 			if record != nil && resp.Request != nil && resp.Request.URL != nil {
-				record(resp.Request.Method, resp.Request.URL.Path, resp.Request.URL.RawQuery, resp.Request.Header.Get("Content-Type"), resp.StatusCode)
+				record(resp.Request.Method, resp.Request.URL.Path, resp.Request.URL.RawQuery,
+					resp.Request.Header.Get("Content-Type"), resp.StatusCode, passiveFieldsFromRequest(resp.Request))
 			}
 			return nil
 		},

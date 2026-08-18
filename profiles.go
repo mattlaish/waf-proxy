@@ -13,6 +13,14 @@ package main
 // it compiles to path-gated SecLang inside the site's one engine.
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -112,12 +120,21 @@ type pageSignal struct {
 }
 
 type DiscoveredField struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Method   string `json:"method"`
-	Action   string `json:"action,omitempty"`
-	Required bool   `json:"required,omitempty"`
+	Name            string `json:"name"`
+	Type            string `json:"type"`
+	Method          string `json:"method"`
+	Action          string `json:"action,omitempty"`
+	Required        bool   `json:"required,omitempty"`
+	DiscoverySource string `json:"discovery_source,omitempty"` // passive | crawled | both
 }
+
+const (
+	fieldSourcePassive = "passive"
+	fieldSourceCrawled = "crawled"
+	fieldSourceBoth    = "both"
+	passiveBodyLimit   = 64 << 10
+	passiveFieldLimit  = 128
+)
 
 var (
 	formTagRE  = regexp.MustCompile(`(?is)<form\b([^>]*)>(.*?)</form>`)
@@ -167,14 +184,208 @@ func discoverFields(body string) []DiscoveredField {
 			if !required {
 				required = regexp.MustCompile(`(?i)(^|\s)required(?:\s|$)`).MatchString(tag[2])
 			}
-			out = append(out, DiscoveredField{Name: name, Type: kind, Method: method, Action: formAttrs["action"], Required: required})
+			out = append(out, DiscoveredField{Name: name, Type: kind, Method: method, Action: formAttrs["action"], Required: required, DiscoverySource: fieldSourceCrawled})
 		}
 	}
 	return out
 }
 
+func discoverFormActions(body, pagePath string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, form := range formTagRE.FindAllStringSubmatch(body, -1) {
+		action := normalizeFormAction(pagePath, htmlAttrs(form[1])["action"])
+		if action == "" || seen[action] {
+			continue
+		}
+		seen[action] = true
+		out = append(out, action)
+	}
+	return out
+}
+
+func normalizeFormAction(pagePath, action string) string {
+	base, err := url.Parse("http://waf.local" + pagePath)
+	if err != nil {
+		return ""
+	}
+	ref, err := url.Parse(strings.TrimSpace(action))
+	if err != nil {
+		return ""
+	}
+	if ref.Scheme != "" && ref.Scheme != "http" && ref.Scheme != "https" {
+		return ""
+	}
+	if ref.Host != "" && !strings.EqualFold(ref.Host, base.Host) {
+		return ""
+	}
+	resolved := base.ResolveReference(ref)
+	if resolved.Path == "" {
+		return pagePath
+	}
+	return resolved.Path
+}
+
+func mergeFieldSource(a, b string) string {
+	if a == "" {
+		return b
+	}
+	if b == "" || a == b {
+		return a
+	}
+	return fieldSourceBoth
+}
+
+func mergeDiscoveredFields(existing, incoming []DiscoveredField, pagePath string) []DiscoveredField {
+	out := append([]DiscoveredField(nil), existing...)
+	index := map[string]int{}
+	keyFor := func(f DiscoveredField) string {
+		return strings.ToUpper(f.Method) + "\x00" + normalizeFormAction(pagePath, f.Action) + "\x00" + f.Name
+	}
+	for i := range out {
+		index[keyFor(out[i])] = i
+	}
+	for _, f := range incoming {
+		f.Method = strings.ToUpper(f.Method)
+		f.Action = normalizeFormAction(pagePath, f.Action)
+		if !validFieldName(f.Name) || f.Method == "" {
+			continue
+		}
+		key := keyFor(f)
+		if i, ok := index[key]; ok {
+			cur := &out[i]
+			cur.DiscoverySource = mergeFieldSource(cur.DiscoverySource, f.DiscoverySource)
+			// HTML is authoritative for type/required metadata. Passive traffic
+			// only proves that a named field was actually submitted.
+			if f.DiscoverySource == fieldSourceCrawled || f.DiscoverySource == fieldSourceBoth {
+				if f.Type != "" {
+					cur.Type = f.Type
+				}
+				cur.Required = f.Required
+			}
+			continue
+		}
+		index[key] = len(out)
+		out = append(out, f)
+	}
+	return out
+}
+
+func addPassiveField(out *[]DiscoveredField, seen map[string]bool, method, action, name, kind string) {
+	name = strings.TrimSpace(name)
+	if len(*out) >= passiveFieldLimit || !validFieldName(name) || seen[name] {
+		return
+	}
+	seen[name] = true
+	*out = append(*out, DiscoveredField{Name: name, Type: kind, Method: method,
+		Action: action, DiscoverySource: fieldSourcePassive})
+}
+
+func passiveFields(method, path, contentType string, body []byte) []DiscoveredField {
+	method = strings.ToUpper(method)
+	if method != http.MethodPost && method != http.MethodPut && method != http.MethodPatch {
+		return nil
+	}
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []DiscoveredField
+	switch strings.ToLower(mediaType) {
+	case "application/x-www-form-urlencoded":
+		for _, pair := range bytes.Split(body, []byte("&")) {
+			rawName := pair
+			if i := bytes.IndexByte(pair, '='); i >= 0 {
+				rawName = pair[:i]
+			}
+			name, err := url.QueryUnescape(string(rawName))
+			if err == nil {
+				addPassiveField(&out, seen, method, path, name, "")
+			}
+		}
+	case "application/json", "application/merge-patch+json":
+		dec := json.NewDecoder(bytes.NewReader(body))
+		tok, err := dec.Token()
+		if err != nil || tok != json.Delim('{') {
+			break
+		}
+		for dec.More() && len(out) < passiveFieldLimit {
+			key, err := dec.Token()
+			if err != nil {
+				break
+			}
+			name, ok := key.(string)
+			if !ok {
+				break
+			}
+			addPassiveField(&out, seen, method, path, name, "")
+			var discard json.RawMessage
+			if err := dec.Decode(&discard); err != nil {
+				break
+			}
+		}
+	case "multipart/form-data":
+		boundary := params["boundary"]
+		if boundary == "" {
+			break
+		}
+		mr := multipart.NewReader(bytes.NewReader(body), boundary)
+		for len(out) < passiveFieldLimit {
+			part, err := mr.NextPart()
+			if err != nil {
+				break
+			}
+			kind := ""
+			if part.FileName() != "" {
+				kind = "file"
+			}
+			addPassiveField(&out, seen, method, path, part.FormName(), kind)
+			_, _ = io.Copy(io.Discard, part)
+			_ = part.Close()
+		}
+	}
+	return out
+}
+
+type passiveFieldsContextKey struct{}
+
+// passiveDiscoveryWrap captures only a bounded body prefix, restores it before
+// Coraza/backend processing, and attaches field names to the request context.
+// Values are never retained. The fields are committed only by ModifyResponse,
+// after the request has reached a backend and received a response.
+func passiveDiscoveryWrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method := strings.ToUpper(r.Method)
+		ct := strings.ToLower(r.Header.Get("Content-Type"))
+		supported := method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch
+		supported = supported && (strings.Contains(ct, "application/x-www-form-urlencoded") ||
+			strings.Contains(ct, "application/json") || strings.Contains(ct, "application/merge-patch+json") ||
+			strings.Contains(ct, "multipart/form-data"))
+		if !supported || r.Body == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		prefix, _ := io.ReadAll(io.LimitReader(r.Body, passiveBodyLimit))
+		r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(prefix), r.Body))
+		fields := passiveFields(method, r.URL.Path, r.Header.Get("Content-Type"), prefix)
+		if len(fields) > 0 {
+			r = r.WithContext(context.WithValue(r.Context(), passiveFieldsContextKey{}, fields))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func passiveFieldsFromRequest(r *http.Request) []DiscoveredField {
+	if r == nil {
+		return nil
+	}
+	fields, _ := r.Context().Value(passiveFieldsContextKey{}).([]DiscoveredField)
+	return fields
+}
+
 type siteSignals struct {
-	mu   sync.Mutex
+	mu     sync.Mutex
 	byPath map[string]*pageSignal
 }
 
@@ -215,7 +426,7 @@ func (s *signalStore) clear(site string) {
 }
 
 // noteContent records HTML-derived signals for a crawled page.
-func (s *signalStore) noteContent(site, path, contentType, body string) {
+func (s *signalStore) noteContent(site, path, contentType, body string) []DiscoveredField {
 	ss := s.forSite(site)
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
@@ -243,8 +454,37 @@ func (s *signalStore) noteContent(site, path, contentType, body string) {
 		sig.hasPassword = strings.Contains(low, "type=\"password\"") || strings.Contains(low, "type=password")
 		sig.hasFile = strings.Contains(low, "type=\"file\"") || strings.Contains(low, "type=file")
 		sig.hasHidden = strings.Contains(low, "type=\"hidden\"")
-		sig.fields = discoverFields(body)
+		fields := discoverFields(body)
+		for i := range fields {
+			fields[i].Action = normalizeFormAction(path, fields[i].Action)
+		}
+		sig.fields = mergeDiscoveredFields(sig.fields, fields, path)
+		// Index the same HTML metadata under its form action. This lets a page
+		// policy opened on /login see a form rendered on / whose action is /login.
+		for _, f := range fields {
+			if f.Action == "" || f.Action == path {
+				continue
+			}
+			target := ss.byPath[f.Action]
+			if target == nil {
+				target = &pageSignal{}
+				ss.byPath[f.Action] = target
+			}
+			target.fields = mergeDiscoveredFields(target.fields, []DiscoveredField{f}, f.Action)
+			target.hasForm, target.inputs = true, len(target.fields)
+			if strings.EqualFold(f.Method, http.MethodPost) {
+				target.postForm = true
+			}
+			if f.Type == "password" {
+				target.hasPassword = true
+			}
+			if f.Type == "file" {
+				target.hasFile = true
+			}
+		}
+		return fields
 	}
+	return nil
 }
 
 func (s *signalStore) discoveredFields(site, path string) []DiscoveredField {
@@ -261,7 +501,7 @@ func (s *signalStore) discoveredFields(site, path string) []DiscoveredField {
 }
 
 // noteRequestShape records passive signals available without crawling.
-func (s *signalStore) noteRequestShape(site, path, method, rawQuery, contentType string) {
+func (s *signalStore) noteRequestShape(site, path, method, rawQuery, contentType string, fields []DiscoveredField) {
 	ss := s.forSite(site)
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
@@ -272,6 +512,20 @@ func (s *signalStore) noteRequestShape(site, path, method, rawQuery, contentType
 	}
 	if strings.EqualFold(method, "POST") || strings.EqualFold(method, "PUT") || strings.EqualFold(method, "PATCH") {
 		sig.seenPost = true
+	}
+	if len(fields) > 0 {
+		sig.hasForm, sig.postForm = true, true
+		sig.fields = mergeDiscoveredFields(sig.fields, fields, path)
+		sig.inputs = len(sig.fields)
+		for _, f := range sig.fields {
+			name := strings.ToLower(f.Name)
+			if f.Type == "password" || strings.Contains(name, "password") || strings.Contains(name, "passwd") {
+				sig.hasPassword = true
+			}
+			if f.Type == "file" {
+				sig.hasFile = true
+			}
+		}
 	}
 	if strings.Contains(strings.ToLower(contentType), "application/json") {
 		sig.json = true // live JSON request body — real API signal, no crawl needed
