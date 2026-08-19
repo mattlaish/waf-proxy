@@ -1,4 +1,9 @@
-# Console migration: single-file → Vite + preact
+# Experimental console migration: single-file → Vite + preact
+
+> **Status: experimental and non-shipping.** Do not deploy `static/app` or
+> replace `static/admin.html`. This tree is a partial migration reference until
+> every tab is ported, dependencies are made reproducible with a lockfile, and
+> feature-parity tests pass.
 
 The shipping console is still `static/admin.html` (one self-contained file, no build
 step — ideal for an air-gapped box). This `web/` project is the migration target for
