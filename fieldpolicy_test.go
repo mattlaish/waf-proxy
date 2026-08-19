@@ -12,7 +12,7 @@ func TestPagePolicyDirectivesFieldPolicy(t *testing.T) {
 		Path: "/register", Match: "exact", Methods: []string{"POST"},
 		Fields: []FieldPolicy{
 			{Name: "user_id", Profile: "identifier", Required: true, MinLength: 3, MaxLength: 64},
-			{Name: "password", Profile: "password", Required: true, MinLength: 12, MaxLength: 256, ExcludeRuleIDs: []int{942100}},
+			{Name: "password", Profile: "password", AllowPattern: "^[[:graph:] ]+$", Required: true, MinLength: 12, MaxLength: 256, ExcludeRuleIDs: []int{942100}},
 		},
 	}})
 	for _, want := range []string{
@@ -20,6 +20,7 @@ func TestPagePolicyDirectivesFieldPolicy(t *testing.T) {
 		"required field missing: user_id",
 		"SecRule ARGS_POST:user_id \"!@rx ^[A-Za-z0-9._-]*$\"",
 		"SecRule ARGS_POST:password \"!@rx (?s)^.{12,256}$\"",
+		"SecRule ARGS_POST:password \"!@rx ^[[:graph:] ]+$\"",
 		"SecRule REQUEST_METHOD \"@rx ^(?:POST)$\"",
 	} {
 		if !strings.Contains(got, want) {
@@ -32,6 +33,19 @@ func TestPagePolicyDirectivesFieldPolicy(t *testing.T) {
 	cfg := coraza.NewWAFConfig().WithDirectives("SecRuleEngine On\nSecRequestBodyAccess On\n" + got)
 	if _, err := coraza.NewWAF(cfg); err != nil {
 		t.Fatalf("generated field directives do not compile: %v\n%s", err, got)
+	}
+}
+
+func TestFieldAllowPatternValidation(t *testing.T) {
+	for _, pattern := range []string{"^[A-Za-z0-9._-]+$", "^[[:graph:] ]+$"} {
+		if err := validateFieldPattern(pattern); err != nil {
+			t.Fatalf("safe pattern %q rejected: %v", pattern, err)
+		}
+	}
+	for _, pattern := range []string{"[", "^ok$\" ctl:ruleEngine=Off", "^ok$\nSecRuleEngine Off"} {
+		if err := validateFieldPattern(pattern); err == nil {
+			t.Fatalf("unsafe pattern %q accepted", pattern)
+		}
 	}
 }
 

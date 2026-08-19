@@ -206,6 +206,10 @@ applies every policy. Open the page-policy editor from Site Map to configure:
 
 - request source (`ARGS_POST` or all `ARGS`) and HTTP methods;
 - a safe built-in profile: identifier, password, free text, email, or numeric;
+- an optional validated per-field `allow_pattern` regular expression (maximum
+  512 bytes; literal double quotes and line breaks in the policy expression are
+  rejected before SecLang generation). This restriction protects policy syntax;
+  whether submitted field values may contain quotes is decided by the pattern;
 - required, minimum length, and maximum length;
 - CRS rule IDs excluded only for that field via
   `ctl:ruleRemoveTargetById`—other fields remain fully inspected.

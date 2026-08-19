@@ -15,7 +15,7 @@
 // Each site has its own WAF instance and its own listen address; sites that
 // share an address are demultiplexed by Host (and SNI for TLS). Pools, nodes,
 // members, LB method, monitors, engine modes, and certificates are all hot.
-// Only the SET of listen addresses (and whether one is TLS) needs a restart.
+// Listen addresses and HTTP/TLS mode reconcile live during an atomic Apply.
 package main
 
 import (
@@ -33,6 +33,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,12 +105,14 @@ type PageExcludeTarget struct {
 	Target string `json:"target"`
 }
 
-// FieldPolicy validates one request field on one page. Profiles are deliberately
-// allow-listed: the UI cannot inject raw SecLang or regular expressions.
+// FieldPolicy validates one request field on one page. Profiles remain the
+// safe defaults; AllowPattern adds a validated per-field regular expression
+// without exposing raw SecLang.
 type FieldPolicy struct {
 	Name           string `json:"name"`
 	Source         string `json:"source,omitempty"`  // ARGS_POST (default) | ARGS
 	Profile        string `json:"profile,omitempty"` // identifier | password | free_text | email | numeric
+	AllowPattern   string `json:"allow_pattern,omitempty"`
 	Required       bool   `json:"required,omitempty"`
 	MinLength      int    `json:"min_length,omitempty"`
 	MaxLength      int    `json:"max_length,omitempty"`
@@ -547,6 +550,9 @@ func (c Config) validate() error {
 				}
 				if !validFieldProfile(fp.Profile) {
 					return fmt.Errorf("%s: unsupported profile %q", fw, fp.Profile)
+				}
+				if err := validateFieldPattern(fp.AllowPattern); err != nil {
+					return fmt.Errorf("%s: allow_pattern: %w", fw, err)
 				}
 				if fp.MinLength < 0 || fp.MaxLength < 0 || fp.MaxLength > 1048576 {
 					return fmt.Errorf("%s: lengths must be between 0 and 1048576", fw)
@@ -1186,7 +1192,26 @@ func fieldPatterns(fp FieldPolicy) []string {
 		// of RFC 5322. Applications remain responsible for canonical validation.
 		patterns = append(patterns, "^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$")
 	}
+	if fp.AllowPattern != "" {
+		patterns = append(patterns, fp.AllowPattern)
+	}
 	return patterns
+}
+
+func validateFieldPattern(pattern string) error {
+	if pattern == "" {
+		return nil
+	}
+	if len(pattern) > 512 {
+		return errors.New("must be 512 bytes or fewer")
+	}
+	if strings.ContainsAny(pattern, "\"\r\n") {
+		return errors.New("must not contain quotes or line breaks")
+	}
+	if _, err := regexp.Compile(pattern); err != nil {
+		return fmt.Errorf("invalid regular expression: %w", err)
+	}
+	return nil
 }
 
 // policyDirectives builds the SecLang overrides appended AFTER the policy's

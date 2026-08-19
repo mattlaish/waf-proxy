@@ -9,15 +9,18 @@ architectural changes until the imported baseline has been verified on a host
 with the required toolchains and Linux runtime dependencies.
 
 ## Baseline Date
-2026-08-18 (Asia/Hong_Kong)
+2026-08-19 (Asia/Hong_Kong)
 
 ## Repository State
 - Branch: `main`, tracking `origin/main`.
-- HEAD: `c41388b` (`Establish reproducible Go dependency baseline`), tracking
-  `origin/main`.
-- The worktree was clean before the current Hybrid Form Discovery work. The
-  current uncommitted diff is focused on hybrid passive/crawler discovery,
-  shipping UI/docs, focused tests, and this handoff update.
+- HEAD at this handoff: `8d9c003` (`Implement hybrid form discovery`).
+- The current intended uncommitted source changes add per-field custom allow
+  patterns, Windows update portability, config/pool/runtime coverage, explicit
+  experimental frontend labeling, documentation, and this handoff update.
+- Two unrelated untracked local files were found during push preparation:
+  `Codex Image Aug 18, 2026, 02_59_30 PM.png` and `git-save-push.ps1`. They are
+  not required by the WAF build and should remain unstaged unless the owner
+  explicitly wants them in the repository.
 - The repository contains the imported implementation, documentation baseline,
   and committed dependency reproducibility baseline.
 - No credentials, private keys, generated binary, dependency directories, or
@@ -124,10 +127,10 @@ with the required toolchains and Linux runtime dependencies.
     Node (`new Function` syntax check).
 
 ## Known Incomplete or Broken Areas
-- **Windows builds are currently broken**: the root package unconditionally
-  references Unix-only `sigupdate.ReExec`. Linux is the deployment target and
-  passes vet/build plus VM tests, but either a Windows stub/build split or an
-  explicit unsupported-platform policy is still required.
+- Windows now has a `ReExec` implementation that starts the replacement binary
+  with inherited arguments/environment/standard streams and exits the parent.
+  Native Windows compile, tests, and vet pass; production deployment remains
+  Linux/systemd, where the existing atomic `syscall.Exec` behavior is unchanged.
 - **The Vite/Preact migration is intentionally incomplete** and must not replace
   `static/admin.html` yet. Most application tabs are stubs.
 - **The frontend manifest/config are inconsistent**: `web/vite.config.js`
@@ -183,20 +186,15 @@ with the required toolchains and Linux runtime dependencies.
   form actions with GET only; it still never submits forms or authenticates.
 
 ## Recommended Next Steps
-1. Verify the committed dependency graph in CI or a fresh Linux workspace.
-2. Decide and document Windows support. If supported, add the missing
-   `sigupdate.ReExec` platform handling and a Windows compile check; otherwise
-   make the Linux-only build constraint explicit.
-3. Add focused tests around configuration validation/migration and pool selection;
-   these are high-value, low-architecture-risk seams in the request path.
-4. Decide whether the frontend migration is active. If yes, add
-   `@preact/preset-vite`, create/commit a lockfile, prove a clean build, and keep
-   it non-shipping until feature parity. If no, clearly mark `web/` experimental.
-5. Turn the successful Linux checks into a repeatable integration smoke test
+1. Turn the successful local checks into a deployed Linux integration smoke test
    with temporary ports/backend and a local CRS checkout: startup, health
    endpoint, Host routing, WAF detection,
    pool failover, draft save, live Apply, and graceful drain.
-6. After those checks, reconcile documentation inconsistencies and choose the
+2. Add focused tests for admin authentication/RBAC, draft persistence/live Apply,
+   monitor rise/fall behavior, and listener reconciliation across real sockets.
+3. Keep `web/` experimental and non-shipping until every tab is ported and a
+   lockfile plus feature-parity tests make its build reproducible.
+4. After the deployed checks, choose the
    next focused feature or defect; avoid broad refactoring before test coverage
    protects runtime Apply and listener behavior.
 
@@ -208,7 +206,7 @@ with the required toolchains and Linux runtime dependencies.
 - No application source, runtime configuration, frontend, or architecture
   changes were made in the committed baseline.
 
-## Current Uncommitted Hybrid Form Discovery Work
+## Hybrid Form Discovery
 - Added privacy-safe passive field-name discovery for URL-encoded, top-level
   JSON, and multipart write requests, with bounded capture and body restoration.
 - Passive observations are committed only after the request reaches a backend
@@ -221,13 +219,47 @@ with the required toolchains and Linux runtime dependencies.
 - Updated the shipping console to show completion summaries and discovery
   provenance, and to seed POST/PUT/PATCH actions without confusing provenance
   with Page Policy request source.
-- Added `hybrid_discovery_test.go` and updated the README. No Hybrid changes are
-  committed yet.
+- Added `hybrid_discovery_test.go` and updated the README.
 
 ## Recommended Next Step for Hybrid Discovery
-1. Review the current focused diff and test evidence; commit only after approval.
-2. Build/deploy on the Linux VM and submit a real login once. Confirm `/login`
+1. Build/deploy on the Linux VM and submit a real login once. Confirm `/login`
    exposes passive `username`/`password` fields, preserves backend request body,
    and upgrades provenance to `both` after a successful Discover crawl.
-3. Keep policy application manual; do not auto-apply field suggestions during
+2. Keep policy application manual; do not auto-apply field suggestions during
    the first runtime smoke test.
+
+## Local Coverage Expansion on 2026-08-19
+- Added a Windows `sigupdate.ReExec` implementation; native Windows root and
+  `internal/sigupdate` tests plus `go vet ./...` now pass without a test shim.
+- Added focused tests for legacy config migration, draft/full validation,
+  managed-IP shape, weighted round robin, least connections, IP hash, health
+  filtering, and all-members-down fail-open behavior.
+- Added an in-process runtime smoke test for exact/wildcard/catch-all Host
+  routing and `/healthz` transition from 200 to draining 503.
+- Marked `web/` explicitly experimental and non-shipping. The production UI
+  remains `static/admin.html`; no incomplete Vite output is served.
+- Verified a clean source copy with `go mod verify`, native `go test -count=1
+  ./...`, native and Linux-target `go vet ./...`, Linux test compilation, and a
+  stripped Linux/amd64 build (13,979,810 bytes; SHA-256
+  `3DCB0E4B78912BDDFD96933098B8D21873F48B18F657B0B0C7D3405E919FA257`).
+- Corrected the stale `main.go` comment: listener/TLS changes reconcile live.
+- Deployed systemd, real-socket Apply/drain, WAF blocking, and failover smoke
+  checks still require the Linux VM; local tests do not claim those results.
+
+## Per-Field Custom Policies on 2026-08-19
+- `FieldPolicy` now supports an optional `allow_pattern` per field. It is
+  combined with that field's profile, required flag, length limits, and
+  field-only CRS exclusions; sibling fields on the same form are unaffected.
+- Patterns are limited to 512 bytes, compiled with Go's regexp validator, and
+  rejected if the policy expression contains literal double quotes or line
+  breaks before SecLang generation. This protects policy syntax; quotes in
+  submitted field values remain governed by the selected pattern (for example,
+  `[[:graph:]]` permits visible quote characters).
+- The shipping `static/admin.html` editor exposes one custom allow-regex input
+  per field. Existing configurations remain compatible because an empty pattern
+  preserves the previous profile-only behavior.
+- Focused tests prove different directives for `user_id` and `password`, reject
+  malformed/injection-shaped patterns, and compile the generated directives
+  with Coraza. Native tests/vet, Linux vet/test compilation/build, and shipping
+  UI JavaScript syntax all pass. Linux build SHA-256:
+  `246151E7BF958EE097A3726B728D90EF271CA9E317243512C1E6AF73434688BE`.

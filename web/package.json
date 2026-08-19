@@ -1,6 +1,7 @@
 {
   "name": "waf-proxy-console",
   "private": true,
+  "description": "Experimental non-shipping migration of the embedded WAF console",
   "version": "1.0.0",
   "type": "module",
   "scripts": {

@@ -114,7 +114,7 @@
   .colhead{display:grid;gap:8px;font:600 10px var(--mono);letter-spacing:.1em;color:var(--mut);text-transform:uppercase;margin-bottom:6px}
   .memberhead{grid-template-columns:1.4fr .8fr .7fr auto auto}
   .nodehead{grid-template-columns:1fr 1.4fr auto}
-  .fpolicy{display:grid;grid-template-columns:1.15fr .9fr 1fr auto auto .65fr .65fr 1fr auto;gap:7px;align-items:center;margin-bottom:7px}
+  .fpolicy{display:grid;grid-template-columns:1.15fr .9fr 1fr 1.3fr auto auto .65fr .65fr 1fr auto;gap:7px;align-items:center;margin-bottom:7px}
   .fpolicy input,.fpolicy select{min-width:0}
   @media(max-width:900px){.fpolicy{grid-template-columns:1fr 1fr}.fpolicy .fdel{justify-self:end}}
   .hdot{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:none}
@@ -1339,6 +1339,7 @@
         <option value="email" ${f.profile==="email"?"selected":""}>email</option>
         <option value="numeric" ${f.profile==="numeric"?"selected":""}>numeric</option>
       </select>
+      <input type="text" data-ff="allow_pattern" value="${esc(f.allow_pattern||"")}" maxlength="512" spellcheck="false" title="Optional full-value allow regex, for example ^[A-Za-z0-9._-]+$" placeholder="custom allow regex">
       <span class="tag src-${f.discovery_source==="both"?"both":f.discovery_source==="crawled"?"crawled":"seen"}">${esc(f.discovery_source||"manual")}</span>
       <label class="check" style="margin:0"><input type="checkbox" data-ff="required" ${f.required?"checked":""}>required</label>
       <input type="number" min="0" data-ff="min_length" value="${Number(f.min_length)||0}" title="Minimum length" placeholder="min">
@@ -1374,7 +1375,7 @@
       const key="ARGS_POST:"+f.name;
       if(known.has(key)) return;
       known.add(key);
-      ppFields.push({name:f.name,source:"ARGS_POST",discovery_source:f.discovery_source||"",profile:suggestedFieldProfile(f),required:!!f.required,min_length:0,max_length:0,exclude_rule_ids:[]});
+      ppFields.push({name:f.name,source:"ARGS_POST",discovery_source:f.discovery_source||"",profile:suggestedFieldProfile(f),allow_pattern:"",required:!!f.required,min_length:0,max_length:0,exclude_rule_ids:[]});
     });
     renderPPFields();
   }
@@ -1385,7 +1386,7 @@
     $("pp_methods").value=methods.join(",")||"POST";
     seedDiscoveredAction(action);
   };
-  $("pp_addfield").onclick=()=>{ syncPPFields(); ppFields.push({name:"",source:"ARGS_POST",profile:"identifier",required:false,min_length:0,max_length:0,exclude_rule_ids:[]}); renderPPFields(); };
+  $("pp_addfield").onclick=()=>{ syncPPFields(); ppFields.push({name:"",source:"ARGS_POST",profile:"identifier",allow_pattern:"",required:false,min_length:0,max_length:0,exclude_rule_ids:[]}); renderPPFields(); };
   function ppToggle(){ const deny=$("pp_action").value==="deny"; $("pp_tune").style.display=deny?"none":""; $("pp_statuswrap").style.display=deny?"":"none"; }
   async function openPageEditor(site,path){
     ppSite=site; ppSourcePath=path; ppDiscovered=[];
