@@ -18,12 +18,17 @@
 ## Handoff rules
 Before handing development to another AI:
 - Update AI_HANDOFF.md.
+- Update patch.md as the current patch/version-control ledger.
 - Record what was completed.
 - Record what remains unfinished.
 - Record important technical decisions.
 - Record known bugs or failed approaches.
 - Record relevant test/build results.
 - Identify the recommended next step.
+
+`patch.md` must be updated for every source/schema/UI/test/build change. It must
+include intended files, excluded local artifacts, validation evidence, known
+limitations, security decisions, and the exact next slice.
 
 ## Git
 - Prefer small meaningful commits.

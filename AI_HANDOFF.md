@@ -3,13 +3,18 @@
 ## Project
 WAF Proxy
 
+## Patch Ledger
+- `patch.md` is the required current-patch handover and manual version-control
+  ledger. Every future source/schema/UI/test/build change must update both this
+  handoff and `patch.md`.
+
 ## Objective
 Continue development and improvement of the WAF proxy without making major
 architectural changes until the imported baseline has been verified on a host
 with the required toolchains and Linux runtime dependencies.
 
 ## Baseline Date
-2026-08-19 (Asia/Hong_Kong)
+2026-08-20 (Asia/Hong_Kong)
 
 ## Repository State
 - Branch: `main`, tracking `origin/main`.
@@ -263,3 +268,66 @@ with the required toolchains and Linux runtime dependencies.
   with Coraza. Native tests/vet, Linux vet/test compilation/build, and shipping
   UI JavaScript syntax all pass. Linux build SHA-256:
   `246151E7BF958EE097A3726B728D90EF271CA9E317243512C1E6AF73434688BE`.
+
+## PKI Slice 1: Backend CA Trust on 2026-08-19
+- Added pool-scoped `BackendTLSConfig` with `use_system_ca`, custom PEM
+  `ca_files`, `server_name`, and reserved CRL fields. An omitted system-CA flag
+  defaults to true for backward-compatible HTTPS pools; HTTP pools are unchanged.
+- HTTPS proxy traffic and HTTPS health monitors share the pool's validated
+  `tls.Config`. TLS 1.2 is the minimum, standard Go chain/hostname verification
+  remains enabled, and there is no skip-verify option.
+- Custom CA bundles are appended to the OS trust store by default. Operators may
+  explicitly disable the OS store, but full Apply validation then requires at
+  least one custom CA. Files are limited to 8 MiB and strictly parsed as PEM
+  certificate bundles; empty, malformed, unknown-block, trailing-data,
+  duplicate-path, and unreadable inputs fail before runtime swap.
+- Draft validation checks schema/enums/ranges without requiring files to exist.
+  Full validation and runtime construction load the trust material. Failed Apply
+  therefore retains the old runtime under the existing atomic Apply model.
+- `revocation_mode`, refresh, and CRL source fields are reserved in the schema
+  but full Apply rejects them until Slice 2 implements real revocation checking;
+  the service never silently claims hard-fail CRL behavior.
+- The shipping pool editor exposes OS CA selection, custom CA file paths, and a
+  server-name override. `README.md` and `config.sample.json` document the model.
+- Tests dynamically generate CA/leaf material and cover custom-root proxying,
+  untrusted roots, hostname mismatch, TLS 1.1 rejection, malformed/oversized CA
+  files, HTTP-pool misuse, isolated empty stores, system-CA defaults, and old
+  HTTP behavior. No private key fixture or production secret is stored.
+- Native `go test -count=1 ./...`, native/Linux `go vet ./...`, Linux test
+  compilation, shipping UI JavaScript parsing, and sample JSON validation pass.
+  `CGO_ENABLED=0` Linux/amd64 static build: 14,000,290 bytes, SHA-256
+  `A5FF6CC1607C94796C76D84AD9F6BDE21F67B2A5ED548D7C9DC6AAA82B932862`.
+- No PKCS#11 dependency was added, so the static-build assumption is unchanged.
+  Next PKI slice: static CRL parsing, issuer/signature/time validation, immutable
+  snapshot, and soft/hard handshake enforcement before adding URL refresh or HSM.
+
+## PKI Slice 2: Static CRL Enforcement on 2026-08-20
+- Static pool CRLs now support strict PEM `X509 CRL` bundles and DER files, with
+  an 8 MiB per-file limit, at most 32 files/lists, duplicate/blank-path checks,
+  and rejection of malformed/trailing/unknown PEM data.
+- Apply rejects CRLs whose `thisUpdate` is too far in the future or whose
+  `nextUpdate` is absent/expired (five-minute clock skew). For custom CA files,
+  matching CRL signatures are also checked at Apply. System-store issuer
+  certificates are not enumerable through Go's `CertPool`, so their signature
+  check occurs during the verified TLS handshake instead.
+- CRLs are loaded into an immutable snapshot behind `atomic.Pointer`; TLS
+  handshakes perform no file or network I/O. Standard Go chain and hostname
+  verification remains enabled and runs before `VerifyConnection`.
+- Every non-root certificate in the verified chain is checked. A valid matching
+  CRL that lists a leaf or intermediate serial always fails closed. Soft mode
+  allows missing issuer coverage; hard mode requires coverage for every leaf and
+  intermediate and requires at least one configured static CRL.
+- Wrong issuer signatures, expired/future lists, and revoked serials fail the
+  connection in both modes. Failed Apply retains the old runtime and snapshot.
+- URL CRLs and `refresh_sec` remain explicitly rejected until Slice 3; there is
+  no downloader, background updater, status API, or manual refresh API yet.
+- The shipping pool editor, README, and sample config now expose static CRL
+  files plus soft/hard mode. Tests dynamically generate all keys/certificates/
+  CRLs and cover valid/unrevoked, revoked leaf, revoked intermediate, missing
+  coverage, wrong signature, expired, future, malformed, and PEM/DER parsing.
+- Native `go test -count=1 ./...`, native/Linux `go vet ./...`, Linux test
+  compilation, UI JavaScript parsing, sample JSON validation, and the
+  `CGO_ENABLED=0` Linux build pass. Static binary: 14,020,770 bytes, SHA-256
+  `E0AC425D40250AB0AED46BDBFE23BA4C180B366FEF3C322C3026B7D7AC988A03`.
+- Next PKI slice: SSRF-safe URL downloader, refresh deduplication/scheduling,
+  atomic last-known-good swap, `/api/pki/status`, manual refresh, RBAC, and audit.

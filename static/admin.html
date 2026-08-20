@@ -880,6 +880,7 @@
   }
   function poolCard(p,pi){
     const mon=p.monitor||{type:"none"};
+    const bt=p.backend_tls||{};
     const membersHTML = (p.members||[]).map((m,j)=>memberRow(m,pi,j)).join("");
     return `<div class="card" data-i="${pi}">
       <div class="cardhead">
@@ -900,6 +901,19 @@
           <option value="none" ${mon.type==="none"||!mon.type?"selected":""}>none</option>
           <option value="tcp" ${mon.type==="tcp"?"selected":""}>tcp</option>
           <option value="http" ${mon.type==="http"?"selected":""}>http</option></select></div>
+      </div>
+      <div class="backendtls" style="${p.scheme==="https"?"":"display:none"};margin-top:10px">
+        <div class="eyebrow">Backend TLS trust</div>
+        <div class="row3">
+          <label class="check" style="margin-top:22px"><input type="checkbox" data-ft="use_system_ca" ${bt.use_system_ca!==false?"checked":""}>use operating-system CA store</label>
+          <div class="field"><label>Server name override</label><input type="text" data-ft="server_name" value="${esc(bt.server_name||"")}" placeholder="app.internal.example"></div>
+          <div class="field"><label>Custom CA PEM files (one per line)</label><textarea data-ft="ca_files" rows="3" spellcheck="false" placeholder="/etc/waf/pki/company-root.pem">${esc((bt.ca_files||[]).join("\n"))}</textarea></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div class="field"><label>Revocation mode</label><select data-ft="revocation_mode"><option value="soft" ${!bt.revocation_mode||bt.revocation_mode==="soft"?"selected":""}>soft — missing CRL allowed</option><option value="hard" ${bt.revocation_mode==="hard"?"selected":""}>hard — CRL required</option></select></div>
+          <div class="field" style="flex:2"><label>Static CRL files (one per line; PEM or DER)</label><textarea data-ft="crl_files" rows="3" spellcheck="false" placeholder="/etc/waf/pki/company-root.crl">${esc((bt.crl_files||[]).join("\n"))}</textarea></div>
+        </div>
+        <div class="hint">Custom CA bundles are appended to the OS store unless disabled. Valid CRLs always block revoked certificates; hard mode also rejects missing issuer coverage. Certificate verification and TLS 1.2+ remain mandatory.</div>
       </div>
       <div class="row intv" style="${mon.type&&mon.type!=="none"?"":"display:none"};max-width:340px">
         <div class="field"><label>Check interval (s)</label><input type="number" data-fm="interval_sec" value="${mon.interval_sec||5}" min="1"></div>
@@ -955,6 +969,8 @@
         card.querySelector(".addm").onclick=()=>{ syncPools(); pools[selectedPool].members.push({node:"",port:8080,weight:1}); renderPools(); };
         card.querySelectorAll("[data-delm]").forEach(b=>b.onclick=()=>{ syncPools(); pools[selectedPool].members.splice(+b.dataset.delm,1); renderPools(); });
         const monSel=card.querySelector('[data-fm="type"]');
+        const schemeSel=card.querySelector('[data-f="scheme"]');
+        schemeSel.onchange=()=>{ card.querySelector(".backendtls").style.display=schemeSel.value==="https"?"":"none"; };
         monSel.onchange=()=>{
           const t=monSel.value;
           card.querySelector(".intv").style.display     = t==="none"?"none":"";
@@ -974,6 +990,14 @@
         const f=el.dataset.fm;
         p.monitor[f] = (el.type==="number") ? Number(el.value||0) : el.value.trim();
       });
+      p.backend_tls=p.backend_tls||{};
+      card.querySelectorAll("[data-ft]").forEach(el=>{
+        const f=el.dataset.ft;
+        if(f==="use_system_ca") p.backend_tls[f]=el.checked;
+        else if(f==="ca_files"||f==="crl_files") p.backend_tls[f]=(el.value||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+        else p.backend_tls[f]=el.value.trim();
+      });
+      if(p.scheme!=="https") p.backend_tls={};
       const ms=[];
       card.querySelectorAll(".member").forEach(row=>{
         const m={};
@@ -983,7 +1007,7 @@
       p.members=ms;
     });
   }
-  $("addpool").onclick=()=>{ syncPools(); pools.push({name:"pool-"+(pools.length+1),scheme:"http",lb_method:"round_robin",monitor:{type:"tcp",interval_sec:5,timeout_sec:2,rise:2,fall:3},members:[],_new:true}); selectedPool=pools.length-1; renderPools(); };
+  $("addpool").onclick=()=>{ syncPools(); pools.push({name:"pool-"+(pools.length+1),scheme:"http",lb_method:"round_robin",monitor:{type:"tcp",interval_sec:5,timeout_sec:2,rise:2,fall:3},members:[],backend_tls:{},_new:true}); selectedPool=pools.length-1; renderPools(); };
 
   // ── policies ──
   function exclRow(x,j){
@@ -1112,7 +1136,7 @@
     cfg=c; engineMode=c.engine_mode||"DetectionOnly";
     sites=(c.sites||[]).map(x=>Object.assign({},x));
     nodes=(c.nodes||[]).map(x=>Object.assign({},x));
-    pools=(c.pools||[]).map(x=>Object.assign({},x,{monitor:Object.assign({},x.monitor),members:(x.members||[]).map(m=>Object.assign({},m))}));
+    pools=(c.pools||[]).map(x=>Object.assign({},x,{monitor:Object.assign({},x.monitor),members:(x.members||[]).map(m=>Object.assign({},m)),backend_tls:Object.assign({},x.backend_tls||{})}));
     policies=(c.policies||[]).map(x=>Object.assign({},x,{exclusions:(x.exclusions||[]).map(e=>Object.assign({},e,{rule_ids:(e.rule_ids||[]).slice(),targets:(e.targets||[]).slice()}))}));
     globalFields.forEach(f=>$(f).value = c[f] ?? "");
     fillAI(c.ai); fillHA(c.ha); fillNotify(c.notify); fillSyslog(c.syslog);
