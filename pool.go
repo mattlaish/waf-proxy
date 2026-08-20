@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"hash/fnv"
 	"io"
 	"log/slog"
@@ -48,11 +49,12 @@ type memberRuntime struct {
 }
 
 type poolRuntime struct {
-	name    string
-	method  string
-	members []*memberRuntime
-	monitor MonitorConfig
-	rr      uint64 // round-robin cursor (atomic)
+	name       string
+	method     string
+	members    []*memberRuntime
+	monitor    MonitorConfig
+	rr         uint64 // round-robin cursor (atomic)
+	backendTLS *tls.Config
 }
 
 func (p *poolRuntime) healthyMembers() []*memberRuntime {
@@ -189,8 +191,12 @@ func (p *poolRuntime) startMonitor(ctx context.Context, log *slog.Logger, n *not
 	timeout := secOr(mon.TimeoutSec, 2)
 	rise := intOr(mon.Rise, 2)
 	fall := intOr(mon.Fall, 3)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.TLSClientConfig = p.backendTLS
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: transport,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},

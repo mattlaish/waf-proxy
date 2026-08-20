@@ -14,8 +14,23 @@
       "name": "default-pool",
       "scheme": "http",
       "lb_method": "round_robin",
+      "backend_tls": {},
       "monitor": { "type": "tcp", "interval_sec": 5, "timeout_sec": 2, "rise": 2, "fall": 3 },
       "members": [ { "node": "app1", "port": 8080, "weight": 1 } ]
+    },
+    {
+      "name": "secure-backend-example",
+      "scheme": "https",
+      "lb_method": "round_robin",
+      "backend_tls": {
+        "use_system_ca": true,
+        "ca_files": ["/etc/waf/pki/company-root.pem"],
+        "crl_files": ["/etc/waf/pki/company-root.crl"],
+        "server_name": "app.internal.example",
+        "revocation_mode": "hard"
+      },
+      "monitor": { "type": "https", "path": "/healthz", "expect_status": 200, "interval_sec": 5, "timeout_sec": 2, "rise": 2, "fall": 3 },
+      "members": [ { "node": "app1", "port": 8443, "weight": 1 } ]
     }
   ],
 

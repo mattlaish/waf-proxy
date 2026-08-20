@@ -114,6 +114,38 @@ API: `GET /api/ai/verdicts` · `GET /api/ai/blocklist` · `POST /api/ai/unblock 
 
 **Everything applies live.** On Apply: pools, members, monitors, LB methods, engine modes, certificates, **and listen addresses** all reconcile via atomic swap plus live listener management — a bad config leaves the old runtime serving. Adding or removing a listen address opens or closes **only that socket**; unchanged listeners and their in-flight connections are untouched, so building a new site never interrupts existing traffic. No process restart is needed for any config change.
 
+### Backend HTTPS trust
+
+HTTPS pools verify backend certificates using the operating-system public CA
+store by default; public roots are not copied into this repository. A pool may
+append one or more enterprise PEM CA bundles and may set a certificate
+`server_name` when members are addressed by IP. TLS 1.0/1.1 and insecure
+skip-verification are not supported. Set `use_system_ca` to `false` only for an
+intentionally isolated private trust store containing at least one custom CA.
+
+```json
+"backend_tls": {
+  "use_system_ca": true,
+  "ca_files": ["/etc/waf/pki/company-root.pem"],
+  "crl_files": ["/etc/waf/pki/company-root.crl"],
+  "server_name": "app.internal.example",
+  "revocation_mode": "hard"
+}
+```
+
+CA files are limited to 8 MiB and strictly parsed as PEM certificate bundles.
+Invalid, empty, duplicate, or missing bundles make Apply fail before runtime
+swap, so the previous runtime continues serving.
+
+Static CRLs may be PEM (`X509 CRL`) or DER, with at most 32 lists per pool and
+the same 8 MiB per-file limit. Apply rejects malformed, not-yet-valid, or expired
+lists. During the standard verified TLS handshake, CRL issuer signatures are
+checked against the verified chain and both leaf and intermediate serials are
+checked. A revoked serial always fails closed. `soft` mode permits an issuer
+without a matching CRL; `hard` mode requires valid coverage for every non-root
+certificate. CRLs are loaded into an immutable snapshot at Apply—no file I/O is
+performed in the handshake path. URL refresh is not implemented yet.
+
 **Binding multiple / unassigned IPs (IP_FREEBIND).** Sites can each bind their own `IP:port`, and listeners are created with `IP_FREEBIND` (Linux), so a site may bind an IP that is **not currently assigned to a local interface** — a floating/VIP address, or one of several service IPs you manage outside the box. Without this the kernel rejects the bind with *"cannot assign requested address."*
 
 **Auto-assigning the IP to the interface (`manage_ip`).** Freebind lets the socket bind, but the host still has to **answer ARP** for the address for traffic to arrive. Tick **"Assign listen IP to interface"** on a site (config: `manage_ip: true`) and, on Apply, the WAF assigns that listen IP with `ip addr add <ip>/<prefix> dev <iface>`. Managed IPs survive routine service restarts and are removed when management is disabled or the site is deleted. This requires **`CAP_NET_ADMIN`** (granted in the shipped unit) and the iproute2 `ip` binary. Leave it **off for a true VIP** that keepalived/VRRP should own. If no explicit interface is selected, legacy same-subnet detection is used; if no match exists, Apply fails with an actionable error.

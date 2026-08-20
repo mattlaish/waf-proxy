@@ -71,11 +71,12 @@ type MonitorConfig struct {
 }
 
 type PoolConfig struct {
-	Name     string         `json:"name"`
-	Scheme   string         `json:"scheme"`    // http | https (to the backend)
-	LBMethod string         `json:"lb_method"` // round_robin | least_conn | ip_hash | random
-	Monitor  MonitorConfig  `json:"monitor"`
-	Members  []MemberConfig `json:"members"`
+	Name       string           `json:"name"`
+	Scheme     string           `json:"scheme"`    // http | https (to the backend)
+	LBMethod   string           `json:"lb_method"` // round_robin | least_conn | ip_hash | random
+	Monitor    MonitorConfig    `json:"monitor"`
+	Members    []MemberConfig   `json:"members"`
+	BackendTLS BackendTLSConfig `json:"backend_tls,omitempty"`
 }
 
 // PolicyExclusion removes a CRS rule (or a specific target of it), optionally
@@ -337,6 +338,9 @@ func (c Config) validateDraft() error {
 		if p.LBMethod != "" && !validLBMethod(p.LBMethod) {
 			return fmt.Errorf("pool %q: invalid lb_method", p.Name)
 		}
+		if err := validateBackendTLSDraft(p.Scheme, p.BackendTLS); err != nil {
+			return fmt.Errorf("pool %q: backend_tls: %w", p.Name, err)
+		}
 		for j, m := range p.Members {
 			if m.Port != 0 && (m.Port < 1 || m.Port > 65535) {
 				return fmt.Errorf("pool %q member %d: port must be 1-65535", p.Name, j+1)
@@ -435,6 +439,9 @@ func (c Config) validate() error {
 		}
 		if !validLBMethod(p.LBMethod) {
 			return fmt.Errorf("%s: lb_method must be round_robin, least_conn, ip_hash, or random", where)
+		}
+		if err := validateBackendTLS(p.Scheme, p.BackendTLS); err != nil {
+			return fmt.Errorf("%s: backend_tls: %w", where, err)
 		}
 		if !validMonitorType(p.Monitor.Type) {
 			return fmt.Errorf("%s: monitor type must be none, tcp, or http", where)
@@ -820,7 +827,12 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 
 	// Build pools and start their monitors.
 	for _, pc := range cfg.Pools {
-		pr := &poolRuntime{name: pc.Name, method: pc.LBMethod, monitor: pc.Monitor}
+		backendTLS, err := buildBackendTLSConfig(pc.BackendTLS, pc.Scheme)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("pool %q: backend TLS: %w", pc.Name, err)
+		}
+		pr := &poolRuntime{name: pc.Name, method: pc.LBMethod, monitor: pc.Monitor, backendTLS: backendTLS}
 		for _, mc := range pc.Members {
 			w := mc.Weight
 			if w < 1 {
@@ -1330,6 +1342,7 @@ func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger
 		ResponseHeaderTimeout: backendTO,
 		ExpectContinueTimeout: 1 * time.Second,
 		ForceAttemptHTTP2:     true,
+		TLSClientConfig:       pool.backendTLS,
 	}
 	return &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
