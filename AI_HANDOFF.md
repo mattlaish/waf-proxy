@@ -364,3 +364,101 @@ internal limiter error. Ship the hot-path tests with the feature.
 - `web/` remains experimental and non-shipping; the config defect and missing
   lockfile were not fixed in this session.
 - `MANIFEST.md`'s stale status line was not corrected in this session.
+
+## Static and Dynamic Scan on 2026-08-21
+
+Run against commit `aac312f` on branch `claude/test-e5j6pr` in the Claude Code
+cloud container (Go 1.24.7). **No application source was changed.** All scan
+scaffolding was created outside the repository; `git status` was clean
+afterwards and `go mod verify` reported all modules verified.
+
+### Tools installed and run
+`staticcheck`, `gosec`, and `govulncheck` were installed via `go install`;
+`golangci-lint` was already present. `semgrep`, `shellcheck`, and `nuclei` were
+not available and were not used.
+
+### Static results
+- `go vet ./...` — clean.
+- `staticcheck ./...` — 2 findings, both unused functions (see below).
+- `golangci-lint run ./...` — 20 findings: 17 `errcheck` on `Close()`/`Remove()`
+  in cleanup paths, 1 De Morgan style suggestion (`main.go:1309`), 2 unused.
+- `gosec -severity=low -confidence=low ./...` — 27 findings over 21 files and
+  8,532 lines: 8 HIGH, 11 MEDIUM, 7 LOW (1 additional low-confidence entry).
+- `gofmt -l .` — 10 files, all consistent with the project's compact style.
+- `bash -n` — all six shipped scripts parse.
+- `node --check` on the 83,446 bytes of inline JavaScript extracted from
+  `static/admin.html` — parses.
+- Secret scan for private keys and provider token patterns — nothing found.
+- `go mod verify` — all modules verified.
+
+**Every gosec HIGH was triaged against the source and none is exploitable.** The
+triage table is now recorded in README.md under "Security scanning &
+verification" so future sessions do not re-litigate it: G115 ×3 are conversions
+that cannot overflow, G404 ×2 are non-security uses of `math/rand`, G402 is the
+documented `tls_skip_verify` syslog option, G702/G703 flag the sigupdate
+path-safety logic its own tests already cover, and G204 is a shell-less
+`exec.Command` whose arguments are validated by `net.ParseIP` and
+`net.Interfaces()`.
+
+### Static findings worth acting on
+- `ipManager.releaseAll` (`ipmanage.go:282`) is unreachable, and its doc comment
+  claims it is "called on shutdown". The drain test confirms shutdown never
+  releases managed addresses. This matches README's statement that managed IPs
+  survive routine restarts, so the behaviour is presumed intentional and **the
+  comment is stale**. It is nevertheless dead code in a `CAP_NET_ADMIN` path;
+  either wire it up or correct the comment, and say which was intended.
+- `signalStore.get` (`profiles.go:410`) is unused dead code.
+
+### Dynamic results
+A race-instrumented binary was run live against a throwaway backend on a
+separate loopback address, using a minimal SecLang ruleset (no CRS available in
+the container). All of the following passed:
+
+- **No data races and no panics** under roughly 1,440 concurrent requests across
+  8 workers while five live config Applies swapped the runtime mid-traffic.
+  `go test -race -count=1 ./...` also clean. This is the first direct evidence
+  that the atomic runtime swap is safe under concurrent load.
+- The **management/data-plane separation check** refused startup when the admin
+  IP collided with a data-plane listener — verified working, not merely present.
+- **Admin authentication**: 401 unauthenticated and with a wrong token across
+  `/api/config`, `/api/users`, `/api/audit`, `/api/ai/blocklist`; 200 with the
+  correct token.
+- **Signed update fails safe**: `/api/update/status` returned 404 with no
+  publisher key compiled in.
+- **Host routing**: 421 for an undeclared Host and for a missing Host header.
+- **WAF enforcement**: SQLi and XSS blocked (403) in query string and POST body;
+  benign traffic passed.
+- **Draft versus Apply**: draft save returned 200, the live runtime kept serving
+  the previous hostname, and the draft-only hostname correctly did not serve.
+- **Graceful drain**: `SIGTERM` held `/healthz` at 503 for exactly three seconds
+  before listeners closed, logging "stopped cleanly".
+- **Request smuggling (CL.TE)**: no desync. The pipelined request appeared in the
+  WAF's own access ring, proving it was inspected rather than tunnelled.
+- **Protocol abuse**: 8 KB header, 16 KB URL, null bytes, CRLF injection, and an
+  unknown method were all handled without error.
+
+### Dynamic evidence for the client-IP finding
+A request carrying `X-Forwarded-For: 9.9.9.9` and `X-Real-IP: 8.8.8.8` reached
+the backend with both headers rewritten to `127.0.0.1`, the TCP peer. Inbound
+XFF is therefore replaced, not appended. Spoofing is correctly neutralised, and
+the same mechanism means that behind a CDN or upstream load balancer the backend
+also loses the true client address, not only `ip_hash`, the access log, syslog,
+and the learner. This is stronger evidence than the earlier code reading and
+raises the priority of the trusted-proxy work recorded in the roadmap section
+above.
+
+### Open item: dependency vulnerability scan did not run
+`govulncheck ./...` **failed**: the container's network policy answers 403 to
+`CONNECT vuln.go.dev:443`, so the vulnerability database could not be fetched.
+No CVE cross-check has been performed against the dependency tree (Coraza
+v3.3.2, libinjection-go v0.2.2, gjson v1.18.0, `golang.org/x/net` v0.34.0 and
+the rest). `go mod verify` passing proves checksum integrity only. **Run
+`govulncheck ./...` on a host with access to `vuln.go.dev` and treat the release
+as unscanned until it passes.**
+
+### Scan coverage limits
+Not exercised in this environment: TLS and SNI paths (no certificates), HA,
+AI analysis (disabled), managed-IP assignment, systemd behaviour, and privileged
+ports. One probe initially looked like a WAF miss — encoded `%2e%2e%2f`
+returning 200 — but the cause was the hand-written test rule lacking
+`t:urlDecodeUni`, not an engine defect. Recorded so it is not logged as a bug.
