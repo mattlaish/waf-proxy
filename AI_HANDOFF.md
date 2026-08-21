@@ -263,3 +263,104 @@ with the required toolchains and Linux runtime dependencies.
   with Coraza. Native tests/vet, Linux vet/test compilation/build, and shipping
   UI JavaScript syntax all pass. Linux build SHA-256:
   `246151E7BF958EE097A3726B728D90EF271CA9E317243512C1E6AF73434688BE`.
+
+## Feature Roadmap Review on 2026-08-21
+
+Session type: Claude Code Web/cloud, branch `claude/test-e5j6pr`. This was a
+read-and-review session. **No application source, configuration, or frontend
+files were changed.** The only modified file is this handoff.
+
+### Verification performed this session
+- Container toolchain: Go 1.24.7 (linux/amd64), Node v22.22.2, module proxy
+  reachable. Note `go.mod` still declares `go 1.22.0`; 1.24.7 builds it cleanly.
+- `go vet ./...` — PASS.
+- `go test ./...` — PASS (`ok waf-proxy`, `ok waf-proxy/internal/sigupdate`).
+- No systemd, no `CAP_NET_ADMIN`, and no privileged ports in this container, so
+  the deployed-VM items in the earlier next-steps list remain unverified here.
+
+### Findings confirmed by code inspection
+- **Client IP is the TCP peer everywhere except the AI path.** `clientIP()`
+  (`main.go:1375`) returns `RemoteAddr` only. It feeds `ip_hash` member
+  selection (`main.go:1336`), the access ring (`main.go:1005`), syslog
+  forwarding (`main.go:1010`), and the backend error log (`main.go:1355`); the
+  Coraza engine likewise sees `RemoteAddr` through `txhttp.WrapHandler`
+  (`main.go:865`). Only `ai.go` resolves a real client address, via its own
+  `TrustedProxyCIDRs` (`ai.go:73`, chain walk at `ai.go:510`).
+  Consequence behind any CDN, upstream load balancer, or SNAT device: `ip_hash`
+  collapses onto one member, the learner's distinct-client signal — the basis of
+  its false-positive-versus-attack discrimination — degrades to a single client,
+  and every log/SIEM record names the upstream instead of the origin. Nothing
+  errors; the results are silently wrong. Treated below as a prerequisite, not
+  as an isolated defect.
+- **`web/vite.config.js` cannot build**, as previously documented. Line 2
+  statically imports `@preact/preset-vite`, which is absent from
+  `web/package.json`; the `try`/`catch` around `preact()` cannot recover an
+  unresolved static import. No lockfile is tracked. Still non-shipping.
+- **`MANIFEST.md` status is stale.** It states the code "has never been compiled
+  or run by its author", which the 2026-08-17 VM results and this session's
+  passing vet/test contradict.
+- No rate limiting, connection capping, or throttling exists anywhere in the
+  tree. No manual IP allow/deny list exists — only the AI may add a block. No
+  block page, request-correlation ID, or GeoIP/ASN support exists.
+
+### Owner decisions on 2026-08-21
+The owner reviewed five candidate features and approved four. Recorded here so a
+later session does not relitigate them.
+
+1. **Approved — trusted-proxy client IP + L7 abuse control.** Scope named
+   honestly: this is **not** DDoS mitigation. Volumetric L3/L4 attacks cannot be
+   answered inside this process and belong to the ISP, a scrubbing provider, or
+   an upstream firewall; the product should not claim otherwise, consistent with
+   its existing refusal to fake VIP failover. What is in scope is application-
+   layer abuse where each request is cheap to send and expensive to serve:
+   credential stuffing and brute force, scraping, and API abuse.
+2. **Approved — manual IP allow/deny lists**, CIDR-aware, allow wins over deny,
+   global or per-site, optional TTL, reusing the AI blocklist enforcement path.
+   GeoIP/ASN filtering is a later increment, not part of the first delivery.
+3. **Approved — custom block page plus request correlation ID**, stamped onto
+   the match record, access log, and syslog event so a user-reported block can
+   be traced to the rule that caused it.
+4. **Approved — persistence for security state.** The AI blocklist, learner
+   aggregates, notification queue, sessions, and audit ring are in-memory and
+   are discarded on every restart and upgrade. `sitemap_persist.go` is the
+   existing pattern to follow.
+5. **Declined — response-side DLP.** Outbound PHI/PII pattern matching was
+   considered and rejected by the owner for now. Do not implement it without a
+   new decision.
+
+### Recommended next step
+Implement item 1 as a single change, in this order:
+
+1. Promote trusted-proxy handling to global configuration and resolve one
+   authoritative client address per request. Apply it to the Coraza connection
+   address, `ip_hash`, the access ring, syslog, and the learner. Fold `ai.go`'s
+   per-connector `TrustedProxyCIDRs` into the global setting, preserving its
+   existing behaviour and tests. Default with no trusted proxies configured must
+   remain today's behaviour: use `RemoteAddr`.
+2. Add the limiter in the handler chain ahead of the WAF, keyed on the resolved
+   address: token bucket with per-site defaults and per-page overrides on
+   `PagePolicy`, action configurable as 429 or a time-boxed block through the
+   existing blocklist. Add per-IP concurrent connection caps and a TLS handshake
+   rate cap in the same pass. Slowloris already has coverage through
+   `read_timeout_sec`/`idle_timeout_sec`.
+3. Surface it in the shipping console (`static/admin.html`): limits in the
+   page-policy editor, live counters, and notification-bell events on trip.
+4. Have discovery suggest limits for authentication endpoints, reusing the
+   established learn → suggest → review → apply flow. Nothing auto-applies.
+
+**Constraint carried into implementation:** the limiter is the first component
+to sit in the request hot path. Every other subsystem here — AI, syslog,
+learner, notifications — is asynchronous and fail-open by deliberate design.
+Preserve that discipline: sharded counters, no global lock, and fail-open on any
+internal limiter error. Ship the hot-path tests with the feature.
+
+### Deferred, still open
+- The integration coverage described in the earlier next-steps list is
+  unchanged and still outstanding: admin authentication/RBAC, draft-versus-Apply
+  semantics, listener reconciliation over real sockets, WAF blocking, pool
+  failover, and drain. Much of it runs in a container without systemd; only
+  systemd behaviour, managed-IP assignment, privileged ports, the two-NIC setup,
+  and the real-login hybrid-discovery check require the Linux VM.
+- `web/` remains experimental and non-shipping; the config defect and missing
+  lockfile were not fixed in this session.
+- `MANIFEST.md`'s stale status line was not corrected in this session.
