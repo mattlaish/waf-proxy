@@ -379,7 +379,7 @@ curl -sk 'https://waf-box/?q=<script>alert(1)</script>' -H 'Host: blog.example.c
 
 The build gate (`./build.sh`) runs `go mod tidy`, `go vet`, and `go test`. The
 checks below go further and are what a release should be held to. Results shown
-are from the 2026-08-21 scan of commit `aac312f`.
+are from the 2026-08-21 scan of commit `49489fb`.
 
 ### Static analysis
 

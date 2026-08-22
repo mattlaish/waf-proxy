@@ -13,7 +13,8 @@ with the required toolchains and Linux runtime dependencies.
 
 ## Repository State
 - Branch: `main`, tracking `origin/main`.
-- HEAD at this handoff: `8d9c003` (`Implement hybrid form discovery`).
+- HEAD at this handoff: `edc8c15` (`Implement hybrid form discovery`); this was `8d9c003` before the
+  2026-08-21 author-identity history rewrite.
 - The current intended uncommitted source changes add per-field custom allow
   patterns, Windows update portability, config/pool/runtime coverage, explicit
   experimental frontend labeling, documentation, and this handoff update.
@@ -367,7 +368,7 @@ internal limiter error. Ship the hot-path tests with the feature.
 
 ## Static and Dynamic Scan on 2026-08-21
 
-Run against commit `aac312f` on branch `claude/test-e5j6pr` in the Claude Code
+Run against commit `49489fb` on branch `claude/test-e5j6pr` in the Claude Code
 cloud container (Go 1.24.7). **No application source was changed.** All scan
 scaffolding was created outside the repository; `git status` was clean
 afterwards and `go mod verify` reported all modules verified.
