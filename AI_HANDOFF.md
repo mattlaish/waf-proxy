@@ -7,7 +7,34 @@ WAF Proxy
 - `patch.md` is the required current-patch handover and manual version-control
   ledger. Every future source/schema/UI/test/build change must update both this
   handoff and `patch.md`.
+## AI Git Workflow
 
+AI may perform normal Git operations:
+
+- `git pull`
+- `git add`
+- `git commit`
+- `git push`
+
+Before pushing:
+
+- Run relevant tests and validation checks.
+- Update `AI_HANDOFF.md` with completed work, verification results, and next recommended steps.
+- Review `git diff` and `git status`.
+- Ensure no secrets, credentials, generated binaries, temporary files, or unrelated changes are included.
+
+Never:
+
+- Force push.
+- Rewrite history unless explicitly approved.
+- Delete branches or change remotes without approval.
+
+## Multi-Agent Coordination
+
+- GitHub is the source of truth.
+- Before starting work, synchronize with the latest repository state.
+- Do not assume another AI agent's uncommitted local changes exist.
+- Do not modify the same repository concurrently with another AI agent unless the work is isolated by branch.
 ## Objective
 Continue development and improvement of the WAF proxy without making major
 architectural changes until the imported baseline has been verified on a host
