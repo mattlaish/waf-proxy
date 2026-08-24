@@ -1,36 +1,31 @@
-# AI Development Instructions
-
-## Before starting work
-- Read this file.
-- Read AI_HANDOFF.md.
-- Inspect git status and recent commits.
-- Review relevant existing code before modifying it.
-- Do not redo completed work unless necessary.
-
-## Development rules
-- Keep changes focused.
-- Preserve existing functionality unless explicitly changing it.
-- Follow the existing project architecture and coding conventions.
-- Consider security implications of all changes.
-- Never commit credentials, API keys, private keys, or production secrets.
-- Run relevant tests after changes.
-
-## Handoff rules
-Before handing development to another AI:
-- Update AI_HANDOFF.md.
-- Update patch.md as the current patch/version-control ledger.
-- Record what was completed.
-- Record what remains unfinished.
-- Record important technical decisions.
-- Record known bugs or failed approaches.
-- Record relevant test/build results.
-- Identify the recommended next step.
-
-`patch.md` must be updated for every source/schema/UI/test/build change. It must
-include intended files, excluded local artifacts, validation evidence, known
-limitations, security decisions, and the exact next slice.
-
 ## Git
+
+AI is allowed to perform normal Git operations:
+
+- git pull
+- git add
+- git commit
+- git push
+
+Before starting work:
+
+- Synchronize with the latest repository state.
+- Inspect git status and recent commits.
+- Confirm the current branch and remote repository.
+- Treat GitHub as the source of truth.
+
+Before pushing:
+
+- Run relevant tests and validation checks.
+- Update AI_HANDOFF.md with completed work, verification results, and next recommended step.
+- Review git diff and git status.
+- Ensure no unrelated files, secrets, credentials, generated binaries, or temporary files are included.
+
+Rules:
+
 - Prefer small meaningful commits.
 - Do not overwrite unrelated changes.
 - Do not force-push unless explicitly instructed.
+- Do not rewrite history without approval.
+- Do not delete branches or modify remotes without approval.
+- Do not push another AI agent's unreviewed local work.
