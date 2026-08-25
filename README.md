@@ -406,3 +406,114 @@ curl -sk https://waf-box/ -H 'Host: blog.example.com' -o /dev/null -w '%{http_co
 # kill web2, confirm the monitor marks it down and traffic shifts to web1
 curl -sk 'https://waf-box/?q=<script>alert(1)</script>' -H 'Host: blog.example.com'  # matches feed
 ```
+## Security scanning & verification
+
+The build gate (`./build.sh`) runs `go mod tidy`, `go vet`, and `go test`. The
+checks below go further and are what a release should be held to. Results shown
+are from the 2026-08-21 scan of the pre-PKI tree and the 2026-08-24 scan of `76ee868`.
+
+### Static analysis
+
+```bash
+go vet ./...                                   # clean
+gofmt -l .                                     # style only; see note below
+staticcheck ./...                              # honnef.co/go/tools/cmd/staticcheck
+golangci-lint run ./...
+gosec -severity=low -confidence=low ./...      # github.com/securego/gosec/v2
+go mod verify                                  # all modules verified
+bash -n *.sh                                   # all six scripts parse
+node --check <inline JS from static/admin.html>
+```
+
+`go vet` is clean. `staticcheck` reports two unused functions
+(`ipmanage.go:282`, `profiles.go:410`). `golangci-lint` adds 17 unchecked-error
+findings, all `Close()`/`Remove()` in cleanup paths. `gofmt -l` lists ten files
+because the codebase uses a deliberately compact single-line style; this is
+cosmetic and is not enforced by the build.
+
+**gosec triaged baseline — 27 findings, 8 rated HIGH, none exploitable.** Do not
+"fix" these without reading the code first:
+
+| Rule | Location | Why it is not a defect |
+|---|---|---|
+| G115 ×3 | `pool.go:95`, `pool.go:107`, `users.go:101` | Conversions on a guarded non-empty slice length, a modulo result provably below its divisor, and the PBKDF2 block counter. None can overflow. |
+| G404 ×2 | `pool.go:97`, `ai.go:501` | `math/rand` chooses a random pool member and the AI sample rate. Neither is a security decision. |
+| G402 | `syslog.go:171` | This is the documented `tls_skip_verify` option for private-CA/self-signed SIEM collectors. Accepted risk, operator-selected. |
+| G702 / G703 | `internal/sigupdate` | Taint warnings on the update path-safety logic that the package's own tests already cover. |
+| G204 | `ipmanage.go:297` | `exec.Command("ip", …)` runs without a shell; the address passes `net.ParseIP` and the interface is resolved against `net.Interfaces()`. |
+
+**Dependency vulnerability scanning is not covered by the above.** `go mod
+verify` proves only that modules match their recorded checksums. Run
+
+```bash
+govulncheck ./...
+```
+
+on a host that can reach `vuln.go.dev`; it needs that service and fails closed
+where egress is restricted. Treat a release as unscanned until this passes.
+
+### Dynamic analysis
+
+Build with the race detector and exercise the running proxy rather than only
+its unit tests:
+
+```bash
+go test -race -count=1 ./...
+go build -race -o /tmp/waf-proxy-race .
+GORACE="halt_on_error=0 log_path=/tmp/race" WAF_ADMIN_TOKEN=… \
+  /tmp/waf-proxy-race -config /tmp/test-config.json -admin 127.0.0.1:19090
+```
+
+Point the site at a throwaway backend on a loopback address **other than** the
+admin address — the startup check refuses to run the console and a data-plane
+listener on the same IP, and that refusal is itself worth confirming.
+
+Verified behaviours, all passing:
+
+- **No data races or panics** under ~1,440 concurrent requests across 8 workers
+  while five live config Applies swapped the runtime mid-traffic.
+- **Admin API** returns 401 unauthenticated and with a wrong token on
+  `/api/config`, `/api/users`, `/api/audit`, and `/api/ai/blocklist`.
+- **Signed update fails safe**: `/api/update/status` returns 404 when no
+  publisher key is compiled in.
+- **Host routing**: 421 for an undeclared Host and for a missing Host header.
+- **WAF enforcement**: SQLi and XSS blocked in both query string and POST body.
+- **Draft versus Apply**: a draft save leaves the live runtime untouched, and a
+  hostname that exists only in the draft does not serve traffic.
+- **Graceful drain**: `SIGTERM` holds `/healthz` at 503 for `WAF_DRAIN_SECONDS`
+  before listeners close, then exits cleanly.
+- **Request smuggling (CL.TE)**: no desync. The pipelined request appears in the
+  WAF's own access log, so it is inspected rather than tunnelled past.
+- **Header/URL/method abuse**: oversized headers and URLs, null bytes, CRLF
+  injection attempts, and unknown methods are handled without error.
+- **X-Forwarded-For spoofing is neutralised**: client-supplied `X-Forwarded-For`
+  and `X-Real-IP` are replaced before the request reaches the backend.
+
+> **Corollary worth knowing before deployment.** Because inbound
+> `X-Forwarded-For` is replaced rather than appended, the address the backend
+> receives — and the one used for `ip_hash`, the access log, syslog, and the
+> learner's distinct-client signal — is always the immediate TCP peer. Deploy
+> this at the edge and that is correct. Deploy it behind a CDN or another load
+> balancer and every one of those consumers sees the upstream proxy instead of
+> the real client. Nothing errors; the data is just wrong.
+
+### Fuzzing the certificate parsers
+
+`pki.go` parses operator-supplied CA bundles and CRLs, which is the largest
+untrusted-input surface in the tree. Fuzz targets for `parseCRLFile`,
+`appendCABundle`, and `validateBackendServerName` were run for the 2026-08-24
+scan — roughly 488,000 executions in total, with no crash, panic, or hang. The
+targets are not committed; recreate them as `FuzzX` functions in `package main`
+and run:
+
+```bash
+go test -run=XXX -fuzz=FuzzParseCRLFile -fuzztime=40s .
+```
+
+Making these permanent is cheap and worthwhile: they cover the code paths that
+consume bytes the proxy did not produce.
+
+When scanning with a reduced ruleset instead of full CRS, remember that CRS
+supplies the transformations: a rule written as `@contains ../` will miss
+`%2e%2e%2f` without `t:urlDecodeUni`. A miss under a hand-written test ruleset
+is usually the ruleset, not the engine.
