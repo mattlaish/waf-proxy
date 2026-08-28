@@ -358,3 +358,364 @@ with the required toolchains and Linux runtime dependencies.
   `E0AC425D40250AB0AED46BDBFE23BA4C180B366FEF3C322C3026B7D7AC988A03`.
 - Next PKI slice: SSRF-safe URL downloader, refresh deduplication/scheduling,
   atomic last-known-good swap, `/api/pki/status`, manual refresh, RBAC, and audit.
+## Feature Roadmap Review on 2026-08-21
+
+Session type: Claude Code Web/cloud, branch `claude/test-e5j6pr`. This was a
+read-and-review session. **No application source, configuration, or frontend
+files were changed.** The only modified file is this handoff.
+
+### Verification performed this session
+- Container toolchain: Go 1.24.7 (linux/amd64), Node v22.22.2, module proxy
+  reachable. Note `go.mod` still declares `go 1.22.0`; 1.24.7 builds it cleanly.
+- `go vet ./...` — PASS.
+- `go test ./...` — PASS (`ok waf-proxy`, `ok waf-proxy/internal/sigupdate`).
+- No systemd, no `CAP_NET_ADMIN`, and no privileged ports in this container, so
+  the deployed-VM items in the earlier next-steps list remain unverified here.
+
+### Findings confirmed by code inspection
+- **Client IP is the TCP peer everywhere except the AI path.** `clientIP()`
+  (`main.go:1375`) returns `RemoteAddr` only. It feeds `ip_hash` member
+  selection (`main.go:1336`), the access ring (`main.go:1005`), syslog
+  forwarding (`main.go:1010`), and the backend error log (`main.go:1355`); the
+  Coraza engine likewise sees `RemoteAddr` through `txhttp.WrapHandler`
+  (`main.go:865`). Only `ai.go` resolves a real client address, via its own
+  `TrustedProxyCIDRs` (`ai.go:73`, chain walk at `ai.go:510`).
+  Consequence behind any CDN, upstream load balancer, or SNAT device: `ip_hash`
+  collapses onto one member, the learner's distinct-client signal — the basis of
+  its false-positive-versus-attack discrimination — degrades to a single client,
+  and every log/SIEM record names the upstream instead of the origin. Nothing
+  errors; the results are silently wrong. Treated below as a prerequisite, not
+  as an isolated defect.
+- **`web/vite.config.js` cannot build**, as previously documented. Line 2
+  statically imports `@preact/preset-vite`, which is absent from
+  `web/package.json`; the `try`/`catch` around `preact()` cannot recover an
+  unresolved static import. No lockfile is tracked. Still non-shipping.
+- **`MANIFEST.md` status is stale.** It states the code "has never been compiled
+  or run by its author", which the 2026-08-17 VM results and this session's
+  passing vet/test contradict.
+- No rate limiting, connection capping, or throttling exists anywhere in the
+  tree. No manual IP allow/deny list exists — only the AI may add a block. No
+  block page, request-correlation ID, or GeoIP/ASN support exists.
+
+### Owner decisions on 2026-08-21
+The owner reviewed five candidate features and approved four. Recorded here so a
+later session does not relitigate them.
+
+1. **Approved — trusted-proxy client IP + L7 abuse control.** Scope named
+   honestly: this is **not** DDoS mitigation. Volumetric L3/L4 attacks cannot be
+   answered inside this process and belong to the ISP, a scrubbing provider, or
+   an upstream firewall; the product should not claim otherwise, consistent with
+   its existing refusal to fake VIP failover. What is in scope is application-
+   layer abuse where each request is cheap to send and expensive to serve:
+   credential stuffing and brute force, scraping, and API abuse.
+2. **Approved — manual IP allow/deny lists**, CIDR-aware, allow wins over deny,
+   global or per-site, optional TTL, reusing the AI blocklist enforcement path.
+   GeoIP/ASN filtering is a later increment, not part of the first delivery.
+3. **Approved — custom block page plus request correlation ID**, stamped onto
+   the match record, access log, and syslog event so a user-reported block can
+   be traced to the rule that caused it.
+4. **Approved — persistence for security state.** The AI blocklist, learner
+   aggregates, notification queue, sessions, and audit ring are in-memory and
+   are discarded on every restart and upgrade. `sitemap_persist.go` is the
+   existing pattern to follow.
+5. **Declined — response-side DLP.** Outbound PHI/PII pattern matching was
+   considered and rejected by the owner for now. Do not implement it without a
+   new decision.
+
+### Recommended next step
+Implement item 1 as a single change, in this order:
+
+1. Promote trusted-proxy handling to global configuration and resolve one
+   authoritative client address per request. Apply it to the Coraza connection
+   address, `ip_hash`, the access ring, syslog, and the learner. Fold `ai.go`'s
+   per-connector `TrustedProxyCIDRs` into the global setting, preserving its
+   existing behaviour and tests. Default with no trusted proxies configured must
+   remain today's behaviour: use `RemoteAddr`.
+2. Add the limiter in the handler chain ahead of the WAF, keyed on the resolved
+   address: token bucket with per-site defaults and per-page overrides on
+   `PagePolicy`, action configurable as 429 or a time-boxed block through the
+   existing blocklist. Add per-IP concurrent connection caps and a TLS handshake
+   rate cap in the same pass. Slowloris already has coverage through
+   `read_timeout_sec`/`idle_timeout_sec`.
+3. Surface it in the shipping console (`static/admin.html`): limits in the
+   page-policy editor, live counters, and notification-bell events on trip.
+4. Have discovery suggest limits for authentication endpoints, reusing the
+   established learn → suggest → review → apply flow. Nothing auto-applies.
+
+**Constraint carried into implementation:** the limiter is the first component
+to sit in the request hot path. Every other subsystem here — AI, syslog,
+learner, notifications — is asynchronous and fail-open by deliberate design.
+Preserve that discipline: sharded counters, no global lock, and fail-open on any
+internal limiter error. Ship the hot-path tests with the feature.
+
+### Deferred, still open
+- The integration coverage described in the earlier next-steps list is
+  unchanged and still outstanding: admin authentication/RBAC, draft-versus-Apply
+  semantics, listener reconciliation over real sockets, WAF blocking, pool
+  failover, and drain. Much of it runs in a container without systemd; only
+  systemd behaviour, managed-IP assignment, privileged ports, the two-NIC setup,
+  and the real-login hybrid-discovery check require the Linux VM.
+- `web/` remains experimental and non-shipping; the config defect and missing
+  lockfile were not fixed in this session.
+- `MANIFEST.md`'s stale status line was not corrected in this session.
+
+## Static and Dynamic Scan on 2026-08-21
+
+Run against the pre-PKI tree on branch `claude/test-e5j6pr` in the Claude Code
+cloud container (Go 1.24.7). **No application source was changed.** All scan
+scaffolding was created outside the repository; `git status` was clean
+afterwards and `go mod verify` reported all modules verified.
+
+### Tools installed and run
+`staticcheck`, `gosec`, and `govulncheck` were installed via `go install`;
+`golangci-lint` was already present. `semgrep`, `shellcheck`, and `nuclei` were
+not available and were not used.
+
+### Static results
+- `go vet ./...` — clean.
+- `staticcheck ./...` — 2 findings, both unused functions (see below).
+- `golangci-lint run ./...` — 20 findings: 17 `errcheck` on `Close()`/`Remove()`
+  in cleanup paths, 1 De Morgan style suggestion (`main.go:1309`), 2 unused.
+- `gosec -severity=low -confidence=low ./...` — 27 findings over 21 files and
+  8,532 lines: 8 HIGH, 11 MEDIUM, 7 LOW (1 additional low-confidence entry).
+- `gofmt -l .` — 10 files, all consistent with the project's compact style.
+- `bash -n` — all six shipped scripts parse.
+- `node --check` on the 83,446 bytes of inline JavaScript extracted from
+  `static/admin.html` — parses.
+- Secret scan for private keys and provider token patterns — nothing found.
+- `go mod verify` — all modules verified.
+
+**Every gosec HIGH was triaged against the source and none is exploitable.** The
+triage table is now recorded in README.md under "Security scanning &
+verification" so future sessions do not re-litigate it: G115 ×3 are conversions
+that cannot overflow, G404 ×2 are non-security uses of `math/rand`, G402 is the
+documented `tls_skip_verify` syslog option, G702/G703 flag the sigupdate
+path-safety logic its own tests already cover, and G204 is a shell-less
+`exec.Command` whose arguments are validated by `net.ParseIP` and
+`net.Interfaces()`.
+
+### Static findings worth acting on
+- `ipManager.releaseAll` (`ipmanage.go:282`) is unreachable, and its doc comment
+  claims it is "called on shutdown". The drain test confirms shutdown never
+  releases managed addresses. This matches README's statement that managed IPs
+  survive routine restarts, so the behaviour is presumed intentional and **the
+  comment is stale**. It is nevertheless dead code in a `CAP_NET_ADMIN` path;
+  either wire it up or correct the comment, and say which was intended.
+- `signalStore.get` (`profiles.go:410`) is unused dead code.
+
+### Dynamic results
+A race-instrumented binary was run live against a throwaway backend on a
+separate loopback address, using a minimal SecLang ruleset (no CRS available in
+the container). All of the following passed:
+
+- **No data races and no panics** under roughly 1,440 concurrent requests across
+  8 workers while five live config Applies swapped the runtime mid-traffic.
+  `go test -race -count=1 ./...` also clean. This is the first direct evidence
+  that the atomic runtime swap is safe under concurrent load.
+- The **management/data-plane separation check** refused startup when the admin
+  IP collided with a data-plane listener — verified working, not merely present.
+- **Admin authentication**: 401 unauthenticated and with a wrong token across
+  `/api/config`, `/api/users`, `/api/audit`, `/api/ai/blocklist`; 200 with the
+  correct token.
+- **Signed update fails safe**: `/api/update/status` returned 404 with no
+  publisher key compiled in.
+- **Host routing**: 421 for an undeclared Host and for a missing Host header.
+- **WAF enforcement**: SQLi and XSS blocked (403) in query string and POST body;
+  benign traffic passed.
+- **Draft versus Apply**: draft save returned 200, the live runtime kept serving
+  the previous hostname, and the draft-only hostname correctly did not serve.
+- **Graceful drain**: `SIGTERM` held `/healthz` at 503 for exactly three seconds
+  before listeners closed, logging "stopped cleanly".
+- **Request smuggling (CL.TE)**: no desync. The pipelined request appeared in the
+  WAF's own access ring, proving it was inspected rather than tunnelled.
+- **Protocol abuse**: 8 KB header, 16 KB URL, null bytes, CRLF injection, and an
+  unknown method were all handled without error.
+
+### Dynamic evidence for the client-IP finding
+A request carrying `X-Forwarded-For: 9.9.9.9` and `X-Real-IP: 8.8.8.8` reached
+the backend with both headers rewritten to `127.0.0.1`, the TCP peer. Inbound
+XFF is therefore replaced, not appended. Spoofing is correctly neutralised, and
+the same mechanism means that behind a CDN or upstream load balancer the backend
+also loses the true client address, not only `ip_hash`, the access log, syslog,
+and the learner. This is stronger evidence than the earlier code reading and
+raises the priority of the trusted-proxy work recorded in the roadmap section
+above.
+
+### Open item: dependency vulnerability scan did not run
+`govulncheck ./...` **failed**: the container's network policy answers 403 to
+`CONNECT vuln.go.dev:443`, so the vulnerability database could not be fetched.
+No CVE cross-check has been performed against the dependency tree (Coraza
+v3.3.2, libinjection-go v0.2.2, gjson v1.18.0, `golang.org/x/net` v0.34.0 and
+the rest). `go mod verify` passing proves checksum integrity only. **Run
+`govulncheck ./...` on a host with access to `vuln.go.dev` and treat the release
+as unscanned until it passes.**
+
+### Scan coverage limits
+Not exercised in this environment: TLS and SNI paths (no certificates), HA,
+AI analysis (disabled), managed-IP assignment, systemd behaviour, and privileged
+ports. One probe initially looked like a WAF miss — encoded `%2e%2e%2f`
+returning 200 — but the cause was the hand-written test rule lacking
+`t:urlDecodeUni`, not an engine defect. Recorded so it is not logged as a bug.
+
+## PKI Scan and Rebase on 2026-08-24
+
+The two sections above were written against the pre-PKI tree and are retained
+as the record of that session. They are still accurate on this commit: `clientIP`
+(`main.go:1388`) continues to return the TCP peer, trusted-proxy resolution
+remains confined to `ai.go`, and no rate limiting exists. The approved roadmap
+therefore stands unchanged.
+
+One claim in them is now out of date and is corrected here: automated coverage
+is no longer narrow across the board. The suite has grown from 20 tests to **43**,
+and mTLS/CRL is now the best-covered subsystem in the project.
+
+### Verification of the PKI slices on this commit
+- `go build ./...`, `go vet ./...` — clean.
+- `go test ./...` — PASS (`waf-proxy`, `internal/sigupdate`).
+- `go test -race -count=1 ./...` — PASS, no data races.
+- The six static-CRL tests pass, covering revoked and valid serials, soft versus
+  hard behaviour on missing coverage, wrong-issuer signatures, expired, future
+  and malformed CRLs, leaf plus intermediate checking, and DER parsing.
+
+### Static analysis of the PKI code
+- `gosec` reports one finding in `pki.go`: G304 at `readPKIFile` (`pki.go:123`),
+  opening an operator-supplied path. Reading operator-specified CA and CRL files
+  is the function's purpose; same class as the pre-existing G304 findings.
+- `staticcheck` reports SA1019 at `pki.go:256`: `RevocationList.RevokedCertificates`
+  is deprecated since Go 1.21. The code deliberately checks both that field and
+  `RevokedCertificateEntries`, which is the safe combination; the warning is
+  expected, but it will need removing when the field is eventually deleted.
+- `ipManager.releaseAll` and `signalStore.get` remain unused on this commit.
+
+### Fuzzing of the untrusted-input parsers
+Temporary fuzz targets were written for the parsers that consume attacker- or
+operator-supplied bytes, run, and then removed; they are not part of the tree.
+
+- `parseCRLFile` — 47,882 executions, 25 corpus entries, no crash.
+- `appendCABundle` — 19,951 executions, 32 corpus entries, no crash.
+- `validateBackendServerName` — 419,801 executions, 105 corpus entries, no crash.
+
+No panics, hangs, or crash corpus were produced. Worth making permanent: these
+targets are cheap and cover the highest-risk parsing surface in the codebase.
+
+### Review observations on pki.go, none security-critical
+- `crlStore.verify` returns after processing the first verified chain, so only
+  `VerifiedChains[0]` is checked. Go orders that chain first, so this is
+  defensible, but the `return nil` inside the loop makes it read as if all chains
+  are checked when only one is.
+- `appendCABundle` calls `strings.TrimSpace(string(rest))` each iteration, which
+  copies the remaining bundle every time; `parseCRLFile` uses `bytes.TrimSpace`
+  on the same pattern and does not. Load-time only and bounded by the 8 MiB cap,
+  so this is a consistency cleanup rather than a defect.
+- `validateBackendServerName` compiles its regular expression on every call
+  instead of once at package level.
+- Bounds are sound throughout: 8 MiB per file, 32 CA files, 32 CRL lists, five
+  minutes of clock skew enforced in both directions, and TLS 1.2 as the floor.
+  No `InsecureSkipVerify` anywhere in this code.
+
+### Branch state
+`claude/test-e5j6pr` has twice been rebuilt on the current `main` rather than
+rebased commit-by-commit, because this handoff was restructured underneath it
+each time. The three review and scan sections are re-applied to the current
+documents on each rebuild rather than merged mechanically; treat the newest
+copy of this file on `main` as authoritative for structure, and these sections
+as the record of what was reviewed, decided, and verified.
+
+The matching `## Security scanning & verification` section in README.md is the
+operator-facing half of the 2026-08-21 and 2026-08-24 scans and carries the
+gosec triage table those scans refer to. Keep the two together; the scan record
+above cites that table by name.
+
+Note for later sessions: `AGENTS.md` and the AI Git Workflow section above now
+grant normal Git operations, which the earlier sections predate. The rules that
+remain are no force-push, no history rewrite without approval, and no branch or
+remote changes without approval.
+
+**Still open:** `govulncheck` has never run against this dependency tree; the
+container blocks `vuln.go.dev`. The PKI slices add no new modules, so the gap is
+unchanged in scope but now also covers untested certificate-handling paths.
+
+## Candidate: Field-Scoped Learner Suggestions on 2026-08-24
+
+**Status: candidate, not approved.** This is a fifth item proposed after the four
+approved on 2026-08-21 and is recorded here for a decision before any build. Do
+not start it on the strength of this section alone.
+
+### The requirement
+Page policies scope by path, so the finest automatic unit today is "exclude rule
+942100 on `/login`". The operator need is finer: a password field may legitimately
+contain a quote while a comment field on the same path must stay fully inspected.
+The correct unit is therefore **path plus field name**, not path alone. True
+per-form scoping is not achievable at the HTTP layer — two forms POSTing to one
+URL are indistinguishable unless their field names differ — so field name is both
+the practical and the correct key.
+
+### Already built; do not rebuild
+A prior analysis concluded this capability was merely "underexposed". That
+understates the current state. Verified on this commit:
+
+- The engine emits per-field removal in three places: `PagePolicy.ExcludeTargets`
+  at `main.go:1114`, per-field `FieldPolicy` exclusions at `main.go:1119`, and
+  policy-level exclusions at `main.go:1264` (global `SecRuleUpdateTargetById`
+  or path-gated `ctl:ruleRemoveTargetById`).
+- `PageExcludeTarget{RuleID, Target}` exists at `main.go:104`, wired into
+  `PagePolicy.ExcludeTargets` at `main.go:134`.
+- `FieldPolicy` (`main.go:109`) already carries `Name`, `Source`, `Profile`,
+  `AllowPattern`, `Required`, `MinLength`, `MaxLength`, and `ExcludeRuleIDs`,
+  with a per-field editor in `static/admin.html` and coverage in
+  `fieldpolicy_test.go` proving `user_id` and `password` compile to different
+  directives on the same form.
+
+**An operator can already achieve the stated goal through the console today.**
+The gap is not enforcement and not the UI for hand-authored policy.
+
+### The actual gap
+The learner cannot *suggest* a field-scoped exclusion, because it never records
+which field tripped a rule:
+
+- `matchRec` (`admin.go:31`) carries Time, Site, RuleID, Severity, Phase, Client,
+  URI, Msg, and Data. There is no matched-variable field.
+- The WAF error callback (`main.go:1038`) reads `rule.Rule().ID()`, `Severity()`,
+  `Phase()`, `ClientIPAddress()`, `URI()`, `Message()`, and `Data()`. `Data()` is
+  the matched *value*, not the variable name; the variable is discarded.
+- `ruleAgg` (`learn.go:31`) aggregates count, clients, and severity only, and
+  `noteMatch(site, uri, ruleID, client, severity)` (`learn.go:101`) has no field
+  parameter.
+- `pageRecommendation.SuggestExcl` (`learn.go:142`) is `[]int` — rule IDs alone.
+- `handleLearnApply` (`admin.go:658`) accepts `RuleIDs []int` and writes
+  whole-rule, path-scoped exclusions.
+
+### The API needed is available
+Coraza exposes `types.MatchedRule.MatchedDatas() []MatchData`
+(`types/rule_match.go:43`), and `MatchData` exposes `Variable()`, `Key()`, and
+`Value()` (`types/rule_match.go:10`). `Key()` is the argument name. The callback
+already holds the `MatchedRule`, so the data is one method call away.
+
+### Implementation sketch
+1. Capture the matched variable and key in the WAF callback; add a field to
+   `matchRec`. Record the name only, never the value — the same rule the hybrid
+   discovery work follows.
+2. Thread it through `noteMatch` and key `ruleAgg` by rule plus field.
+3. Change `SuggestExcl` to carry rule/target pairs rather than bare rule IDs, and
+   propose `ruleRemoveTargetById=RULE;ARGS:field` when a rule fires repeatedly on
+   one field from many distinct clients.
+4. Extend `handleLearnApply` to write `ExcludeTargets` instead of whole-rule
+   exclusions, and surface the rule/field pair in the Site Map and the bell.
+
+### Security caveat, and why this must stay review-gated
+Excluding a rule on a field is a real security decision. `ARGS:password
+!942100` is correct for a value that is hashed and never concatenated into SQL,
+and wrong for any field that reaches a query. Suggestions must remain
+human-reviewed with no auto-apply, consistent with every other learner
+suggestion in this product.
+
+### Dependency worth noting
+The learner's false-positive-versus-attack discrimination rests on counting
+distinct clients, which is degraded by the client-IP defect recorded in the
+2026-08-21 roadmap section. Field-scoped suggestions inherit that weakness, so
+the trusted-proxy work should land first or the suggestions will be keyed on
+unreliable client counts.
+
+### Decision needed
+Approve as a fifth roadmap item, defer behind the four approved on 2026-08-21,
+or decline. Until then this section is a record of investigation only.

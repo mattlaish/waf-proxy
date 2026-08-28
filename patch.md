@@ -150,6 +150,21 @@ for version control.
 - TLS key-provider abstraction.
 - PKCS#11 HSM provider and SoftHSM integration tests.
 - Deployed Linux VM smoke tests for the new backend CA/CRL paths.
+- No rate limiting, connection capping, or L7 abuse control anywhere in the tree.
+- Client IP is the TCP peer everywhere except `ai.go`: `clientIP` (`main.go:1388`)
+  returns `RemoteAddr`, so `ip_hash`, the access log, syslog, and the learner's
+  distinct-client signal are wrong behind a CDN, upstream load balancer, or SNAT.
+- No manual IP allow/deny list; only the AI may add a block.
+- No custom block page and no request correlation ID, so a user-reported block
+  cannot be traced to the rule that caused it.
+- Security state is not persisted: AI blocklist, learner aggregates, notification
+  queue, sessions, and the audit ring reset on every restart.
+- The learner cannot suggest field-scoped rule exclusions. The matched variable is
+  discarded in the WAF callback (`main.go:1038`), so it never reaches `ruleAgg`
+  (`learn.go:31`) or `SuggestExcl` (`learn.go:142`). Enforcement is unaffected —
+  `FieldPolicy` and `PagePolicy.ExcludeTargets` already emit per-field removals.
+- `govulncheck` has never been run against the dependency tree; the cloud
+  container blocks `vuln.go.dev`. Checksum integrity is verified, CVEs are not.
 
 ## Next Slice
 
@@ -166,6 +181,41 @@ PKI Slice 3:
 
 Do not begin PKCS#11 dependency work before the key-provider abstraction and
 CGO/static-build tradeoff are reviewed explicitly.
+
+## Reviewed Backlog (not scheduled)
+
+Recorded so the decisions are not relitigated. Full reasoning, evidence, and
+file references are in `AI_HANDOFF.md`; this list is the ledger's index of them.
+None of these displace the Next Slice above, which remains PKI Slice 3.
+
+Approved by the owner on 2026-08-21, in priority order:
+
+1. Trusted-proxy client-IP resolution, then L7 abuse control (rate limiting,
+   per-IP connection caps, TLS handshake cap). Scoped explicitly as
+   application-layer abuse, **not** volumetric DDoS, which belongs upstream.
+   The client-IP half is a prerequisite: limiting on the wrong address would
+   throttle the CDN rather than the attacker.
+2. Manual IP allow/deny lists, CIDR-aware, allow winning over deny, optional
+   TTL, reusing the AI blocklist enforcement path. GeoIP/ASN is a later
+   increment.
+3. Custom block page plus request correlation ID, stamped onto the match
+   record, access log, and syslog event.
+4. Persistence for security state, following the `sitemap_persist.go` pattern.
+
+Declined on 2026-08-21:
+
+- Response-side DLP (outbound PHI/PII pattern matching). Do not implement
+  without a new decision.
+
+Candidate, undecided, added 2026-08-24:
+
+- Field-scoped learner suggestions: capture the matched variable so the learner
+  can propose `ruleRemoveTargetById=RULE;ARGS:field` instead of whole-rule,
+  path-scoped exclusions. Sequencing note: the learner's false-positive-versus-
+  attack heuristic counts distinct clients, so item 1 should land first or the
+  suggestions will key on unreliable counts. Must stay human-reviewed — excluding
+  a rule on a field is correct for a hashed password and wrong for any field
+  reaching a query.
 
 ## Required Update Procedure
 
