@@ -634,3 +634,88 @@ remote changes without approval.
 **Still open:** `govulncheck` has never run against this dependency tree; the
 container blocks `vuln.go.dev`. The PKI slices add no new modules, so the gap is
 unchanged in scope but now also covers untested certificate-handling paths.
+
+## Candidate: Field-Scoped Learner Suggestions on 2026-08-24
+
+**Status: candidate, not approved.** This is a fifth item proposed after the four
+approved on 2026-08-21 and is recorded here for a decision before any build. Do
+not start it on the strength of this section alone.
+
+### The requirement
+Page policies scope by path, so the finest automatic unit today is "exclude rule
+942100 on `/login`". The operator need is finer: a password field may legitimately
+contain a quote while a comment field on the same path must stay fully inspected.
+The correct unit is therefore **path plus field name**, not path alone. True
+per-form scoping is not achievable at the HTTP layer — two forms POSTing to one
+URL are indistinguishable unless their field names differ — so field name is both
+the practical and the correct key.
+
+### Already built; do not rebuild
+A prior analysis concluded this capability was merely "underexposed". That
+understates the current state. Verified on this commit:
+
+- The engine emits per-field removal in three places: `PagePolicy.ExcludeTargets`
+  at `main.go:1114`, per-field `FieldPolicy` exclusions at `main.go:1119`, and
+  policy-level exclusions at `main.go:1264` (global `SecRuleUpdateTargetById`
+  or path-gated `ctl:ruleRemoveTargetById`).
+- `PageExcludeTarget{RuleID, Target}` exists at `main.go:104`, wired into
+  `PagePolicy.ExcludeTargets` at `main.go:134`.
+- `FieldPolicy` (`main.go:109`) already carries `Name`, `Source`, `Profile`,
+  `AllowPattern`, `Required`, `MinLength`, `MaxLength`, and `ExcludeRuleIDs`,
+  with a per-field editor in `static/admin.html` and coverage in
+  `fieldpolicy_test.go` proving `user_id` and `password` compile to different
+  directives on the same form.
+
+**An operator can already achieve the stated goal through the console today.**
+The gap is not enforcement and not the UI for hand-authored policy.
+
+### The actual gap
+The learner cannot *suggest* a field-scoped exclusion, because it never records
+which field tripped a rule:
+
+- `matchRec` (`admin.go:31`) carries Time, Site, RuleID, Severity, Phase, Client,
+  URI, Msg, and Data. There is no matched-variable field.
+- The WAF error callback (`main.go:1038`) reads `rule.Rule().ID()`, `Severity()`,
+  `Phase()`, `ClientIPAddress()`, `URI()`, `Message()`, and `Data()`. `Data()` is
+  the matched *value*, not the variable name; the variable is discarded.
+- `ruleAgg` (`learn.go:31`) aggregates count, clients, and severity only, and
+  `noteMatch(site, uri, ruleID, client, severity)` (`learn.go:101`) has no field
+  parameter.
+- `pageRecommendation.SuggestExcl` (`learn.go:142`) is `[]int` — rule IDs alone.
+- `handleLearnApply` (`admin.go:658`) accepts `RuleIDs []int` and writes
+  whole-rule, path-scoped exclusions.
+
+### The API needed is available
+Coraza exposes `types.MatchedRule.MatchedDatas() []MatchData`
+(`types/rule_match.go:43`), and `MatchData` exposes `Variable()`, `Key()`, and
+`Value()` (`types/rule_match.go:10`). `Key()` is the argument name. The callback
+already holds the `MatchedRule`, so the data is one method call away.
+
+### Implementation sketch
+1. Capture the matched variable and key in the WAF callback; add a field to
+   `matchRec`. Record the name only, never the value — the same rule the hybrid
+   discovery work follows.
+2. Thread it through `noteMatch` and key `ruleAgg` by rule plus field.
+3. Change `SuggestExcl` to carry rule/target pairs rather than bare rule IDs, and
+   propose `ruleRemoveTargetById=RULE;ARGS:field` when a rule fires repeatedly on
+   one field from many distinct clients.
+4. Extend `handleLearnApply` to write `ExcludeTargets` instead of whole-rule
+   exclusions, and surface the rule/field pair in the Site Map and the bell.
+
+### Security caveat, and why this must stay review-gated
+Excluding a rule on a field is a real security decision. `ARGS:password
+!942100` is correct for a value that is hashed and never concatenated into SQL,
+and wrong for any field that reaches a query. Suggestions must remain
+human-reviewed with no auto-apply, consistent with every other learner
+suggestion in this product.
+
+### Dependency worth noting
+The learner's false-positive-versus-attack discrimination rests on counting
+distinct clients, which is degraded by the client-IP defect recorded in the
+2026-08-21 roadmap section. Field-scoped suggestions inherit that weakness, so
+the trusted-proxy work should land first or the suggestions will be keyed on
+unreliable client counts.
+
+### Decision needed
+Approve as a fifth roadmap item, defer behind the four approved on 2026-08-21,
+or decline. Until then this section is a record of investigation only.
