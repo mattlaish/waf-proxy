@@ -486,16 +486,21 @@ Verified behaviours, all passing:
   WAF's own access log, so it is inspected rather than tunnelled past.
 - **Header/URL/method abuse**: oversized headers and URLs, null bytes, CRLF
   injection attempts, and unknown methods are handled without error.
-- **X-Forwarded-For spoofing is neutralised**: client-supplied `X-Forwarded-For`
-  and `X-Real-IP` are replaced before the request reaches the backend.
+- **X-Forwarded-For spoofing is neutralised**: with no trusted proxies configured,
+  client-supplied forwarding headers are ignored and replaced with the immediate
+  TCP peer before the request reaches the backend.
+- **Trusted upstream proxies are resolved globally**: set
+  `trusted_proxy_cidrs` at the config root (or use **Setup / AI → Trusted
+  upstream proxy CIDRs**). Only an immediate peer in those networks may supply
+  `X-Forwarded-For`; the chain is walked right-to-left and stops at the first
+  untrusted hop. A malformed or oversized chain falls back to the TCP peer.
+- **One client identity is used everywhere**: Coraza, `ip_hash`, access logs,
+  syslog, learner client counts, AI enforcement, `X-Forwarded-For`, and
+  `X-Real-IP` all receive the same resolved address.
 
-> **Corollary worth knowing before deployment.** Because inbound
-> `X-Forwarded-For` is replaced rather than appended, the address the backend
-> receives — and the one used for `ip_hash`, the access log, syslog, and the
-> learner's distinct-client signal — is always the immediate TCP peer. Deploy
-> this at the edge and that is correct. Deploy it behind a CDN or another load
-> balancer and every one of those consumers sees the upstream proxy instead of
-> the real client. Nothing errors; the data is just wrong.
+Trust only CIDRs owned by the CDN or load balancer directly connected to the
+WAF. For a single proxy, use a host prefix such as `192.0.2.10/32`; leaving the
+list empty preserves edge-deployment behavior and never trusts inbound XFF.
 
 ### Fuzzing the certificate parsers
 

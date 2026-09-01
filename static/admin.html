@@ -425,10 +425,10 @@
         <div class="field check"><input type="checkbox" id="ai_redact_headers"><label for="ai_redact_headers" style="margin:0">Redact headers (strip auth/cookies, send only a safe subset)</label></div>
         <div class="field check"><input type="checkbox" id="ai_hash_client_ip"><label for="ai_hash_client_ip" style="margin:0">Send hashed client IP instead of raw</label></div>
         <div class="field check"><input type="checkbox" id="ai_include_body"><label for="ai_include_body" style="margin:0">Include request body <span style="color:var(--red)">(may contain PHI/secrets)</span></label></div>
-        <div class="field"><label>Trusted proxy CIDRs (comma-separated)</label><input type="text" id="ai_trusted_proxies" spellcheck="false" placeholder="10.0.0.0/8, 192.168.50.10/32"></div>
+        <div class="field"><label>Trusted upstream proxy CIDRs (global, comma-separated)</label><input type="text" id="ai_trusted_proxies" spellcheck="false" placeholder="192.0.2.10/32, 2001:db8::10/128"></div>
         <div class="actions"><button class="btn primary" id="ai_save">Save &amp; apply</button></div>
         <div class="hint" style="margin-top:6px">
-          <b style="color:var(--amber)">Heads up:</b> analysis is asynchronous — the AI never sits in the request path. It can only <i>add</i> a site-scoped, time-boxed block and fails open on errors. Forwarded client IPs are accepted only from the trusted proxy CIDRs above. Common credential headers and sensitive query parameters are redacted, but request metadata may still be sensitive; keep CRS doing deterministic blocking.
+          <b style="color:var(--amber)">Heads up:</b> analysis is asynchronous — the AI never sits in the request path. It can only <i>add</i> a site-scoped, time-boxed block and fails open on errors. The trusted proxy list is global: forwarded client IPs are accepted only from those network peers, then used consistently by Coraza, logs, <code>ip_hash</code>, AI, and backend headers. Common credential headers and sensitive query parameters are redacted, but request metadata may still be sensitive; keep CRS doing deterministic blocking.
         </div>
       </section>
     </div>
@@ -1139,7 +1139,7 @@
     pools=(c.pools||[]).map(x=>Object.assign({},x,{monitor:Object.assign({},x.monitor),members:(x.members||[]).map(m=>Object.assign({},m)),backend_tls:Object.assign({},x.backend_tls||{})}));
     policies=(c.policies||[]).map(x=>Object.assign({},x,{exclusions:(x.exclusions||[]).map(e=>Object.assign({},e,{rule_ids:(e.rule_ids||[]).slice(),targets:(e.targets||[]).slice()}))}));
     globalFields.forEach(f=>$(f).value = c[f] ?? "");
-    fillAI(c.ai); fillHA(c.ha); fillNotify(c.notify); fillSyslog(c.syslog);
+    fillAI(c.ai, c.trusted_proxy_cidrs); fillHA(c.ha); fillNotify(c.notify); fillSyslog(c.syslog);
     paintMode(); renderSites();
   }
   function collect(){
@@ -1147,6 +1147,7 @@
     const c=Object.assign({}, cfg);
     globalFields.forEach(f=>{ const el=$(f); c[f]= el.type==="number"?Number(el.value||0):el.value.trim(); });
     c.engine_mode=engineMode; c.sites=sites; c.nodes=nodes; c.pools=pools; c.policies=policies;
+    c.trusted_proxy_cidrs=$("ai_trusted_proxies").value.split(",").map(x=>x.trim()).filter(Boolean);
     c.ai=collectAI(); c.ha=collectHA(); c.notify=collectNotify(); c.syslog=collectSyslog();
     return c;
   }
@@ -1929,7 +1930,7 @@
   };
 
   // ── AI setup ──
-  function fillAI(ai){
+  function fillAI(ai, trustedProxies){
     ai=ai||{};
     $("ai_enabled").checked=!!ai.enabled;
     $("ai_provider").value=ai.provider||"openai";
@@ -1945,7 +1946,7 @@
     $("ai_redact_headers").checked=ai.redact_headers!==false;
     $("ai_hash_client_ip").checked=!!ai.hash_client_ip;
     $("ai_include_body").checked=!!ai.include_body;
-    $("ai_trusted_proxies").value=(ai.trusted_proxy_cidrs||[]).join(", ");
+    $("ai_trusted_proxies").value=(trustedProxies||ai.trusted_proxy_cidrs||[]).join(", ");
   }
   function collectAI(){
     const prev=cfg.ai||{};
@@ -1964,7 +1965,6 @@
       redact_headers:$("ai_redact_headers").checked,
       hash_client_ip:$("ai_hash_client_ip").checked,
       include_body:$("ai_include_body").checked,
-      trusted_proxy_cidrs:$("ai_trusted_proxies").value.split(",").map(x=>x.trim()).filter(Boolean),
       workers:prev.workers||2, queue_size:prev.queue_size||512
     };
   }

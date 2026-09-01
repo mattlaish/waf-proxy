@@ -7,6 +7,8 @@ WAF Proxy
 - `patch.md` is the required current-patch handover and manual version-control
   ledger. Every future source/schema/UI/test/build change must update both this
   handoff and `patch.md`.
+- Stage-completion feedback after documentation/handoff updates must end with
+  current Taiwan time: `YYYY-MM-DD HH:mm:ss UTC+8 (Taiwan)`.
 ## AI Git Workflow
 
 AI may perform normal Git operations:
@@ -41,22 +43,33 @@ architectural changes until the imported baseline has been verified on a host
 with the required toolchains and Linux runtime dependencies.
 
 ## Baseline Date
-2026-08-20 (Asia/Hong_Kong)
+2026-08-28 (Asia/Hong_Kong; documentation synchronized, no functional change)
 
 ## Repository State
 - Branch: `main`, tracking `origin/main`.
-- HEAD at this handoff: `8d9c003` (`Implement hybrid form discovery`).
-- The current intended uncommitted source changes add per-field custom allow
-  patterns, Windows update portability, config/pool/runtime coverage, explicit
-  experimental frontend labeling, documentation, and this handoff update.
-- Two unrelated untracked local files were found during push preparation:
-  `Codex Image Aug 18, 2026, 02_59_30 PM.png` and `git-save-push.ps1`. They are
-  not required by the WAF build and should remain unstaged unless the owner
-  explicitly wants them in the repository.
+- HEAD before this documentation-only synchronization: `3186015` (`Merge pull
+  request #1 from mattlaish/claude/test-e5j6pr`), aligned with `origin/main`.
+- PR #1 merged the reviewed roadmap, scan record, field-scoped learner candidate,
+  and patch-ledger updates into `main`; the former remote review branch is no
+  longer a newer product version.
+- The worktree was clean before this documentation-only synchronization. No Go,
+  UI, configuration, test, dependency, or deployment file is changed by it.
 - The repository contains the imported implementation, documentation baseline,
   and committed dependency reproducibility baseline.
 - No credentials, private keys, generated binary, dependency directories, or
   local config were found tracked.
+
+## Documentation Synchronization on 2026-08-28
+- Updated the stale repository base from `8d9c003` to the post-PR-merge main
+  baseline `3186015`.
+- Reconciled Git policy with `AGENTS.md`: normal pull/add/commit/push operations
+  are allowed, while force-push, history rewrite, branch deletion, and remote
+  changes remain approval-gated. A user instruction for a particular task may
+  still narrow those permissions.
+- `patch.md` remains the authoritative concise patch/version ledger; this file
+  retains the detailed review, scan evidence, decisions, and implementation
+  history.
+- No functional implementation or verification claim changed in this sync.
 
 ## Architecture and Main Components
 - **Core service and configuration (`main.go`)**: a single Go 1.22 module. It
@@ -719,3 +732,54 @@ unreliable client counts.
 ### Decision needed
 Approve as a fifth roadmap item, defer behind the four approved on 2026-08-21,
 or decline. Until then this section is a record of investigation only.
+
+## Trusted-Proxy Client-IP Resolution on 2026-08-28
+
+**Status: implemented locally; not committed or deployed.** This completes the
+client-IP prerequisite in approved roadmap item 1. L7 abuse controls remain a
+separate follow-up and were not added in this slice.
+
+### Implementation
+
+- Added root config `trusted_proxy_cidrs`. An empty list preserves the former
+  edge behavior: the immediate TCP peer is authoritative and inbound XFF is
+  ignored.
+- Added one compiled request-path resolver in `clientip.go`. It accepts XFF only
+  when the immediate peer is trusted, walks the chain right-to-left, and stops
+  at the first untrusted hop. Invalid, over-4-KiB, or over-32-hop chains fail
+  safely to the immediate peer. Configuration accepts at most 64 unique IPv4 or
+  IPv6 CIDRs.
+- The resolver runs outside logging, AI, Coraza, and proxying, so Coraza match
+  records, `ip_hash`, access logs, syslog, learner client counts, AI block keys,
+  and backend forwarding headers share one address.
+- Backend `X-Forwarded-For` is rebuilt from the resolved address and
+  `X-Real-IP` is replaced; client-supplied forwarding identity is never appended.
+- Existing `ai.trusted_proxy_cidrs` is imported once into the global field on
+  config load or admin PUT, then removed from the AI object on the next save.
+- The shipping UI retains the control in Setup / AI but labels it explicitly as
+  a global upstream-proxy trust setting. `config.sample.json` includes the new
+  root field.
+
+### Verification
+
+- `go test -count=1 ./...`: pass on Go 1.26.0 Windows/amd64.
+- `go vet ./...`: pass.
+- Focused tests cover untrusted spoofing, one and multiple trusted proxies,
+  right-to-left trust boundaries, IPv6, malformed/oversized fallback, legacy
+  migration, draft validation, and canonical backend XFF/X-Real-IP.
+- Shipping inline JavaScript parses with Node `--check`; sample JSON parses with
+  `python -m json.tool`.
+- `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath`: pass; binary size
+  20,030,558 bytes, SHA-256
+  `7932329870C7331436E6B463ED708E9C8F4CE5154AF0AF2804F5C88197894039`.
+- Race tests were not run on this Windows host because no C compiler is
+  installed (`go test -race` requires CGO). The ordinary suite and static Linux
+  build passed; rerun `go test -race ./...` on the Linux VM before release.
+
+### Recommended next step
+
+Deploy this build behind the real test proxy/CDN path and verify that one request
+produces the same public client address in the Coraza event, access log, syslog,
+learner input, backend XFF/X-Real-IP, and AI advisory record. After that, design
+the L7 limiter against this resolver; do not key rate limits directly from raw
+forwarding headers.

@@ -21,6 +21,10 @@ Before pushing:
 - Review git diff and git status.
 - Ensure no unrelated files, secrets, credentials, generated binaries, or temporary files are included.
 
+After completing a development stage that updates `README.md`,
+`AI_HANDOFF.md`, or `patch.md`, end the final user feedback with the current
+Taiwan time in this exact format: `YYYY-MM-DD HH:mm:ss UTC+8 (Taiwan)`.
+
 Rules:
 
 - Prefer small meaningful commits.
@@ -29,3 +33,10 @@ Rules:
 - Do not rewrite history without approval.
 - Do not delete branches or modify remotes without approval.
 - Do not push another AI agent's unreviewed local work.
+
+## Documentation handover
+
+- Keep `AI_HANDOFF.md` and `patch.md` synchronized with the current `main`.
+- Update `patch.md` for every source, schema, API, UI, test, or build change.
+- Record the current base commit, validation evidence, security decisions,
+  incomplete work, and exact next slice.

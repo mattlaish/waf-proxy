@@ -6,14 +6,40 @@ limitations change. Git synchronization remains the repository owner's task.
 
 ## Patch Version
 
-- Patch date: 2026-08-20 (Asia/Hong_Kong)
-- Base visible before the current local patch series: `8d9c003` — Implement
-  hybrid form discovery
-- Status: local working changes; owner decides staging, commit, and push
+- Patch date: 2026-08-28 (Asia/Hong_Kong; trusted-proxy client-IP slice)
+- Current merged baseline before this local slice: `3186015` — Merge pull
+  request #1 from `mattlaish/claude/test-e5j6pr`
+- Status: trusted-proxy client-IP resolution is implemented and verified
+  locally; changes are not committed or deployed
 - Production UI: `static/admin.html`
 - Experimental/non-shipping UI: `web/`
 
+## Git Workflow
+
+- GitHub `origin/main` is the source of truth.
+- AI may perform normal `pull`, `add`, `commit`, and `push` operations after
+  reviewing status/diff, tests, secrets, generated files, and unrelated changes.
+- Never force-push, rewrite history, delete branches, or modify remotes without
+  explicit approval.
+- A task-specific user instruction may narrow these permissions and takes
+  precedence for that task.
+
 ## Current Patch Scope
+
+### Global trusted-proxy client IP
+
+- Added root `trusted_proxy_cidrs` with strict unique IPv4/IPv6 CIDR validation,
+  a 64-network configuration cap, and backward migration from the former
+  AI-only field.
+- Added one resolver ahead of access logging, AI, Coraza, load balancing, and
+  proxying. XFF is honored only from a trusted immediate peer and is walked
+  right-to-left to the first untrusted hop.
+- Invalid, oversized, or excessive-hop XFF fails back to the TCP peer. The
+  default empty trust list preserves existing edge behavior.
+- Coraza, `ip_hash`, access/syslog/learner records, AI, and backend XFF/X-Real-IP
+  now use the same authoritative address.
+- Updated the shipping UI, sample config, README, migration logic, and focused
+  tests. No rate limiting or other L7 abuse control was added in this slice.
 
 ### Per-field custom policies
 
@@ -85,7 +111,7 @@ limitations change. Git synchronization remains the repository owner's task.
 `crl_urls` and non-zero `refresh_sec` are reserved and currently rejected by
 full Apply. They must not be documented operationally as active until Slice 3.
 
-## Files Intended for the Current Patch Series
+## Files in the Merged Functional Patch Series
 
 - `AI_HANDOFF.md`
 - `AGENTS.md`
@@ -111,33 +137,32 @@ full Apply. They must not be documented operationally as active until Slice 3.
 - `git-save-push.ps1` — local helper that uses `git add .`; it can accidentally
   stage unrelated files.
 
-The owner must review the working tree manually. AI must not execute Git
-operations unless the owner explicitly changes that instruction.
+The owner or acting AI must still review the working tree before staging. The
+normal Git permissions above do not authorize including unrelated local files.
 
 ## Validation Evidence
 
-Latest PKI Slice 2 checks:
+Latest trusted-proxy client-IP checks (Go 1.26.0 Windows/amd64 unless noted):
 
 ```text
 go test -count=1 ./...                         PASS
 go vet ./...                                   PASS
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go vet  PASS
-Linux root test compilation                    PASS
 static/admin.html inline JavaScript syntax     PASS
 config.sample.json parsing                     PASS
 CGO_ENABLED=0 Linux static build               PASS
+go test -race ./...                            NOT RUN (no Windows C compiler)
 ```
 
 Latest Linux/amd64 static binary:
 
 ```text
-Size:   14,020,770 bytes
-SHA256: E0AC425D40250AB0AED46BDBFE23BA4C180B366FEF3C322C3026B7D7AC988A03
+Size:   20,030,558 bytes
+SHA256: 7932329870C7331436E6B463ED708E9C8F4CE5154AF0AF2804F5C88197894039
 ```
 
-All PKI tests dynamically generate keys, certificates, and CRLs. No private-key
-fixture, HSM PIN, API key, token, or production secret is required or intended
-for version control.
+No dependency was added. Focused tests use documentation-only IP ranges and an
+ephemeral local HTTP backend; no private key, API key, token, production address,
+or generated binary is intended for version control.
 
 ## Known Limitations / Not Yet Implemented
 
@@ -151,9 +176,8 @@ for version control.
 - PKCS#11 HSM provider and SoftHSM integration tests.
 - Deployed Linux VM smoke tests for the new backend CA/CRL paths.
 - No rate limiting, connection capping, or L7 abuse control anywhere in the tree.
-- Client IP is the TCP peer everywhere except `ai.go`: `clientIP` (`main.go:1388`)
-  returns `RemoteAddr`, so `ip_hash`, the access log, syslog, and the learner's
-  distinct-client signal are wrong behind a CDN, upstream load balancer, or SNAT.
+- Trusted-proxy client-IP resolution is now implemented locally. Deployment
+  behind the real upstream proxy and Linux race verification remain pending.
 - No manual IP allow/deny list; only the AI may add a block.
 - No custom block page and no request correlation ID, so a user-reported block
   cannot be traced to the rule that caused it.
@@ -168,29 +192,24 @@ for version control.
 
 ## Next Slice
 
-PKI Slice 3:
-
-1. SSRF-safe HTTPS CRL downloader with DNS/IP checks, redirect revalidation,
-   response limit, timeout, and no environment proxy.
-2. Atomic last-known-good refresh with concurrency deduplication and runtime
-   cancellation.
-3. Scheduled refresh using `refresh_sec` and jitter.
-4. `GET /api/pki/status` for authenticated viewers.
-5. `POST /api/pki/crl/refresh` for operators/admins with audit records.
-6. Focused downloader, refresh, RBAC, audit, and race tests.
-
-Do not begin PKCS#11 dependency work before the key-provider abstraction and
+Validate trusted-proxy resolution on the Linux VM behind the actual upstream
+proxy, including Coraza, access log, syslog, learner, AI advisory, `ip_hash`, and
+backend header evidence. Then implement the L7 abuse-control half of approved
+roadmap item 1 against the resolved address. PKI Slice 3 remains open after that;
+do not begin PKCS#11 dependency work before the key-provider abstraction and
 CGO/static-build tradeoff are reviewed explicitly.
 
 ## Reviewed Backlog (not scheduled)
 
 Recorded so the decisions are not relitigated. Full reasoning, evidence, and
 file references are in `AI_HANDOFF.md`; this list is the ledger's index of them.
-None of these displace the Next Slice above, which remains PKI Slice 3.
+The owner explicitly selected roadmap item 1 as the current main-problem work;
+the remaining approved and PKI items stay recorded below.
 
 Approved by the owner on 2026-08-21, in priority order:
 
-1. Trusted-proxy client-IP resolution, then L7 abuse control (rate limiting,
+1. Trusted-proxy client-IP resolution (implemented locally on 2026-08-28), then
+   L7 abuse control (rate limiting,
    per-IP connection caps, TLS handshake cap). Scoped explicitly as
    application-layer abuse, **not** volumetric DDoS, which belongs upstream.
    The client-IP half is a prerequisite: limiting on the wrong address would
@@ -228,4 +247,14 @@ For every future patch slice:
 5. Record incomplete work, security decisions, and failed approaches.
 6. Set the precise next implementation slice.
 7. Update `AI_HANDOFF.md` consistently.
+8. End stage-completion feedback with current Taiwan time, formatted exactly as
+   `YYYY-MM-DD HH:mm:ss UTC+8 (Taiwan)`.
 
+## Documentation Synchronization on 2026-08-28
+
+- Synchronized this ledger with merged `main` baseline `3186015`.
+- Reconciled the Git workflow with current `AGENTS.md` and `AI_HANDOFF.md`.
+- Preserved PKI Slice 3 as the next implementation slice; the reviewed security
+  backlog does not displace it.
+- No functional source, schema, API, UI, test, dependency, or build change was
+  made during this synchronization.

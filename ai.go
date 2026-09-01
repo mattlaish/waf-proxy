@@ -35,7 +35,6 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -70,6 +69,8 @@ type AIConfig struct {
 	// pipeline
 	Workers   int `json:"workers"`
 	QueueSize int `json:"queue_size"`
+	// Deprecated: read only so migrateTrustedProxyConfig can import configs
+	// created before trusted proxies became a global request-path setting.
 	TrustedProxyCIDRs []string `json:"trusted_proxy_cidrs,omitempty"`
 }
 
@@ -129,11 +130,6 @@ func (c AIConfig) validate() error {
 	if c.MaxTokens < 1 || c.MaxTokens > 8192 { return fmt.Errorf("ai: max_tokens must be 1-8192") }
 	if c.Workers < 1 || c.Workers > 32 { return fmt.Errorf("ai: workers must be 1-32") }
 	if c.QueueSize < 1 || c.QueueSize > 10000 { return fmt.Errorf("ai: queue_size must be 1-10000") }
-	for _, cidr := range c.TrustedProxyCIDRs {
-		if _, _, err := net.ParseCIDR(strings.TrimSpace(cidr)); err != nil {
-			return fmt.Errorf("ai: invalid trusted proxy CIDR %q", cidr)
-		}
-	}
 	return nil
 }
 
@@ -446,7 +442,7 @@ func (e *aiEngine) wrap(site SiteConfig, next http.Handler) http.Handler {
 	siteName := site.Name
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg := e.snapshotCfg()
-		ip := aiClientIP(r, cfg)
+		ip := clientIP(r)
 
 		// Inline drop for AI-blocklisted sources (block mode only).
 		if cfg.Enabled && mode == "block" {
@@ -477,11 +473,7 @@ func (e *aiEngine) wrap(site SiteConfig, next http.Handler) http.Handler {
 		pending := &analysisJob{site: siteName, mode: mode, client: ip, method: r.Method,
 			host: r.Host, path: r.URL.Path, query: query, headers: hdrs, body: body, ts: time.Now()}
 		if capture {
-			// Coraza reports the socket peer as ClientIPAddress. Register aliases
-			// for it as well as the trusted forwarded client used for enforcement.
-			direct := clientIP(r)
-			keys := []string{requestKey(ip, r.URL.RequestURI()), requestKey(ip, r.URL.Path),
-				requestKey(direct, r.URL.RequestURI()), requestKey(direct, r.URL.Path)}
+			keys := []string{requestKey(ip, r.URL.RequestURI()), requestKey(ip, r.URL.Path)}
 			e.pendingMu.Lock()
 			for _, key := range keys { e.pending[key] = pending }
 			e.pendingMu.Unlock()
@@ -505,24 +497,6 @@ func (e *aiEngine) wrap(site SiteConfig, next http.Handler) http.Handler {
 		e.enqueue(*pending)
 	})
 }
-
-func aiClientIP(r *http.Request, cfg AIConfig) string {
-	direct := clientIP(r)
-	peer := net.ParseIP(direct)
-	trusted := false
-	for _, raw := range cfg.TrustedProxyCIDRs {
-		_, network, err := net.ParseCIDR(strings.TrimSpace(raw))
-		if err == nil && peer != nil && network.Contains(peer) { trusted = true; break }
-	}
-	if !trusted { return direct }
-	chain := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
-	for i := len(chain)-1; i >= 0; i-- {
-		if ip := net.ParseIP(strings.TrimSpace(chain[i])); ip != nil { return ip.String() }
-	}
-	return direct
-}
-
-
 
 func (e *aiEngine) worker(id int) {
 	for {

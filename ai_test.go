@@ -3,7 +3,6 @@ package main
 import (
 	"io"
 	"log/slog"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -22,19 +21,9 @@ func TestAIBlocklistIsScopedBySite(t *testing.T) {
 	if _, ok := e.isBlocked("shop", "203.0.113.7"); ok { t.Fatal("site block was not removed") }
 }
 
-func TestAIClientIPRequiresTrustedPeer(t *testing.T) {
-	r := httptest.NewRequest("GET", "http://example.test/", nil)
-	r.RemoteAddr = "192.0.2.10:1234"
-	r.Header.Set("X-Forwarded-For", "203.0.113.9")
-	if got := aiClientIP(r, defaultAIConfig()); got != "192.0.2.10" { t.Fatalf("untrusted header used: %q", got) }
-	cfg := defaultAIConfig()
-	cfg.TrustedProxyCIDRs = []string{"192.0.2.0/24"}
-	if got := aiClientIP(r, cfg); got != "203.0.113.9" { t.Fatalf("trusted forwarded IP ignored: %q", got) }
-}
-
 func TestAIRedaction(t *testing.T) {
 	e := testAIEngine()
-	r := httptest.NewRequest("GET", "http://example.test/", nil)
+	r := newTestRequest("GET", "http://example.test/")
 	r.Header.Set("X-Session-Token", "do-not-send")
 	r.Header.Set("Content-Type", "application/json")
 	h := e.redactHeaders(r, defaultAIConfig())
@@ -46,10 +35,7 @@ func TestAIRedaction(t *testing.T) {
 
 func TestAIConfigValidation(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.Enabled = true
-	cfg.TrustedProxyCIDRs = []string{"not-a-cidr"}
-	if cfg.validate() == nil { t.Fatal("invalid trusted proxy CIDR accepted") }
-	cfg = defaultAIConfig(); cfg.Enabled = true; cfg.Workers = 0
+	cfg.Enabled = true; cfg.Workers = 0
 	if cfg.validate() == nil { t.Fatal("invalid worker count accepted") }
 }
 

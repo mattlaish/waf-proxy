@@ -1169,6 +1169,7 @@ func (a *adminServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	migrateTrustedProxyConfig(&c)
 	// Blank secrets on submit mean "keep the current ones" — the UI never
 	// receives stored secrets, so it can't echo them back.
 	cur := a.srv.rt.Load().cfg

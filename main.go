@@ -170,6 +170,9 @@ type Config struct {
 	ReadTimeoutSec    int          `json:"read_timeout_sec"`
 	IdleTimeoutSec    int          `json:"idle_timeout_sec"`
 	BackendTimeoutSec int          `json:"backend_timeout_sec"`
+	// TrustedProxyCIDRs controls which immediate network peers may supply the
+	// X-Forwarded-For chain used as the authoritative client address.
+	TrustedProxyCIDRs []string       `json:"trusted_proxy_cidrs,omitempty"`
 	Nodes             []NodeConfig   `json:"nodes"`
 	Pools             []PoolConfig   `json:"pools"`
 	Policies          []PolicyConfig `json:"policies"`
@@ -298,6 +301,9 @@ func (c Config) validateDraft() error {
 	if c.EngineMode != "" && !validEngineMode(c.EngineMode, false) {
 		return fmt.Errorf("engine_mode must be On, DetectionOnly, or Off (got %q)", c.EngineMode)
 	}
+	if err := validateTrustedProxyCIDRs(c.TrustedProxyCIDRs); err != nil {
+		return err
+	}
 	seen := func(kind string) func(string) error {
 		m := map[string]bool{}
 		return func(name string) error {
@@ -362,6 +368,9 @@ func (c Config) validateDraft() error {
 func (c Config) validate() error {
 	if !validEngineMode(c.EngineMode, false) {
 		return fmt.Errorf("engine_mode must be On, DetectionOnly, or Off (got %q)", c.EngineMode)
+	}
+	if err := validateTrustedProxyCIDRs(c.TrustedProxyCIDRs); err != nil {
+		return err
 	}
 	if c.ReadTimeoutSec < 1 || c.IdleTimeoutSec < 1 || c.BackendTimeoutSec < 1 {
 		return errors.New("timeouts must be >= 1 second")
@@ -628,6 +637,8 @@ func loadConfig(path string) (Config, error) {
 // migrateConfig upgrades older single-backend / global-listen configs into
 // the node/pool/site model so existing files keep working.
 func migrateConfig(c *Config) {
+	migrateTrustedProxyConfig(c)
+
 	// Synthesize a default policy from the legacy top-level rules/body-limit,
 	// and point any policy-less site at it.
 	if len(c.Policies) == 0 {
@@ -812,6 +823,11 @@ func (s *server) applyEx(cfg Config, fromSync bool) error {
 
 func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 	ctx, cancel := context.WithCancel(context.Background())
+	clientIPs, err := newClientIPResolver(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 	rt := &runtimeState{
 		listeners: map[string]*listenerRuntime{},
 		pools:     map[string]*poolRuntime{},
@@ -874,7 +890,7 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 			s.signals.noteRequestShape(siteName, path, method, rawQuery, contentType, fields)
 		}
 		sr := &siteRuntime{
-			handler: s.logWrap(sc.Name, passiveDiscoveryWrap(s.ai.wrap(sc, txhttp.WrapHandler(waf, buildProxy(pool, sc, cfg, s.log, record))))),
+			handler: clientIPs.wrap(s.logWrap(sc.Name, passiveDiscoveryWrap(s.ai.wrap(sc, txhttp.WrapHandler(waf, buildProxy(pool, sc, cfg, s.log, record)))))),
 			cfg:     sc,
 			mode:    mode,
 		}
@@ -1353,6 +1369,9 @@ func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger
 				// stash chosen member for the counting transport
 				pr.Out = pr.Out.WithContext(context.WithValue(pr.Out.Context(), memberCtxKey, m))
 			}
+			// Do not append to a client-supplied chain. The outer client-IP
+			// resolver has already reduced it to the one authoritative address.
+			pr.Out.Header.Del("X-Forwarded-For")
 			pr.SetXForwarded()
 			if site.PreserveHost {
 				pr.Out.Host = pr.In.Host

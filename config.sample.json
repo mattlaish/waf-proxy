@@ -4,6 +4,7 @@
   "read_timeout_sec": 15,
   "idle_timeout_sec": 60,
   "backend_timeout_sec": 30,
+  "trusted_proxy_cidrs": [],
 
   "nodes": [
     { "name": "app1", "host": "127.0.0.1" }
