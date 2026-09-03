@@ -4,6 +4,7 @@
   "read_timeout_sec": 15,
   "idle_timeout_sec": 60,
   "backend_timeout_sec": 30,
+  "passive_discovery_enabled": true,
   "trusted_proxy_cidrs": [],
 
   "nodes": [

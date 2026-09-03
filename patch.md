@@ -6,11 +6,13 @@ limitations change. Git synchronization remains the repository owner's task.
 
 ## Patch Version
 
-- Patch date: 2026-08-28 (Asia/Hong_Kong; trusted-proxy client-IP slice)
-- Current merged baseline before this local slice: `3186015` — Merge pull
-  request #1 from `mattlaish/claude/test-e5j6pr`
-- Status: trusted-proxy client-IP resolution is implemented and verified
-  locally; changes are not committed or deployed
+- Patch date: 2026-09-03 (Asia/Taipei; request hot-path optimization slice)
+- Current merged baseline before this local slice: `95ab964` — `lf modifed`
+- Status: hot-path optimizations are implemented locally; changes are not
+  committed or deployed
+- Remote synchronization was attempted before implementation, but this execution
+  environment could not resolve `github.com`; the work therefore uses the
+  `origin/main` snapshot bundled in the uploaded repository at `95ab964`.
 - Production UI: `static/admin.html`
 - Experimental/non-shipping UI: `web/`
 
@@ -25,6 +27,34 @@ limitations change. Git synchronization remains the repository owner's task.
   precedence for that task.
 
 ## Current Patch Scope
+
+### Request hot-path optimization (2026-09-03)
+
+- Replaced the access and WAF-match append/reslice stores with fixed-capacity
+  circular buffers. Steady-state writes no longer reallocate/copy the retained
+  ring contents under the ring mutex.
+- Replaced request-side AI and syslog configuration locks with immutable
+  `atomic.Pointer` snapshots. Syslog stream-specific `atomic.Bool` gates return
+  before a config snapshot when a stream is disabled, and sites with `ai_mode`
+  off now receive the underlying handler directly.
+- Added root `passive_discovery_enabled` (default `true` for compatibility). When
+  false, passive request-body field discovery adds no body-reading/parsing
+  middleware; path/status learning and the explicit crawler continue to work.
+- Added one bounded request-body prefix capture shared by passive discovery and
+  AI body analysis. A qualifying request is read/restored at most once before
+  Coraza/backend processing; AI retains the shared `[]byte` rather than making a
+  second read and full `[]byte` -> `string` copy.
+- Replaced top-level JSON discovery's `json.RawMessage` value materialization
+  with a bounded scanner that records field names while skipping values.
+- Removed the unused AI `statusRecorder`. The remaining access-log recorder now
+  exposes `Unwrap()` so `http.ResponseController` can reach optional interfaces
+  such as `http.Hijacker` through the wrapper.
+- Access logging computes the client address once for the ring/syslog record and
+  stores `time.Time`; the existing `HH:MM:SS` JSON representation is formatted
+  only when the admin API serializes the record. A request-context client-IP
+  cache was deliberately not added because the trusted-proxy resolver already
+  normalizes XFF once at the outer edge and adding another `WithContext` on every
+  request would introduce its own allocation.
 
 ### Global trusted-proxy client IP
 
@@ -258,3 +288,35 @@ For every future patch slice:
   backlog does not displace it.
 - No functional source, schema, API, UI, test, dependency, or build change was
   made during this synchronization.
+## Request Hot-Path Validation on 2026-09-03
+
+- The real `go test -count=1 ./...` could not start because this isolated
+  environment cannot resolve/download `github.com/corazawaf/coraza/v3@v3.3.2`
+  from `proxy.golang.org`. This is an environment/dependency limitation, not a
+  passing product-test claim.
+- To catch compile and local-regression errors without network access, a
+  temporary copy outside the repository replaced only Coraza with a minimal API
+  stub. Against the final source state, `go test -run '^$' ./...`, the focused
+  hot-path/discovery tests, the complete repository test suite, `go vet ./...`,
+  and `go test -race -count=1 ./...` all passed in that stub harness. These
+  results do **not** validate real Coraza behavior.
+- Focused coverage includes circular ordering/count, access-log JSON time
+  compatibility, ResponseWriter unwrapping/Hijacker reachability, AI-off direct
+  handler behavior, disabled syslog access gating, legacy config defaulting,
+  disabled passive discovery, shared passive/AI body prefix, large JSON value
+  skipping, backend-response discovery flow, and byte-body AI prompting.
+- Offline microbenchmarks on the harness host (AMD EPYC 9V74) measured the fixed
+  access-ring add at `9.825 ns/op`, `0 B/op`, `0 allocs/op`; the ~60 KiB JSON
+  field-name scanner measured `35,846 ns/op`, `1,302 B/op`, `14 allocs/op`. These
+  are component benchmarks only and are not an end-to-end latency claim.
+- `config.sample.json` parses successfully and the shipping inline admin script
+  passes `node --check`. No production binary was built because the real Coraza
+  dependency was unavailable.
+
+### Exact next step
+
+Run the unmodified repository with the real Coraza module available and execute
+`go test -race ./...`, `go vet ./...`, the normal build/release checks, and
+end-to-end benchmarks for representative 1 KiB/16 KiB/64 KiB request bodies with
+passive discovery and AI combinations. Verify WebSocket/HTTP Upgrade through the
+remaining recorder as part of that real integration run.

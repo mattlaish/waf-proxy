@@ -69,12 +69,65 @@ func TestPassiveDiscoveryWrapRestoresBodyAndAddsContext(t *testing.T) {
 	})
 	r := httptest.NewRequest(http.MethodPost, "http://waf.local/login", strings.NewReader(original))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	passiveDiscoveryWrap(next).ServeHTTP(httptest.NewRecorder(), r)
+	requestBodyPrefixWrap(false, true, passiveDiscoveryWrap(true, next)).ServeHTTP(httptest.NewRecorder(), r)
 	if gotBody != original {
 		t.Fatalf("body changed: got %q want %q", gotBody, original)
 	}
 	if got, want := fieldNames(gotFields), []string{"username", "password"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("context fields = %#v, want %#v", got, want)
+	}
+}
+
+func TestPassiveDiscoveryDisabledLeavesBodyUntouched(t *testing.T) {
+	original := "username=alice&password=secret"
+	var gotBody string
+	var gotFields []DiscoveredField
+	next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		gotFields = passiveFieldsFromRequest(r)
+	})
+	r := httptest.NewRequest(http.MethodPost, "http://waf.local/login", strings.NewReader(original))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	requestBodyPrefixWrap(false, false, passiveDiscoveryWrap(false, next)).ServeHTTP(httptest.NewRecorder(), r)
+	if gotBody != original {
+		t.Fatalf("body changed: got %q want %q", gotBody, original)
+	}
+	if len(gotFields) != 0 {
+		t.Fatalf("disabled passive discovery added fields: %#v", gotFields)
+	}
+}
+
+func TestRequestBodyPrefixSharedByPassiveAndAIConsumer(t *testing.T) {
+	original := `{"user_id":"alice","profile":{"role":"admin"}}`
+	var gotBody string
+	var gotPrefix []byte
+	var gotFields []DiscoveredField
+	next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotPrefix = requestBodyPrefixFromRequest(r)
+		gotFields = passiveFieldsFromRequest(r)
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+	})
+	r := httptest.NewRequest(http.MethodPost, "http://waf.local/account", strings.NewReader(original))
+	r.Header.Set("Content-Type", "application/json")
+	requestBodyPrefixWrap(true, true, passiveDiscoveryWrap(true, next)).ServeHTTP(httptest.NewRecorder(), r)
+	if gotBody != original {
+		t.Fatalf("body changed: got %q want %q", gotBody, original)
+	}
+	if string(gotPrefix) != original {
+		t.Fatalf("shared prefix = %q, want %q", gotPrefix, original)
+	}
+	if got, want := fieldNames(gotFields), []string{"user_id", "profile"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("context fields = %#v, want %#v", got, want)
+	}
+}
+
+func TestPassiveJSONScannerSkipsLargeValuesWithoutLosingKeys(t *testing.T) {
+	body := []byte(`{"first":"` + strings.Repeat("x", 60000) + `","nested":{"items":[1,2,{"x":"y"}]},"last":true}`)
+	fields := passiveFields(http.MethodPost, "/api", "application/json", body)
+	if got, want := fieldNames(fields), []string{"first", "nested", "last"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("JSON fields = %#v, want %#v", got, want)
 	}
 }
 
@@ -96,7 +149,7 @@ func TestPassiveFieldsReachRecorderOnlyAfterBackendResponse(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "http://waf.local/login", strings.NewReader(original))
 	r.RemoteAddr = "192.0.2.10:1234"
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	passiveDiscoveryWrap(proxy).ServeHTTP(httptest.NewRecorder(), r)
+	requestBodyPrefixWrap(false, true, passiveDiscoveryWrap(true, proxy)).ServeHTTP(httptest.NewRecorder(), r)
 	if backendBody != original {
 		t.Fatalf("backend body changed: got %q want %q", backendBody, original)
 	}

@@ -44,16 +44,27 @@ type matchRing struct {
 	mu   sync.Mutex
 	recs []matchRec
 	cap  int
+	next int
+	size int
 }
 
-func newMatchRing(capacity int) *matchRing { return &matchRing{cap: capacity} }
+func newMatchRing(capacity int) *matchRing {
+	if capacity < 0 {
+		capacity = 0
+	}
+	return &matchRing{recs: make([]matchRec, capacity), cap: capacity}
+}
 
 func (r *matchRing) add(m matchRec) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.recs = append(r.recs, m)
-	if len(r.recs) > r.cap {
-		r.recs = r.recs[len(r.recs)-r.cap:]
+	if r.cap == 0 {
+		return
+	}
+	r.recs[r.next] = m
+	r.next = (r.next + 1) % r.cap
+	if r.size < r.cap {
+		r.size++
 	}
 }
 
@@ -61,13 +72,13 @@ func (r *matchRing) add(m matchRec) {
 func (r *matchRing) snapshot(limit int) []matchRec {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	n := len(r.recs)
-	if limit <= 0 || limit > n {
-		limit = n
+	if limit <= 0 || limit > r.size {
+		limit = r.size
 	}
 	out := make([]matchRec, limit)
 	for i := 0; i < limit; i++ {
-		out[i] = r.recs[n-1-i]
+		idx := (r.next - 1 - i + r.cap) % r.cap
+		out[i] = r.recs[idx]
 	}
 	return out
 }
@@ -75,46 +86,72 @@ func (r *matchRing) snapshot(limit int) []matchRec {
 func (r *matchRing) count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return len(r.recs)
+	return r.size
 }
 
 // accessRec is one line of the request/access log.
 type accessRec struct {
-	Time   string `json:"time"`
-	Site   string `json:"site"`
-	Client string `json:"client"`
-	Method string `json:"method"`
-	Path   string `json:"path"`
-	Status int    `json:"status"`
+	At     time.Time `json:"-"`
+	Site   string    `json:"site"`
+	Client string    `json:"client"`
+	Method string    `json:"method"`
+	Path   string    `json:"path"`
+	Status int       `json:"status"`
+}
+
+func (a accessRec) MarshalJSON() ([]byte, error) {
+	type accessWire struct {
+		Time   string `json:"time"`
+		Site   string `json:"site"`
+		Client string `json:"client"`
+		Method string `json:"method"`
+		Path   string `json:"path"`
+		Status int    `json:"status"`
+	}
+	return json.Marshal(accessWire{
+		Time: a.At.Format("15:04:05"), Site: a.Site, Client: a.Client,
+		Method: a.Method, Path: a.Path, Status: a.Status,
+	})
 }
 
 type accessRing struct {
 	mu   sync.Mutex
 	recs []accessRec
 	cap  int
+	next int
+	size int
 }
 
-func newAccessRing(capacity int) *accessRing { return &accessRing{cap: capacity} }
+func newAccessRing(capacity int) *accessRing {
+	if capacity < 0 {
+		capacity = 0
+	}
+	return &accessRing{recs: make([]accessRec, capacity), cap: capacity}
+}
 
 func (r *accessRing) add(m accessRec) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.recs = append(r.recs, m)
-	if len(r.recs) > r.cap {
-		r.recs = r.recs[len(r.recs)-r.cap:]
+	if r.cap == 0 {
+		return
+	}
+	r.recs[r.next] = m
+	r.next = (r.next + 1) % r.cap
+	if r.size < r.cap {
+		r.size++
 	}
 }
 
 func (r *accessRing) snapshot(limit int) []accessRec {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	n := len(r.recs)
-	if limit <= 0 || limit > n {
-		limit = n
+	if limit <= 0 || limit > r.size {
+		limit = r.size
 	}
 	out := make([]accessRec, limit)
 	for i := 0; i < limit; i++ {
-		out[i] = r.recs[n-1-i]
+		idx := (r.next - 1 - i + r.cap) % r.cap
+		out[i] = r.recs[idx]
 	}
 	return out
 }
@@ -994,7 +1031,7 @@ func (a *adminServer) handleAIBlocklist(w http.ResponseWriter, _ *http.Request) 
 // handleAIUnblock removes an IP from the AI blocklist.
 func (a *adminServer) handleAIUnblock(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		IP string `json:"ip"`
+		IP   string `json:"ip"`
 		Site string `json:"site"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil || req.IP == "" {
@@ -1117,7 +1154,7 @@ func (a *adminServer) handleFS(w http.ResponseWriter, r *http.Request) {
 
 func (a *adminServer) handleGetConfig(w http.ResponseWriter, _ *http.Request) {
 	c := a.srv.rt.Load().cfg
-	c.AI.APIKey = ""     // never expose secrets; UI shows "set" indicators
+	c.AI.APIKey = "" // never expose secrets; UI shows "set" indicators
 	c.HA.PeerToken = ""
 	users := make([]UserConfig, len(c.Users)) // copy with hashes blanked
 	for i, u := range c.Users {
@@ -1164,7 +1201,9 @@ func (a *adminServer) handleInterfaces(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *adminServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
-	var c Config
+	// Preserve the historical passive-discovery behavior for older API clients
+	// that submit a full config without the newly added toggle.
+	c := Config{PassiveDiscoveryEnabled: true}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&c); err != nil {
 		http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
 		return

@@ -7,10 +7,11 @@
 //	client ─▶ listener :8443 ─ site api  (:8443, api.example.com) ──▶ pool ─▶ ...
 //
 // Objects (F5-style): node → member → pool → site.
-//   node   = backend server address (reusable)
-//   member = node + port + weight in a pool
-//   pool   = members + LB method + health monitor
-//   site   = listen address + hostnames + one pool
+//
+//	node   = backend server address (reusable)
+//	member = node + port + weight in a pool
+//	pool   = members + LB method + health monitor
+//	site   = listen address + hostnames + one pool
 //
 // Each site has its own WAF instance and its own listen address; sites that
 // share an address are demultiplexed by Host (and SNI for TLS). Pools, nodes,
@@ -124,11 +125,11 @@ type FieldPolicy struct {
 // to path-gated SecLang inside the site's engine, so each URL effectively has
 // its own policy without needing its own engine.
 type PagePolicy struct {
-	Path           string              `json:"path"`            // path to bind to
-	Match          string              `json:"match,omitempty"` // prefix (default) | exact
-	Action         string              `json:"action,omitempty"` // "" tune (default) | deny (virtual patch)
-	DenyStatus     int                 `json:"deny_status,omitempty"` // 403 (default) or 404
-	Mode           string              `json:"mode,omitempty"`  // "" inherit | Off | DetectionOnly | On
+	Path           string              `json:"path"`                     // path to bind to
+	Match          string              `json:"match,omitempty"`          // prefix (default) | exact
+	Action         string              `json:"action,omitempty"`         // "" tune (default) | deny (virtual patch)
+	DenyStatus     int                 `json:"deny_status,omitempty"`    // 403 (default) or 404
+	Mode           string              `json:"mode,omitempty"`           // "" inherit | Off | DetectionOnly | On
 	ParanoiaLevel  int                 `json:"paranoia_level,omitempty"` // 0 = inherit
 	ExcludeRuleIDs []int               `json:"exclude_rule_ids,omitempty"`
 	ExcludeTargets []PageExcludeTarget `json:"exclude_targets,omitempty"`
@@ -139,16 +140,16 @@ type PagePolicy struct {
 }
 
 type SiteConfig struct {
-	Name      string   `json:"name"`
-	Listen    string   `json:"listen"` // address THIS site binds, e.g. ":443"
-	Hostnames []string `json:"hostnames"`
-	Pool      string   `json:"pool"`   // references PoolConfig.Name
-	Policy    string   `json:"policy"` // references PolicyConfig.Name (base ruleset)
-	PreserveHost bool  `json:"preserve_host"`
-	EngineMode   string `json:"engine_mode,omitempty"` // "" inherits global
-	AIMode       string `json:"ai_mode,omitempty"`     // off | advisory | block ("" = off)
-	TLSCert      string `json:"tls_cert,omitempty"`
-	TLSKey       string `json:"tls_key,omitempty"`
+	Name         string   `json:"name"`
+	Listen       string   `json:"listen"` // address THIS site binds, e.g. ":443"
+	Hostnames    []string `json:"hostnames"`
+	Pool         string   `json:"pool"`   // references PoolConfig.Name
+	Policy       string   `json:"policy"` // references PolicyConfig.Name (base ruleset)
+	PreserveHost bool     `json:"preserve_host"`
+	EngineMode   string   `json:"engine_mode,omitempty"` // "" inherits global
+	AIMode       string   `json:"ai_mode,omitempty"`     // off | advisory | block ("" = off)
+	TLSCert      string   `json:"tls_cert,omitempty"`
+	TLSKey       string   `json:"tls_key,omitempty"`
 	// ManageIP: when true and Listen has a concrete IP not on any interface,
 	// the WAF assigns it to the matching NIC on Apply (and removes it when the
 	// site goes away). Requires CAP_NET_ADMIN. Off for VIPs owned by keepalived.
@@ -164,12 +165,13 @@ type SiteConfig struct {
 }
 
 type Config struct {
-	Rules             string       `json:"rules"`
-	EngineMode        string       `json:"engine_mode"`
-	RequestBodyLimit  int          `json:"request_body_limit"`
-	ReadTimeoutSec    int          `json:"read_timeout_sec"`
-	IdleTimeoutSec    int          `json:"idle_timeout_sec"`
-	BackendTimeoutSec int          `json:"backend_timeout_sec"`
+	Rules                   string `json:"rules"`
+	EngineMode              string `json:"engine_mode"`
+	RequestBodyLimit        int    `json:"request_body_limit"`
+	ReadTimeoutSec          int    `json:"read_timeout_sec"`
+	IdleTimeoutSec          int    `json:"idle_timeout_sec"`
+	BackendTimeoutSec       int    `json:"backend_timeout_sec"`
+	PassiveDiscoveryEnabled bool   `json:"passive_discovery_enabled"`
 	// TrustedProxyCIDRs controls which immediate network peers may supply the
 	// X-Forwarded-For chain used as the authoritative client address.
 	TrustedProxyCIDRs []string       `json:"trusted_proxy_cidrs,omitempty"`
@@ -196,12 +198,13 @@ var (
 
 func defaultConfig() Config {
 	return Config{
-		Rules:             "coraza.conf",
-		EngineMode:        "DetectionOnly",
-		ReadTimeoutSec:    15,
-		IdleTimeoutSec:    60,
-		BackendTimeoutSec: 30,
-		Nodes:             []NodeConfig{{Name: "app1", Host: "127.0.0.1"}},
+		Rules:                   "coraza.conf",
+		EngineMode:              "DetectionOnly",
+		ReadTimeoutSec:          15,
+		IdleTimeoutSec:          60,
+		BackendTimeoutSec:       30,
+		PassiveDiscoveryEnabled: true,
+		Nodes:                   []NodeConfig{{Name: "app1", Host: "127.0.0.1"}},
 		Pools: []PoolConfig{{
 			Name:     "default-pool",
 			Scheme:   "http",
@@ -222,7 +225,7 @@ func defaultConfig() Config {
 			Policy:       "default",
 			PreserveHost: true,
 		}},
-		AI: defaultAIConfig(),
+		AI:     defaultAIConfig(),
 		Notify: defaultNotifyConfig(),
 		HA:     defaultHAConfig(),
 		Syslog: defaultSyslogConfig(),
@@ -889,8 +892,13 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 			s.learn.noteRequest(siteName, path, code)
 			s.signals.noteRequestShape(siteName, path, method, rawQuery, contentType, fields)
 		}
+		baseHandler := txhttp.WrapHandler(waf, buildProxy(pool, sc, cfg, s.log, record))
+		aiHandler := s.ai.wrap(sc, baseHandler)
+		passiveHandler := passiveDiscoveryWrap(cfg.PassiveDiscoveryEnabled, aiHandler)
+		captureForAI := cfg.AI.Enabled && cfg.AI.IncludeBody && sc.AIMode != "" && sc.AIMode != "off"
+		handler := requestBodyPrefixWrap(captureForAI, cfg.PassiveDiscoveryEnabled, passiveHandler)
 		sr := &siteRuntime{
-			handler: clientIPs.wrap(s.logWrap(sc.Name, passiveDiscoveryWrap(s.ai.wrap(sc, txhttp.WrapHandler(waf, buildProxy(pool, sc, cfg, s.log, record)))))),
+			handler: clientIPs.wrap(s.logWrap(sc.Name, handler)),
 			cfg:     sc,
 			mode:    mode,
 		}
@@ -938,6 +946,7 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 // traffic-facing NIC. Rules:
 //   - admin must not bind the same IP as any data-plane site listener
 //   - admin bound off-loopback must have TLS
+//
 // Loopback admin (the default) is always allowed.
 func adminPlaneCheck(adminAddr string, tls bool, sites []SiteConfig) error {
 	aHost, aPort, err := net.SplitHostPort(adminAddr)
@@ -1027,15 +1036,17 @@ func (s *server) logWrap(siteName string, next http.Handler) http.Handler {
 			s.metrics.addIn(r.ContentLength)
 		}
 		s.metrics.addOut(sw.nbytes)
-		s.access.add(accessRec{
-			Time:   time.Now().Format("15:04:05"),
+		client := clientIP(r)
+		rec := accessRec{
+			At:     time.Now(),
 			Site:   siteName,
-			Client: clientIP(r),
+			Client: client,
 			Method: r.Method,
 			Path:   r.URL.Path,
 			Status: sw.code,
-		})
-		s.syslog.forwardAccess(accessRec{Site: siteName, Client: clientIP(r), Method: r.Method, Path: r.URL.Path, Status: sw.code})
+		}
+		s.access.add(rec)
+		s.syslog.forwardAccess(rec)
 	})
 }
 

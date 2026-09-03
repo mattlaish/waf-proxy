@@ -305,25 +305,8 @@ func passiveFields(method, path, contentType string, body []byte) []DiscoveredFi
 			}
 		}
 	case "application/json", "application/merge-patch+json":
-		dec := json.NewDecoder(bytes.NewReader(body))
-		tok, err := dec.Token()
-		if err != nil || tok != json.Delim('{') {
-			break
-		}
-		for dec.More() && len(out) < passiveFieldLimit {
-			key, err := dec.Token()
-			if err != nil {
-				break
-			}
-			name, ok := key.(string)
-			if !ok {
-				break
-			}
+		for _, name := range topLevelJSONFieldNames(body, passiveFieldLimit) {
 			addPassiveField(&out, seen, method, path, name, "")
-			var discard json.RawMessage
-			if err := dec.Decode(&discard); err != nil {
-				break
-			}
 		}
 	case "multipart/form-data":
 		boundary := params["boundary"]
@@ -348,40 +331,231 @@ func passiveFields(method, path, contentType string, body []byte) []DiscoveredFi
 	return out
 }
 
-type passiveFieldsContextKey struct{}
+func topLevelJSONFieldNames(body []byte, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+	i := skipJSONSpace(body, 0)
+	if i >= len(body) || body[i] != '{' {
+		return nil
+	}
+	i++
+	out := make([]string, 0, min(limit, 8))
+	for len(out) < limit {
+		i = skipJSONSpace(body, i)
+		if i >= len(body) || body[i] == '}' {
+			break
+		}
+		if body[i] != '"' {
+			break
+		}
+		keyEnd, ok := scanJSONString(body, i)
+		if !ok {
+			break
+		}
+		var name string
+		if err := json.Unmarshal(body[i:keyEnd], &name); err != nil {
+			break
+		}
+		i = skipJSONSpace(body, keyEnd)
+		if i >= len(body) || body[i] != ':' {
+			break
+		}
+		out = append(out, name)
+		i, ok = skipJSONValue(body, i+1)
+		if !ok {
+			break
+		}
+		i = skipJSONSpace(body, i)
+		if i >= len(body) || body[i] == '}' {
+			break
+		}
+		if body[i] != ',' {
+			break
+		}
+		i++
+	}
+	return out
+}
 
-// passiveDiscoveryWrap captures only a bounded body prefix, restores it before
-// Coraza/backend processing, and attaches field names to the request context.
-// Values are never retained. The fields are committed only by ModifyResponse,
-// after the request has reached a backend and received a response.
-func passiveDiscoveryWrap(next http.Handler) http.Handler {
+func skipJSONSpace(body []byte, i int) int {
+	for i < len(body) {
+		switch body[i] {
+		case ' ', '\t', '\r', '\n':
+			i++
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+func scanJSONString(body []byte, start int) (int, bool) {
+	if start >= len(body) || body[start] != '"' {
+		return start, false
+	}
+	for i := start + 1; i < len(body); i++ {
+		switch body[i] {
+		case '\\':
+			i++ // skip the escaped byte; json.Unmarshal validates the key itself.
+			if i >= len(body) {
+				return len(body), false
+			}
+		case '"':
+			return i + 1, true
+		}
+	}
+	return len(body), false
+}
+
+// skipJSONValue advances over one JSON value without materializing its
+// contents. The bounded prefix may be truncated, so this intentionally accepts
+// a partial final value and lets callers retain field names observed before it.
+func skipJSONValue(body []byte, i int) (int, bool) {
+	i = skipJSONSpace(body, i)
+	if i >= len(body) {
+		return i, false
+	}
+	if body[i] == '"' {
+		return scanJSONString(body, i)
+	}
+	if body[i] == '{' || body[i] == '[' {
+		stack := make([]byte, 0, 8)
+		if body[i] == '{' {
+			stack = append(stack, '}')
+		} else {
+			stack = append(stack, ']')
+		}
+		i++
+		for i < len(body) {
+			if body[i] == '"' {
+				var ok bool
+				i, ok = scanJSONString(body, i)
+				if !ok {
+					return i, false
+				}
+				continue
+			}
+			switch body[i] {
+			case '{':
+				stack = append(stack, '}')
+			case '[':
+				stack = append(stack, ']')
+			case '}', ']':
+				if len(stack) == 0 || stack[len(stack)-1] != body[i] {
+					return i, false
+				}
+				stack = stack[:len(stack)-1]
+				if len(stack) == 0 {
+					return i + 1, true
+				}
+			}
+			i++
+		}
+		return i, false
+	}
+	start := i
+	for i < len(body) {
+		switch body[i] {
+		case ',', '}', ']', ' ', '\t', '\r', '\n':
+			return i, i > start
+		default:
+			i++
+		}
+	}
+	return i, i > start
+}
+
+type requestCapture struct {
+	bodyPrefix    []byte
+	passiveFields []DiscoveredField
+}
+
+type requestCaptureContextKey struct{}
+
+func passiveRequestSupported(r *http.Request) bool {
+	if r == nil || r.Body == nil {
+		return false
+	}
+	method := strings.ToUpper(r.Method)
+	if method != http.MethodPost && method != http.MethodPut && method != http.MethodPatch {
+		return false
+	}
+	ct := strings.ToLower(r.Header.Get("Content-Type"))
+	return strings.Contains(ct, "application/x-www-form-urlencoded") ||
+		strings.Contains(ct, "application/json") ||
+		strings.Contains(ct, "application/merge-patch+json") ||
+		strings.Contains(ct, "multipart/form-data")
+}
+
+// requestBodyPrefixWrap reads at most one bounded prefix for request consumers
+// that need it. Passive discovery and AI share the same []byte via context, so
+// the body is restored only once before Coraza/backend processing.
+func requestBodyPrefixWrap(captureForAI, captureForPassive bool, next http.Handler) http.Handler {
+	if !captureForAI && !captureForPassive {
+		return next
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		method := strings.ToUpper(r.Method)
-		ct := strings.ToLower(r.Header.Get("Content-Type"))
-		supported := method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch
-		supported = supported && (strings.Contains(ct, "application/x-www-form-urlencoded") ||
-			strings.Contains(ct, "application/json") || strings.Contains(ct, "application/merge-patch+json") ||
-			strings.Contains(ct, "multipart/form-data"))
-		if !supported || r.Body == nil {
+		needPrefix := captureForAI || (captureForPassive && passiveRequestSupported(r))
+		if !needPrefix || r.Body == nil {
 			next.ServeHTTP(w, r)
 			return
 		}
 		prefix, _ := io.ReadAll(io.LimitReader(r.Body, passiveBodyLimit))
 		r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(prefix), r.Body))
-		fields := passiveFields(method, r.URL.Path, r.Header.Get("Content-Type"), prefix)
+		capture := &requestCapture{bodyPrefix: prefix}
+		r = r.WithContext(context.WithValue(r.Context(), requestCaptureContextKey{}, capture))
+		next.ServeHTTP(w, r)
+	})
+}
+
+func requestCaptureFromRequest(r *http.Request) *requestCapture {
+	if r == nil {
+		return nil
+	}
+	capture, _ := r.Context().Value(requestCaptureContextKey{}).(*requestCapture)
+	return capture
+}
+
+func requestBodyPrefixFromRequest(r *http.Request) []byte {
+	if capture := requestCaptureFromRequest(r); capture != nil {
+		return capture.bodyPrefix
+	}
+	return nil
+}
+
+// passiveDiscoveryWrap parses the shared bounded request prefix and attaches
+// field names to the request context. When disabled it returns next unchanged,
+// leaving no per-request wrapper or body-read cost.
+func passiveDiscoveryWrap(enabled bool, next http.Handler) http.Handler {
+	if !enabled {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !passiveRequestSupported(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		prefix := requestBodyPrefixFromRequest(r)
+		if len(prefix) == 0 {
+			next.ServeHTTP(w, r)
+			return
+		}
+		fields := passiveFields(r.Method, r.URL.Path, r.Header.Get("Content-Type"), prefix)
 		if len(fields) > 0 {
-			r = r.WithContext(context.WithValue(r.Context(), passiveFieldsContextKey{}, fields))
+			if capture := requestCaptureFromRequest(r); capture != nil {
+				capture.passiveFields = fields
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
 func passiveFieldsFromRequest(r *http.Request) []DiscoveredField {
-	if r == nil {
-		return nil
+	if capture := requestCaptureFromRequest(r); capture != nil {
+		return capture.passiveFields
 	}
-	fields, _ := r.Context().Value(passiveFieldsContextKey{}).([]DiscoveredField)
-	return fields
+	return nil
 }
 
 type siteSignals struct {

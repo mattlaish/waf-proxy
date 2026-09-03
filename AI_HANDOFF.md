@@ -43,21 +43,21 @@ architectural changes until the imported baseline has been verified on a host
 with the required toolchains and Linux runtime dependencies.
 
 ## Baseline Date
-2026-08-28 (Asia/Hong_Kong; documentation synchronized, no functional change)
+2026-09-03 (Asia/Taipei; request hot-path optimization slice)
 
 ## Repository State
 - Branch: `main`, tracking `origin/main`.
-- HEAD before this documentation-only synchronization: `3186015` (`Merge pull
-  request #1 from mattlaish/claude/test-e5j6pr`), aligned with `origin/main`.
-- PR #1 merged the reviewed roadmap, scan record, field-scoped learner candidate,
-  and patch-ledger updates into `main`; the former remote review branch is no
-  longer a newer product version.
-- The worktree was clean before this documentation-only synchronization. No Go,
-  UI, configuration, test, dependency, or deployment file is changed by it.
-- The repository contains the imported implementation, documentation baseline,
-  and committed dependency reproducibility baseline.
-- No credentials, private keys, generated binary, dependency directories, or
-  local config were found tracked.
+- Current local baseline before this slice: `95ab964` (`lf modifed`); the
+  uploaded repository also recorded `origin/main` at that commit.
+- The worktree was clean before this hot-path slice. Source, UI, configuration,
+  tests, README, and handoff documentation are now intentionally modified but
+  remain uncommitted and undeployed.
+- A `git pull --ff-only` synchronization attempt was made before implementation,
+  but the execution environment could not resolve `github.com`. Do not infer
+  from that failure that the public remote still points to `95ab964`; synchronize
+  on a networked host before merging or pushing.
+- No credentials, private keys, generated binaries, dependency directories, or
+  local production config were added by this slice.
 
 ## Documentation Synchronization on 2026-08-28
 - Updated the stale repository base from `8d9c003` to the post-PR-merge main
@@ -783,3 +783,78 @@ produces the same public client address in the Coraza event, access log, syslog,
 learner input, backend XFF/X-Real-IP, and AI advisory record. After that, design
 the L7 limiter against this resolver; do not key rate limits directly from raw
 forwarding headers.
+## Request Hot-Path Optimization on 2026-09-03
+
+**Status: implemented locally; not committed, deployed, or real-Coraza verified.**
+The goal was to implement the reviewed hot-path wins while explicitly avoiding
+the rejected aggregate "everything is under 1 microsecond" characterization.
+
+### Implementation
+
+- `accessRing` and `matchRing` are fixed circular buffers with preallocated
+  storage, write index, and size. Snapshot ordering remains newest-first and the
+  admin API shape is unchanged.
+- `accessRec` retains a `time.Time` internally and custom-marshals the historical
+  `HH:MM:SS` field on admin serialization, moving that format allocation off the
+  traffic path. `logWrap` also resolves the client once and reuses one record for
+  the access ring and syslog.
+- AI config/client publication now uses immutable `atomic.Pointer` snapshots and
+  an atomic enabled gate. `ai_mode: off` sites receive `next` directly; globally
+  disabled AI on an advisory/block site returns after a single atomic load. The
+  obsolete AI `statusRecorder` was removed.
+- The remaining `statusRecorder` implements `Unwrap()` for compatibility with
+  `http.ResponseController` and optional interfaces such as `http.Hijacker`.
+- Syslog config is published through `atomic.Pointer[SyslogConfig]`; global and
+  per-stream atomic gates let disabled WAF/access/audit/notify hooks return before
+  copying a config snapshot. Connection lifecycle remains serialized by the
+  existing mutex.
+- Added root `passive_discovery_enabled`, default `true`. The admin PUT path also
+  defaults it true before decoding so older full-config clients that omit the
+  new field preserve historical behavior. The shipping UI and sample config
+  expose the toggle.
+- `requestBodyPrefixWrap` is now the sole bounded body-prefix reader for passive
+  discovery and AI. Both consumers share one `[]byte` through one request-context
+  capture object and the request body is restored only once before Coraza/backend
+  handling. Passive discovery disabled at build time returns the underlying
+  handler and adds no request-body parsing cost.
+- AI jobs retain the shared byte prefix and `buildPrompt` writes at most the
+  first 2,000 body bytes directly to the builder instead of creating a full body
+  string copy.
+- Passive JSON discovery uses a bounded top-level scanner that skips values
+  lexically instead of decoding each value into `json.RawMessage`; only field
+  names are retained.
+- No new client-IP context cache was added. Trusted-proxy XFF processing already
+  occurs once in `clientIPs.wrap`; caching the normalized address again would add
+  a `WithContext`/context value on every request merely to avoid a small number
+  of `SplitHostPort` calls.
+
+### Verification
+
+- Real `go test -count=1 ./...` is **NOT_RUN**: the environment cannot resolve
+  `proxy.golang.org`, so `github.com/corazawaf/coraza/v3@v3.3.2` cannot be
+  downloaded. No real-Coraza pass is claimed.
+- A temporary external compile harness using a minimal Coraza API stub passed
+  `go test -run '^$' ./...`, all focused hot-path/discovery tests, the full
+  repository suite, `go vet ./...`, and `go test -race -count=1 ./...` against
+  the final source snapshot. This checks Go compilation and non-Coraza
+  regressions only; it is not a substitute for real WAF tests.
+- Added focused tests for circular buffer ordering/count and JSON compatibility,
+  status-recorder unwrap/Hijacker reachability, AI-off direct wrapping, disabled
+  syslog gating, legacy passive-toggle defaulting, disabled passive discovery,
+  shared AI/passive body capture, large JSON-value skipping, discovery commit
+  flow, and byte-body prompt generation.
+- Offline component benchmarks on AMD EPYC 9V74: fixed access-ring add
+  `9.825 ns/op`, `0 B/op`, `0 allocs/op`; ~60 KiB JSON scanner `35,846 ns/op`,
+  `1,302 B/op`, `14 allocs/op`. These are not end-to-end Coraza benchmarks.
+- `config.sample.json` parses and the inline production admin JavaScript passes
+  `node --check`. No release binary/hash is recorded because the real dependency
+  is unavailable in this environment.
+
+### Recommended next step
+
+On a host with the real Coraza dependency/cache, first synchronize `origin/main`,
+then rebase/merge this working slice as appropriate and run `go test -race ./...`,
+`go vet ./...`, normal Linux build/release checks, WebSocket/HTTP Upgrade
+integration, and representative 1 KiB/16 KiB/64 KiB request-body benchmarks for
+passive discovery on/off and AI body capture on/off. Only after those gates pass
+should this slice be committed/deployed.

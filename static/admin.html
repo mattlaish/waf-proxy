@@ -314,6 +314,8 @@
             <div class="field"><label for="idle_timeout_sec">Idle (s)</label><input type="number" id="idle_timeout_sec" min="1"></div>
             <div class="field"><label for="backend_timeout_sec">Backend (s)</label><input type="number" id="backend_timeout_sec" min="1"></div>
           </div>
+          <label class="check" style="margin-top:10px"><input type="checkbox" id="passive_discovery_enabled"> Passive request-body field discovery</label>
+          <div class="hint">When off, live POST/PUT/PATCH bodies are not buffered or parsed for form-field discovery. Path/status learning and explicit crawler discovery still work.</div>
         </details>
       </section>
       <section>
@@ -1139,6 +1141,7 @@
     pools=(c.pools||[]).map(x=>Object.assign({},x,{monitor:Object.assign({},x.monitor),members:(x.members||[]).map(m=>Object.assign({},m)),backend_tls:Object.assign({},x.backend_tls||{})}));
     policies=(c.policies||[]).map(x=>Object.assign({},x,{exclusions:(x.exclusions||[]).map(e=>Object.assign({},e,{rule_ids:(e.rule_ids||[]).slice(),targets:(e.targets||[]).slice()}))}));
     globalFields.forEach(f=>$(f).value = c[f] ?? "");
+    $("passive_discovery_enabled").checked = c.passive_discovery_enabled !== false;
     fillAI(c.ai, c.trusted_proxy_cidrs); fillHA(c.ha); fillNotify(c.notify); fillSyslog(c.syslog);
     paintMode(); renderSites();
   }
@@ -1146,6 +1149,7 @@
     syncSites(); syncNodes(); syncPools(); syncPolicies();
     const c=Object.assign({}, cfg);
     globalFields.forEach(f=>{ const el=$(f); c[f]= el.type==="number"?Number(el.value||0):el.value.trim(); });
+    c.passive_discovery_enabled=$("passive_discovery_enabled").checked;
     c.engine_mode=engineMode; c.sites=sites; c.nodes=nodes; c.pools=pools; c.policies=policies;
     c.trusted_proxy_cidrs=$("ai_trusted_proxies").value.split(",").map(x=>x.trim()).filter(Boolean);
     c.ai=collectAI(); c.ha=collectHA(); c.notify=collectNotify(); c.syslog=collectSyslog();

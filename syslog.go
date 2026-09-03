@@ -27,20 +27,20 @@ import (
 )
 
 type SyslogConfig struct {
-	Enabled  bool   `json:"enabled"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Protocol string `json:"protocol"` // udp | tcp | tls
-	Format   string `json:"format"`   // rfc5424 (default) | rfc3164
-	Facility int    `json:"facility"` // 0-23 (default 16 = local0)
-	AppName  string `json:"app_name"`
-	TLSSkipVerify bool `json:"tls_skip_verify"` // for private CAs / self-signed collectors
+	Enabled       bool   `json:"enabled"`
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
+	Protocol      string `json:"protocol"` // udp | tcp | tls
+	Format        string `json:"format"`   // rfc5424 (default) | rfc3164
+	Facility      int    `json:"facility"` // 0-23 (default 16 = local0)
+	AppName       string `json:"app_name"`
+	TLSSkipVerify bool   `json:"tls_skip_verify"` // for private CAs / self-signed collectors
 
 	// which streams to forward
-	SendWAF     bool `json:"send_waf"`
-	SendAccess  bool `json:"send_access"`
-	SendAudit   bool `json:"send_audit"`
-	SendNotify  bool `json:"send_notify"`
+	SendWAF    bool `json:"send_waf"`
+	SendAccess bool `json:"send_access"`
+	SendAudit  bool `json:"send_audit"`
+	SendNotify bool `json:"send_notify"`
 
 	// PHI control: include the (truncated) matched payload fragment
 	IncludeMatchData bool `json:"include_match_data"`
@@ -93,9 +93,15 @@ const (
 
 type syslogEngine struct {
 	mu   sync.Mutex
-	cfg  SyslogConfig
+	cfg  atomic.Pointer[SyslogConfig]
 	log  *slog.Logger
 	host string
+
+	enabled       atomic.Bool
+	wafEnabled    atomic.Bool
+	accessEnabled atomic.Bool
+	auditEnabled  atomic.Bool
+	notifyEnabled atomic.Bool
 
 	queue   chan string
 	conn    net.Conn
@@ -109,19 +115,31 @@ func newSyslogEngine(log *slog.Logger) *syslogEngine {
 	if h == "" {
 		h = "waf-proxy"
 	}
-	return &syslogEngine{
-		cfg:    defaultSyslogConfig(),
+	e := &syslogEngine{
 		log:    log,
 		host:   h,
 		queue:  make(chan string, 4096),
 		cancel: make(chan struct{}),
 	}
+	e.storeConfig(defaultSyslogConfig())
+	return e
+}
+
+func (s *syslogEngine) storeConfig(c SyslogConfig) {
+	cfg := c
+	s.cfg.Store(&cfg)
+	s.enabled.Store(c.Enabled)
+	s.wafEnabled.Store(c.Enabled && c.SendWAF)
+	s.accessEnabled.Store(c.Enabled && c.SendAccess)
+	s.auditEnabled.Store(c.Enabled && c.SendAudit)
+	s.notifyEnabled.Store(c.Enabled && c.SendNotify)
 }
 
 func (s *syslogEngine) configure(c SyslogConfig) {
 	s.mu.Lock()
-	s.cfg = c
-	// force a reconnect on next send by dropping the current conn
+	// Publish the immutable snapshot while the connection is serialized, then
+	// force a reconnect so the next background delivery uses the new endpoint.
+	s.storeConfig(c)
 	if s.conn != nil {
 		s.conn.Close()
 		s.conn = nil
@@ -133,9 +151,10 @@ func (s *syslogEngine) configure(c SyslogConfig) {
 }
 
 func (s *syslogEngine) snapshotCfg() SyslogConfig {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.cfg
+	if cfg := s.cfg.Load(); cfg != nil {
+		return *cfg
+	}
+	return defaultSyslogConfig()
 }
 
 // enqueue is non-blocking: drop rather than ever block a caller (request path,
@@ -219,10 +238,13 @@ func (s *syslogEngine) pri(cfg SyslogConfig, severity int) int { return cfg.Faci
 
 // emit formats and enqueues a message. msgID groups events (WAF, ACCESS, ...).
 func (s *syslogEngine) emit(severity int, msgID, msg string) {
-	cfg := s.snapshotCfg()
-	if !cfg.Enabled {
+	if !s.enabled.Load() {
 		return
 	}
+	s.emitWithConfig(s.snapshotCfg(), severity, msgID, msg)
+}
+
+func (s *syslogEngine) emitWithConfig(cfg SyslogConfig, severity int, msgID, msg string) {
 	app := cfg.AppName
 	if app == "" {
 		app = "waf-proxy"
@@ -274,6 +296,9 @@ func sevFromString(s string) int {
 // ── stream hooks (called from the event sources) ─────────────────────────
 
 func (s *syslogEngine) forwardMatch(m matchRec) {
+	if !s.wafEnabled.Load() {
+		return
+	}
 	cfg := s.snapshotCfg()
 	if !cfg.Enabled || !cfg.SendWAF {
 		return
@@ -290,10 +315,13 @@ func (s *syslogEngine) forwardMatch(m matchRec) {
 		}
 		pairs = append(pairs, "data", d)
 	}
-	s.emit(sevFromString(m.Severity), "WAF", kv(pairs...))
+	s.emitWithConfig(cfg, sevFromString(m.Severity), "WAF", kv(pairs...))
 }
 
 func (s *syslogEngine) forwardAccess(a accessRec) {
+	if !s.accessEnabled.Load() {
+		return
+	}
 	cfg := s.snapshotCfg()
 	if !cfg.Enabled || !cfg.SendAccess {
 		return
@@ -304,19 +332,25 @@ func (s *syslogEngine) forwardAccess(a accessRec) {
 	} else if a.Status >= 400 {
 		sev = sylWarning
 	}
-	s.emit(sev, "ACCESS", kv("event", "access", "site", a.Site, "client", a.Client,
+	s.emitWithConfig(cfg, sev, "ACCESS", kv("event", "access", "site", a.Site, "client", a.Client,
 		"method", a.Method, "path", a.Path, "status", fmt.Sprintf("%d", a.Status)))
 }
 
 func (s *syslogEngine) forwardAudit(user, action, detail string) {
+	if !s.auditEnabled.Load() {
+		return
+	}
 	cfg := s.snapshotCfg()
 	if !cfg.Enabled || !cfg.SendAudit {
 		return
 	}
-	s.emit(sylNotice, "AUDIT", kv("event", "audit", "user", user, "action", action, "detail", detail))
+	s.emitWithConfig(cfg, sylNotice, "AUDIT", kv("event", "audit", "user", user, "action", action, "detail", detail))
 }
 
 func (s *syslogEngine) forwardNotify(level, kind, title, body string) {
+	if !s.notifyEnabled.Load() {
+		return
+	}
 	cfg := s.snapshotCfg()
 	if !cfg.Enabled || !cfg.SendNotify {
 		return
@@ -328,7 +362,7 @@ func (s *syslogEngine) forwardNotify(level, kind, title, body string) {
 	case "warn":
 		sev = sylWarning
 	}
-	s.emit(sev, "NOTIFY", kv("event", "notify", "kind", kind, "title", title, "detail", body))
+	s.emitWithConfig(cfg, sev, "NOTIFY", kv("event", "notify", "kind", kind, "title", title, "detail", body))
 }
 
 // test sends a single message immediately (synchronously) to validate config.

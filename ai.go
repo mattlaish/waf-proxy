@@ -39,6 +39,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -127,27 +128,33 @@ func (c AIConfig) validate() error {
 	if c.BlockTTLSec < 1 {
 		return fmt.Errorf("ai: block_ttl_sec must be >= 1")
 	}
-	if c.MaxTokens < 1 || c.MaxTokens > 8192 { return fmt.Errorf("ai: max_tokens must be 1-8192") }
-	if c.Workers < 1 || c.Workers > 32 { return fmt.Errorf("ai: workers must be 1-32") }
-	if c.QueueSize < 1 || c.QueueSize > 10000 { return fmt.Errorf("ai: queue_size must be 1-10000") }
+	if c.MaxTokens < 1 || c.MaxTokens > 8192 {
+		return fmt.Errorf("ai: max_tokens must be 1-8192")
+	}
+	if c.Workers < 1 || c.Workers > 32 {
+		return fmt.Errorf("ai: workers must be 1-32")
+	}
+	if c.QueueSize < 1 || c.QueueSize > 10000 {
+		return fmt.Errorf("ai: queue_size must be 1-10000")
+	}
 	return nil
 }
 
 // ── engine ──────────────────────────────────────────────────────────────
 
 type analysisJob struct {
-	site    string
-	mode    string // advisory | block
-	client  string // raw IP (hashing applied at prompt build)
-	method  string
-	host    string
-	path    string
-	query   string
-	headers map[string]string
-	body    string
-	rules   []int
+	site        string
+	mode        string // advisory | block
+	client      string // raw IP (hashing applied at prompt build)
+	method      string
+	host        string
+	path        string
+	query       string
+	headers     map[string]string
+	body        []byte
+	rules       []int
 	matchedData []string
-	ts      time.Time
+	ts          time.Time
 }
 
 type verdictRec struct {
@@ -170,17 +177,17 @@ type blockEntry struct {
 }
 
 type aiEngine struct {
-	mu       sync.RWMutex
-	cfg      AIConfig
-	client   *http.Client
+	cfg      atomic.Pointer[AIConfig]
+	client   atomic.Pointer[http.Client]
+	enabled  atomic.Bool
 	queue    chan analysisJob
 	log      *slog.Logger
 	notify   *notifier
 	hmacKey  []byte
 	verdicts *verdictRingBuf
 
-	blockMu sync.Mutex
-	block   map[string]blockEntry
+	blockMu   sync.Mutex
+	block     map[string]blockEntry
 	pendingMu sync.RWMutex
 	pending   map[string]*analysisJob
 
@@ -192,8 +199,6 @@ func newAIEngine(log *slog.Logger) *aiEngine {
 	key := make([]byte, 16)
 	_, _ = crand.Read(key)
 	e := &aiEngine{
-		cfg:      defaultAIConfig(),
-		client:   &http.Client{Timeout: 8 * time.Second},
 		queue:    make(chan analysisJob, 10000), // logical limit comes from cfg.QueueSize
 		log:      log,
 		hmacKey:  key,
@@ -202,6 +207,7 @@ func newAIEngine(log *slog.Logger) *aiEngine {
 		dedupe:   map[string]time.Time{},
 		pending:  map[string]*analysisJob{},
 	}
+	e.configure(defaultAIConfig())
 	for i := 0; i < 32; i++ { // configured subset is active; others remain idle
 		go e.worker(i)
 	}
@@ -210,16 +216,18 @@ func newAIEngine(log *slog.Logger) *aiEngine {
 }
 
 func (e *aiEngine) configure(c AIConfig) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.cfg = c
-	e.client = &http.Client{Timeout: time.Duration(max(1, c.TimeoutSec)) * time.Second}
+	cfg := c
+	client := &http.Client{Timeout: time.Duration(max(1, c.TimeoutSec)) * time.Second}
+	e.cfg.Store(&cfg)
+	e.client.Store(client)
+	e.enabled.Store(c.Enabled)
 }
 
 func (e *aiEngine) snapshotCfg() AIConfig {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.cfg
+	if cfg := e.cfg.Load(); cfg != nil {
+		return *cfg
+	}
+	return defaultAIConfig()
 }
 
 func max(a, b int) int {
@@ -263,8 +271,15 @@ func (e *aiEngine) addBlock(be blockEntry) {
 func (e *aiEngine) unblock(site, ip string) {
 	e.blockMu.Lock()
 	defer e.blockMu.Unlock()
-	if site != "" { delete(e.block, blockKey(site, ip)); return }
-	for key, be := range e.block { if be.IP == ip { delete(e.block, key) } }
+	if site != "" {
+		delete(e.block, blockKey(site, ip))
+		return
+	}
+	for key, be := range e.block {
+		if be.IP == ip {
+			delete(e.block, key)
+		}
+	}
 }
 
 func (e *aiEngine) blocklist() []blockEntry {
@@ -338,12 +353,16 @@ func requestKey(client, uri string) string { return client + "\x00" + uri }
 func (e *aiEngine) enqueueMatch(site, mode, client, uri string, ruleID int, data string) {
 	e.pendingMu.RLock()
 	p := e.pending[requestKey(client, uri)]
-	if p == nil { p = e.pending[requestKey(client, strings.SplitN(uri, "?", 2)[0])] }
+	if p == nil {
+		p = e.pending[requestKey(client, strings.SplitN(uri, "?", 2)[0])]
+	}
 	if p != nil {
 		j := *p
 		e.pendingMu.RUnlock()
 		j.rules = []int{ruleID}
-		if data != "" { j.matchedData = []string{data} }
+		if data != "" {
+			j.matchedData = []string{data}
+		}
 		e.enqueue(j)
 		return
 	}
@@ -386,6 +405,10 @@ func (s *statusRecorder) Flush() {
 	}
 }
 
+// Unwrap lets http.ResponseController reach optional interfaces (notably
+// Hijacker for WebSocket/101 upgrades) implemented by the underlying writer.
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
 var hardDenyHeaders = map[string]bool{
 	"authorization": true, "cookie": true, "set-cookie": true,
 	"proxy-authorization": true, "x-api-key": true,
@@ -421,31 +444,44 @@ func (e *aiEngine) redactHeaders(r *http.Request, cfg AIConfig) map[string]strin
 
 func redactQuery(raw string) string {
 	q, err := url.ParseQuery(raw)
-	if err != nil { return "[redacted: unparseable query]" }
+	if err != nil {
+		return "[redacted: unparseable query]"
+	}
 	for key := range q {
 		lk := strings.ToLower(key)
 		if strings.Contains(lk, "token") || strings.Contains(lk, "secret") ||
 			strings.Contains(lk, "password") || strings.Contains(lk, "passwd") ||
 			strings.Contains(lk, "session") || strings.Contains(lk, "key") ||
-			strings.Contains(lk, "code") { q.Set(key, "[REDACTED]") }
+			strings.Contains(lk, "code") {
+			q.Set(key, "[REDACTED]")
+		}
 	}
 	return q.Encode()
 }
 
 // wrap adds AI enforcement + analysis around a site's WAF+proxy handler.
-// Blocklist lookup is the only inline cost; analysis is fully async.
+// Sites with AI mode off are unwrapped entirely; globally disabled AI costs only
+// an atomic boolean load on advisory/block sites.
 func (e *aiEngine) wrap(site SiteConfig, next http.Handler) http.Handler {
 	mode := site.AIMode
-	if mode == "" {
-		mode = "off"
+	if mode == "" || mode == "off" {
+		return next
 	}
 	siteName := site.Name
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !e.enabled.Load() {
+			next.ServeHTTP(w, r)
+			return
+		}
 		cfg := e.snapshotCfg()
+		if !cfg.Enabled {
+			next.ServeHTTP(w, r)
+			return
+		}
 		ip := clientIP(r)
 
 		// Inline drop for AI-blocklisted sources (block mode only).
-		if cfg.Enabled && mode == "block" {
+		if mode == "block" {
 			if be, ok := e.isBlocked(siteName, ip); ok {
 				e.verdicts.add(verdictRec{
 					Time: time.Now().Format("15:04:05"), Site: siteName, Client: ip,
@@ -457,39 +493,35 @@ func (e *aiEngine) wrap(site SiteConfig, next http.Handler) http.Handler {
 			}
 		}
 
-		capture := cfg.Enabled && mode != "off"
-		var hdrs map[string]string
-		var body string
-		if capture {
-			hdrs = e.redactHeaders(r, cfg)
-			if cfg.IncludeBody && r.Body != nil {
-				b, _ := io.ReadAll(io.LimitReader(r.Body, 64<<10))
-				r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(b), r.Body))
-				body = string(b)
-			}
+		hdrs := e.redactHeaders(r, cfg)
+		var body []byte
+		if cfg.IncludeBody {
+			body = requestBodyPrefixFromRequest(r)
 		}
 		query := r.URL.RawQuery
-		if cfg.RedactHeaders { query = redactQuery(query) }
+		if cfg.RedactHeaders {
+			query = redactQuery(query)
+		}
 		pending := &analysisJob{site: siteName, mode: mode, client: ip, method: r.Method,
 			host: r.Host, path: r.URL.Path, query: query, headers: hdrs, body: body, ts: time.Now()}
-		if capture {
-			keys := []string{requestKey(ip, r.URL.RequestURI()), requestKey(ip, r.URL.Path)}
+		keys := []string{requestKey(ip, r.URL.RequestURI()), requestKey(ip, r.URL.Path)}
+		e.pendingMu.Lock()
+		for _, key := range keys {
+			e.pending[key] = pending
+		}
+		e.pendingMu.Unlock()
+		defer func() {
 			e.pendingMu.Lock()
-			for _, key := range keys { e.pending[key] = pending }
+			for _, key := range keys {
+				if e.pending[key] == pending {
+					delete(e.pending, key)
+				}
+			}
 			e.pendingMu.Unlock()
-			defer func() {
-				e.pendingMu.Lock()
-				for _, key := range keys { if e.pending[key] == pending { delete(e.pending, key) } }
-				e.pendingMu.Unlock()
-			}()
-		}
+		}()
 
-		sw := &statusRecorder{ResponseWriter: w, code: 200}
-		next.ServeHTTP(sw, r)
+		next.ServeHTTP(w, r)
 
-		if !capture {
-			return
-		}
 		sampled := cfg.SampleRate > 0 && rand.Intn(100) < cfg.SampleRate
 		if cfg.OnlyOnMatch || !sampled {
 			return
@@ -572,15 +604,23 @@ func (e *aiEngine) buildPrompt(cfg AIConfig, j analysisJob) string {
 	if len(j.rules) > 0 {
 		fmt.Fprintf(&b, "waf_rule_ids: %v\n", j.rules)
 	}
-	if len(j.matchedData) > 0 { fmt.Fprintf(&b, "waf_matched_data: %q\n", j.matchedData) }
+	if len(j.matchedData) > 0 {
+		fmt.Fprintf(&b, "waf_matched_data: %q\n", j.matchedData)
+	}
 	if len(j.headers) > 0 {
 		b.WriteString("headers:\n")
 		for k, v := range j.headers {
 			fmt.Fprintf(&b, "  %s: %s\n", k, truncate(v, 256))
 		}
 	}
-	if cfg.IncludeBody && j.body != "" {
-		fmt.Fprintf(&b, "body: %s\n", truncate(j.body, 2000))
+	if cfg.IncludeBody && len(j.body) > 0 {
+		b.WriteString("body: ")
+		if len(j.body) > 2000 {
+			b.Write(j.body[:2000])
+		} else {
+			b.Write(j.body)
+		}
+		b.WriteByte('\n')
 	}
 	b.WriteString("</request>")
 	return b.String()
@@ -603,22 +643,31 @@ type aiVerdict struct {
 
 func parseVerdict(text string) (aiVerdict, error) {
 	type wireVerdict struct {
-		Verdict string `json:"verdict"`
-		Score *int `json:"score"`
+		Verdict  string `json:"verdict"`
+		Score    *int   `json:"score"`
 		Category string `json:"category"`
-		Reason string `json:"reason"`
+		Reason   string `json:"reason"`
 	}
 	var raw wireVerdict
 	found := false
 	for pos := strings.IndexByte(text, '{'); pos >= 0; {
 		dec := json.NewDecoder(strings.NewReader(text[pos:]))
-		if err := dec.Decode(&raw); err == nil { found = true; break }
+		if err := dec.Decode(&raw); err == nil {
+			found = true
+			break
+		}
 		next := strings.IndexByte(text[pos+1:], '{')
-		if next < 0 { break }
+		if next < 0 {
+			break
+		}
 		pos += next + 1
 	}
-	if !found { return aiVerdict{}, fmt.Errorf("no valid JSON object in model output") }
-	if raw.Score == nil { return aiVerdict{}, fmt.Errorf("JSON verdict missing score") }
+	if !found {
+		return aiVerdict{}, fmt.Errorf("no valid JSON object in model output")
+	}
+	if raw.Score == nil {
+		return aiVerdict{}, fmt.Errorf("JSON verdict missing score")
+	}
 	v := aiVerdict{Verdict: raw.Verdict, Score: *raw.Score,
 		Category: strings.TrimSpace(raw.Category), Reason: strings.TrimSpace(raw.Reason)}
 	switch v.Verdict {
@@ -626,7 +675,9 @@ func parseVerdict(text string) (aiVerdict, error) {
 	default:
 		return aiVerdict{}, fmt.Errorf("invalid verdict %q", v.Verdict)
 	}
-	if v.Category == "" || v.Reason == "" { return aiVerdict{}, fmt.Errorf("JSON verdict missing category or reason") }
+	if v.Category == "" || v.Reason == "" {
+		return aiVerdict{}, fmt.Errorf("JSON verdict missing category or reason")
+	}
 	if v.Score < 0 {
 		v.Score = 0
 	}
@@ -684,7 +735,11 @@ func (e *aiEngine) doJSON(ctx context.Context, url string, headers map[string]st
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := e.client.Do(req)
+	client := e.client.Load()
+	if client == nil {
+		return nil, fmt.Errorf("AI HTTP client is not configured")
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

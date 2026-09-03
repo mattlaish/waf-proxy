@@ -232,7 +232,10 @@ A page policy can also validate individual request fields. Field discovery is
 hybrid: **Discover** supplies HTML form metadata, while real POST/PUT/PATCH
 traffic supplies field names for login-protected pages, SPAs, and APIs the
 crawler cannot reach. Passive discovery reads a bounded request-body prefix and
-retains names only—never field values or uploaded content. Crawler and passive
+retains names only—never field values or uploaded content. It is controlled by
+`passive_discovery_enabled`; set it to `false` to remove request-body discovery
+buffering/parsing from the data path while keeping ordinary path/status learning
+and the explicit crawler available. Crawler and passive
 results are merged as `crawled`, `passive`, or `both`; a human still reviews and
 applies every policy. Open the page-policy editor from Site Map to configure:
 
