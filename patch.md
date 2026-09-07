@@ -320,3 +320,380 @@ Run the unmodified repository with the real Coraza module available and execute
 end-to-end benchmarks for representative 1 KiB/16 KiB/64 KiB request bodies with
 passive discovery and AI combinations. Verify WebSocket/HTTP Upgrade through the
 remaining recorder as part of that real integration run.
+
+
+## P0-A ReverseProxy Buffering + Shared Console Theme on 2026-09-04
+
+**Status: implemented locally; real-Coraza validation remains NOT_RUN in this isolated environment.**
+
+### Implementation
+
+- Added `proxy_buffer.go`: one shared 32 KiB `httputil.BufferPool` backed by
+  `sync.Pool` of fixed-array pointers. Unexpected buffer capacities are not
+  retained. The pointer-backed pool avoids the slice-header allocation observed
+  when storing `[]byte` directly in `sync.Pool`.
+- `buildProxy` now sets `BufferPool: reverseProxyCopyBuffers` and
+  `FlushInterval: 0`. This removes the default per-response 32 KiB copy-buffer
+  allocation and avoids opting normal responses into the periodic flush
+  timer/mutex path. Streaming behavior remains delegated to Go's
+  `httputil.ReverseProxy` streaming detection.
+- Added focused P0-A tests for pool shape and `buildProxy` settings, an end-to-end
+  proxy copy test that confirms BufferPool Get/Put use on a 64 KiB response, an
+  SSE test confirming event-stream flushing still works with `FlushInterval=0`,
+  plus a component benchmark.
+- Imported the user-supplied `theme.css` byte-for-byte as both
+  `static/theme.css` and `web/src/theme.css`. The shipping console embeds and
+  serves `/theme.css`; its CSP now allows same-origin styles, and existing
+  console tokens alias the canonical `--cg-*` variables. The Preact migration
+  tree imports the same theme before its compatibility/layout stylesheet.
+- Added a console test that verifies `/theme.css`, the canonical green token,
+  the root stylesheet link, and the updated CSP.
+
+### Verification
+
+- Real `go test` with Coraza v3.3.2: **NOT_RUN** because this environment still
+  cannot resolve `proxy.golang.org`; no real-Coraza pass is claimed.
+- Temporary external Coraza API-stub harness: focused P0-A/theme tests passed,
+  full repository `go test -count=1 ./...` passed, `go vet ./...` passed, and
+  `go test -race -count=1 ./...` passed. This validates Go integration and local
+  regressions only, not Coraza semantics.
+- `BenchmarkFixedBufferPoolGetPut` on AMD EPYC 9V74: approximately
+  `10.90 ns/op`, `0 B/op`, `0 allocs/op`.
+- User-supplied CSS and both repository copies have identical SHA-256
+  `83aae56abd54b9837adffcb93138becd01d1bd2941664f1948a13f56a418f753`.
+- Shipping inline admin JavaScript passes `node --check`;
+  `config.sample.json` parses successfully.
+
+### Release gate / next slice
+
+Before production release, rerun the unmodified tree with real Coraza available,
+including race/vet/build and an HTTP streaming/WebSocket integration pass. The
+next performance implementation slice is **P0-B: zero-allocation backend member
+selection and removal of the per-request member `context.WithValue` handoff**.
+
+## P0-B Load-Balancer Hot Path on 2026-09-04
+
+**Scope:** eliminate backend-selection and selected-member handoff allocations;
+no schema, API, UI, dependency, or configuration change.
+
+### Source changes
+
+- `pool.go`: removed `healthyMembers()` allocation; all four LB methods now scan
+  members directly with zero steady-state allocations while preserving healthy
+  filtering and all-down fail-open semantics.
+- `pool.go`: direct FNV-1a string hashing replaces the stdlib hash object on the
+  IP-hash request path, with compatibility coverage.
+- `pool.go` / `main.go`: backend member selection moved into `lbTransport`; the
+  former per-request `context.WithValue` handoff and `memberCtxKey` are removed.
+  The selected member pointer remains local to the transport for active-request
+  accounting through response-body Close.
+- `main.go`: `Rewrite` now only handles forwarding headers/PreserveHost setup;
+  `lbTransport` applies selected backend scheme/host before the base transport.
+- `pool_hotpath_test.go`: added allocation, selection, target, path/query,
+  PreserveHost, active-counter, FNV-compatibility, and benchmark coverage.
+
+### Verification
+
+- Real Coraza-dependent test/build: **NOT_RUN**; the isolated environment cannot
+  download Coraza v3.3.2 from `proxy.golang.org`.
+- Temporary external Coraza API-stub copy: full `go test -count=1 ./...`,
+  `go vet ./...`, and `go test -race -count=1 ./...` passed.
+- Old 8-member selector benchmark (AMD EPYC 9V74): 42–48 ns/op depending on
+  method, `64 B/op`, `1 alloc/op`.
+- P0-B selector benchmark: about 12–28 ns/op depending on method,
+  `0 B/op`, `0 allocs/op`.
+- Removed selected-member context handoff: old component measured
+  `32.01 ns/op`, `48 B/op`, `1 alloc/op`.
+
+### Incomplete / release gate
+
+- Real Coraza integration and live backend HTTP/1.1/HTTP/2 concurrency tests are
+  still required before production deployment.
+- This source archive has no `.git` directory, so branch/remote synchronization
+  cannot be performed inside this artifact; reconcile with GitHub/main on a
+  networked repository before commit/push.
+
+### Exact next slice
+
+**P0-C: bounded asynchronous observation plane for hostObserver, sitemap,
+learner, and signal-store updates, with drop counters and no request blocking.**
+
+### Pre-existing issue observed (not changed by P0-B)
+
+- `install.sh` fails `bash -n` with `line 132: syntax error: unexpected end of file`.
+  The untouched P0-A archive has the same failure. This slice leaves it unchanged
+  to keep P0-B review-scoped; it remains a required installer/release fix.
+
+## P0-C Observation Plane on 2026-09-04
+
+**Scope:** move non-enforcement host/sitemap/learner/signal telemetry off the
+synchronous request path behind a bounded drop-on-full queue; reduce repeated
+live-field merge churn; preserve P0-A/P0-B behavior.
+
+### Source changes
+
+- Added `observations.go`: bounded 8,192-event async queue, non-blocking enqueue,
+  drop/processed counters, aggregated drop warning, drain-on-stop lifecycle, and
+  JSON snapshot stats.
+- `main.go`: added `server.observations` and `observeHost` / `observeRequest` /
+  `observeMatch` helpers; runtime response recording and Coraza learner match
+  recording now enqueue. Observation plane starts before listeners and drains
+  after listeners stop. Sitemap persistence loads before listeners and final
+  save occurs after observation drain.
+- `listeners.go`: host observation now uses the async server observation helper.
+- `profiles.go`: added `mergeObservedFields` for in-place low-churn repeated live
+  passive-field merging; crawler/general merge behavior remains unchanged.
+- `admin.go`: `/api/metrics` adds an `observations` object with queue
+  depth/capacity, dropped, processed, and accepting fields.
+- Added `observations_test.go`: apply/drain, drop-on-full, zero-allocation enqueue,
+  and component/parallel benchmark coverage.
+- `README.md`, `AI_HANDOFF.md`, `MANIFEST.md`, and this engineering ledger updated.
+
+### Verification
+
+- Real Coraza-dependent test/build: **NOT_RUN** because the isolated environment
+  cannot resolve/download Coraza v3.3.2.
+- External temporary Coraza API stub: full `go test -count=1 ./...`, `go vet ./...`,
+  and `go test -race -count=1 ./...` pass.
+- Original pre-P0-C synchronous request observation measured ~2.56–2.63 µs/op,
+  1,664 B/op, 24 allocs/op on AMD EPYC 9V74.
+- After low-churn live-field merging, direct store work is ~443–445 ns/op,
+  48 B/op, 3 allocs/op; actual async enqueue is ~35–36 ns/op, 0 B/op, 0 allocs/op.
+- Host observation moves from ~213–229 ns/op, 48 B/op, 2 allocs/op to ~36–38 ns/op,
+  0 B/op, 0 allocs/op on the data-plane side.
+- Parallel direct-store work ~0.52–0.66 µs/op vs queue enqueue ~0.13–0.15 µs/op;
+  enqueue remains zero-allocation.
+
+### Next slice
+
+**P0-D: bounded/rate-limited asynchronous Coraza match logging/aggregation.**
+
+### Known unrelated issue
+
+Shell validation remains an inherited release issue rather than a P0-C regression:
+`install.sh` and `uninstall.sh` have EOF parse errors, and `setup-interfaces.sh`,
+`waf-doctor.sh`, and `upgrade.sh` have CRLF-related bash parse failures. The P0-B
+input archive has the same failures; this performance slice intentionally does not
+normalize or repair those scripts.
+
+
+## P0-D Bounded Match-Log Aggregation on 2026-09-04
+
+**Scope:** remove synchronous per-match process logging from the Coraza callback and replace
+it with bounded, rate-limited background aggregation; preserve enforcement and event sinks.
+
+### Source changes
+
+- Added `matchlog.go`: 8,192-event drop-on-full queue, five-second aggregation window,
+  1,024 active-group cap, site/rule/client grouping, drain-on-stop lifecycle, separate
+  queue/group drop counters, bounded representative log fields, and JSON snapshot stats.
+- `main.go`: removed direct `s.log.Warn("rule match", ...)` from the matched-rule callback;
+  callback now non-blocking-enqueues to `server.matchLogs` after unchanged ring, learner,
+  syslog, and AI handling. Match-log plane starts before listeners and drains after listener
+  shutdown.
+- `admin.go`: `/api/metrics` adds additive `match_logging` stats.
+- Added `matchlog_test.go` with aggregation, flush/drain, saturation, cardinality-cap,
+  no-synchronous-log, truncation, drop-report, allocation, and slog comparison coverage.
+- Updated `README.md`, `AI_HANDOFF.md`, `MANIFEST.md`, and this engineering ledger.
+
+### Verification
+
+- Real Coraza-dependent test/build: **NOT_RUN**; isolated DNS cannot reach
+  `proxy.golang.org` for Coraza v3.3.2.
+- External temporary Coraza API stub: full `go test -count=1 ./...`, `go vet ./...`, and
+  `go test -race -count=1 ./...` pass.
+- AMD EPYC 9V74: successful match-log enqueue ~39.7–42.7 ns/op, 0 B/op, 0 allocs/op;
+  previous per-match JSON slog path ~1.445–1.514 µs/op, 232 B/op, 8 allocs/op.
+
+### Next slice
+
+P1 should focus on response-body inspection policy and backend Transport/connection-pool
+tuning, after or alongside repair of the inherited release-script syntax failures.
+
+## P1 Response Inspection + Backend Transport Tuning on 2026-09-04
+
+**Scope:** policy-level response-body inspection controls plus pool-scoped Go
+`http.Transport`/connection-pool tuning, on top of P0-D.
+
+### Source/API/UI changes
+
+- `main.go`: added `BackendTransportConfig`, tuned defaults/effective-value
+  helpers and validation; added policy response-body access/limit fields and
+  SecLang overrides; backend transports now use configurable connection-pool,
+  dial, idle, keepalive, and max-connection values; runtime cleanup closes idle
+  transports.
+- `pool.go`: pool runtime now owns one shared backend `*http.Transport`; pool
+  status returns effective transport values; health-monitor transport closes
+  idle connections on exit.
+- `static/admin.html`: Policies UI exposes response inspection/limit; Pools UI
+  exposes backend connection-pool tuning; config cloning/sync/new-object paths
+  preserve the new objects.
+- `config.sample.json`: documents explicit response inspection and transport
+  sizing settings.
+- Added `p1_tuning_test.go` for directive/validation/default/transport/UI/runtime
+  regression coverage.
+- Updated `README.md`, `AI_HANDOFF.md`, `MANIFEST.md`, and this ledger.
+
+### Compatibility/defaults
+
+- Existing policy values with missing/empty response-body fields inherit the
+  SecLang file exactly as before.
+- Existing pools with no `transport` block receive effective defaults of
+  2048 max idle total, 256 max idle per host, unlimited max conns per host,
+  90s idle timeout, 5s dial timeout, and 30s keepalive.
+- No route/method removal, auth/RBAC change, DB/schema migration, or theme change.
+
+### Verification
+
+- Real Coraza suite: **NOT_RUN** because `proxy.golang.org` remains unreachable.
+- External Coraza stub tree: full `go test -count=1 ./...`, `go vet ./...`, and
+  `go test -race -count=1 ./...` pass.
+- Production inline JavaScript passes `node --check`; `config.sample.json` parses.
+
+### Next
+
+Run real-Coraza plus representative response-body and backend-connection load
+benchmarks before production release; choose the next dataplane optimization
+from those measurements.
+
+## Benchmark Harness v1.0.0 on 2026-09-04
+
+**Scope:** add a repeatable benchmark/profiling tool to select the next
+performance architecture from measurements rather than low production traffic.
+
+### Source/tool changes
+
+- Added `cmd/wafbench/`:
+  - `http` full-proxy HTTP/HTTPS benchmark with clean + hostile corpus;
+  - `coraza` direct Coraza/CRS benchmark with response inspection controls and
+    CPU/heap pprof output;
+  - `l4` legal TCP connect/close or TLS-handshake pressure baseline;
+  - `backend` deterministic fixed-response backend;
+  - `compare` JSON baseline comparison and XDP-vs-regex sizing heuristic.
+- Linux metrics collect target process CPU/RSS, host busy/softirq, and optional
+  interface RX/TX Mbps/PPS from `/proc`; generator CPU is tracked separately.
+- Added low-overhead logarithmic latency histogram and JSON/CSV/table result
+  output. JSON records host CPU model/kernel/Go/runtime details.
+- Standard corpus includes clean GET, JSON 1/16/64/256 KiB, SQLi 64 KiB, XSS
+  64 KiB and traversal. Clean-only scenarios determine the baseline Coraza
+  share; hostile cases are retained as worst-case visibility.
+- Added `benchmark/README.md` and `benchmark/build.sh`.
+- Updated README, AI_HANDOFF, MANIFEST, and this ledger. No production API,
+  policy, listener, WAF enforcement, P0/P1, or theme behavior changed.
+
+### Verification
+
+- Real Coraza v3.3.2 build/test: **NOT_RUN** because isolated DNS still cannot
+  reach `proxy.golang.org`.
+- External Coraza API stub: command-package test/vet/race/build plus full-repository `go test -count=1 ./...`, `go vet ./...`, and `go test -race -count=1 ./...` pass.
+- End-to-end stub smoke: deterministic backend + HTTP mode, Coraza mode, L4
+  mode, JSON export, compare mode, CPU profile, and heap profile all execute.
+- Stub-derived RPS/CPU numbers are validation of the harness only and are not
+  Coraza performance claims.
+
+### Next
+
+Use this harness with real Coraza/CRS on the target CPU. Only after that baseline
+should the next data-plane POC be selected between XDP and grouped regex
+acceleration.
+
+## P2 Non-XDP/VectorScan Hardening on 2026-09-04
+
+**Scope:** close the remaining low-risk performance/release debt that does not
+require an XDP or regex-accelerator decision.
+
+### Source changes
+
+- Normalized every top-level release/build `.sh` plus `benchmark/build.sh` to
+  LF and restored executable mode. Added `release_scripts_test.go` enforcing
+  no carriage returns, executable mode, and `bash -n` syntax.
+- `ai.go`: changed pending AI request state from eagerly constructed
+  `*analysisJob` values to lightweight live `*http.Request` references keyed by
+  `pendingKey{client, uri}`. Full request capture/redaction is lazy on WAF match
+  or pre-sampled clean traffic. Clean sampling is decided before capture.
+- `ai.go`: queue drops now increment counters and emit at most one warning per
+  five seconds instead of synchronously logging every dropped analysis job.
+  `/api/metrics` exposes `ai_queue` depth/capacity/logical limit/enqueued/dropped.
+- `ai.go`: workers reuse a ticker rather than allocating `time.After` timers in
+  the polling loop.
+- `ai.go`: AI block-mode reads now use an immutable atomic blocklist snapshot;
+  rare add/unblock/expiry updates are copy-on-write under the writer mutex, so
+  ordinary request-path lookups do not contend on that mutex.
+- `ai.go`: `statusRecorder` suppresses duplicate underlying `WriteHeader` calls
+  and records implicit 200 on `Write`.
+- Added focused AI lazy-capture/sample/queue-drop tests, status-recorder tests,
+  and AI eager-vs-lazy component benchmarks.
+- Updated README, INSTALL, MANIFEST and AI_HANDOFF truth boundaries.
+
+### Verification
+
+- All release/build scripts pass `bash -n` and the new repository script gate.
+- External Coraza API stub: full `go test -count=1 ./...`, `go vet ./...`, and
+  `go test -race -count=1 ./...` pass.
+- AI unsampled/no-match component benchmark on AMD EPYC 9V74: new lazy path
+  ~169-175 ns/op, 0 B/op, 0 allocs/op; prior eager-capture model ~1.49-1.55 us/op,
+  848 B/op, 17 allocs/op.
+- Active-block lookup under 8/32-way parallelism: atomic snapshot ~22/~21
+  ns/op versus legacy mutex ~93/~115 ns/op; all zero-allocation.
+- Real Coraza v3.3.2 build/test remains NOT_RUN because the isolated environment
+  cannot resolve/download from `proxy.golang.org`.
+
+### Rejected after measurement
+
+A 16-shard access-ring prototype was not merged. It was slower than the current
+fixed ring both serially and at 8/32-way parallelism on the harness host due to
+its global sequence atomic plus shard lock. Keep the current ring until a real
+profile proves otherwise.
+
+## TLS Acceleration C1-C3 / modern NGINX — 2026-09-04
+
+- Added `internal/tlsfront` capability detection, safe NGINX/OpenSSL renderer,
+  kTLS and Intel QAT provider resolution, modern/legacy HTTP/2 syntax selection,
+  and preflight.
+- Added `cmd/waf-tlsfront` supervisor with atomic generated config, NGINX
+  preflight/reload/restart, QAT OpenSSL environment, live status and graceful
+  shutdown.
+- Added private Unix listener remapping in waf-proxy, trusted frontend metadata
+  restoration/sanitization, original HTTPS scheme propagation, Apply preflight,
+  live-control publication, API/status and Setup UI.
+- Added `waf-tls-frontend.service`; build/install/upgrade/uninstall/doctor now
+  know both binaries/services. Go TLS remains the default.
+- NGINX >= 1.25.1 renders `listen ... ssl;` + `http2 on;`; older NGINX renders
+  the legacy `listen ... ssl http2;` form.
+- Real NGINX 1.26.3/OpenSSL 3.5.5 `nginx -t` and HTTPS/HTTP2→Unix smoke passed
+  with no HTTP/2 deprecation warning. kTLS/QAT auto fallback was exercised;
+  real QAT hardware offload remains NOT_RUN.
+- External Coraza API stub full test/vet/race pass; real Coraza v3.3.2 remains
+  NOT_RUN because `proxy.golang.org` DNS is unavailable in this environment.
+
+
+## VectorScan Learning Accelerator / Coraza v3.7 transaction truth — 2026-09-04
+
+**Scope:** implement the selected regex-acceleration direction with a fail-safe Learning Period while keeping Coraza authoritative; upgrade the Coraza dependency to v3.7.0 so transaction `MatchedRules()` can be the learning truth source.
+
+### Source changes
+
+- Added `internal/vectoraccel/` with configuration validation/defaults, conservative SecLang rule/include parser, semantic grouping/fingerprints, grouped scanner abstraction, native libhs CGo adapter and portable unavailable adapter. Native compile uses `hs_compile_multi`; scan/close is synchronized and scratch objects are reused/freed safely.
+- Added per-group `CORAZA_ONLY/LEARNING/VALIDATED/ACCELERATED/FAILSAFE` state, persisted samples/Coraza-match/FN counts, verification sampling, immediate false-negative/scan-error fail-safe, reset-to-learning, and rule/native/Coraza semantic fingerprint invalidation.
+- `main.go` builds the manager once per runtime, constructs per-site plans, injects private phase-1 rule-removal control directives only for compiled eligible groups, runs VectorScan before Coraza, strips internal control headers at ingress/egress, closes native resources with runtime retirement, and publishes vector config defaults.
+- Added `coraza_observer.go`: wraps Coraza WAF transaction creation including `experimental.WAFWithOptions`; binds the request-context VectorScan observation to the exact Coraza transaction; after `ProcessLogging()` reads final `MatchedRules()`, de-duplicates rule IDs and reports them exactly once to the learning plan. ErrorCallback remains for existing logs/AI/syslog but is no longer a Learning truth source.
+- Added `coraza_real_gate_test.go` (`realcoraza` tag) proving on a real Coraza build that DetectionOnly+nolog remains silent to ErrorCallback while the matched rule is present in `tx.MatchedRules()`.
+- `admin.go` adds vector status/reset endpoints and metrics; `config.sample.json` adds the learning config block.
+- Upgraded `go.mod` to Go 1.25.0 / Coraza v3.7.0 and corresponding dependency revisions. `build.sh` rejects Go <1.25.0 and supports `WAF_VECTORSCAN=auto|required|off`, native pkg-config detection, vet/test/race and real-Coraza release gate.
+- Updated README/INSTALL/AI_HANDOFF/MANIFEST and this ledger.
+
+### Safety / compatibility boundaries
+
+- Initial acceleration eligibility is deliberately narrow: standalone positive `@rx`, phase 1/2, single `REQUEST_URI`, `REQUEST_FILENAME`, `REQUEST_METHOD`, `REQUEST_PROTOCOL`, or fixed-name `REQUEST_HEADERS:name`, explicit `t:none`, optional `t:lowercase`. Chains, negated operators, ARGS/body, multiple variables, aggregate headers, inherited/unsupported transforms remain Coraza-only.
+- `mode=off` is the default. `auto` safely runs Coraza-only without libhs; `required` fails instead of silently omitting the requested native engine.
+- VectorScan never blocks/allows directly. A no-hit can skip a group only in `ACCELERATED`; verification samples continue full Coraza evaluation. Any observed false negative or native scan failure moves the group to `FAILSAFE`.
+
+### Verification
+
+- External Coraza v3.7 API stub: full repository test/vet pass and bounded race groups pass. This validates project control-flow/API integration only.
+- A local ABI-compatible libhs test library compiles/links the real CGo adapter and passes vectorscan-tag test/vet/race. It specifically caught and led to removal of an unsafe uintptr-to-pointer callback bridge. This is an ABI/lifecycle gate, not real VectorScan matching evidence.
+- Real Go 1.25 + Coraza v3.7.0 execution, `realcoraza` DetectionOnly+nolog truth test, and real libvectorscan matching are **NOT_RUN** in the isolated packaging environment and remain explicit release-host gates.
+
+### Release packaging
+
+Final release packaging adds no further product behavior. The final ZIP is produced from this exact source tree after doc-ledger update and diff hygiene, then re-extracted and compared byte-for-byte/file-mode-for-file-mode against the source tree. Patch is generated relative to the TLS Acceleration / modern-NGINX release baseline. SHA-256 values are reported with the delivery artifacts.

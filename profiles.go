@@ -271,6 +271,46 @@ func mergeDiscoveredFields(existing, incoming []DiscoveredField, pagePath string
 	return out
 }
 
+// mergeObservedFields is the low-churn merge path for fields seen in live
+// request traffic. Unlike mergeDiscoveredFields (used by crawl/admin workflows),
+// it mutates the already-owned signal slice in place and avoids rebuilding a
+// temporary index/string keys on every repeated request. New fields may still
+// grow the slice; an unchanged field set is allocation-free.
+func mergeObservedFields(existing, incoming []DiscoveredField, pagePath string) []DiscoveredField {
+	for _, f := range incoming {
+		f.Method = strings.ToUpper(f.Method)
+		if f.Action == "" || f.Action == pagePath {
+			f.Action = pagePath
+		} else {
+			f.Action = normalizeFormAction(pagePath, f.Action)
+		}
+		if !validFieldName(f.Name) || f.Method == "" {
+			continue
+		}
+
+		found := -1
+		for i := range existing {
+			if existing[i].Name == f.Name && existing[i].Method == f.Method && existing[i].Action == f.Action {
+				found = i
+				break
+			}
+		}
+		if found >= 0 {
+			cur := &existing[found]
+			cur.DiscoverySource = mergeFieldSource(cur.DiscoverySource, f.DiscoverySource)
+			if f.DiscoverySource == fieldSourceCrawled || f.DiscoverySource == fieldSourceBoth {
+				if f.Type != "" {
+					cur.Type = f.Type
+				}
+				cur.Required = f.Required
+			}
+			continue
+		}
+		existing = append(existing, f)
+	}
+	return existing
+}
+
 func addPassiveField(out *[]DiscoveredField, seen map[string]bool, method, action, name, kind string) {
 	name = strings.TrimSpace(name)
 	if len(*out) >= passiveFieldLimit || !validFieldName(name) || seen[name] {
@@ -689,7 +729,7 @@ func (s *signalStore) noteRequestShape(site, path, method, rawQuery, contentType
 	}
 	if len(fields) > 0 {
 		sig.hasForm, sig.postForm = true, true
-		sig.fields = mergeDiscoveredFields(sig.fields, fields, path)
+		sig.fields = mergeObservedFields(sig.fields, fields, path)
 		sig.inputs = len(sig.fields)
 		for _, f := range sig.fields {
 			name := strings.ToLower(f.Name)

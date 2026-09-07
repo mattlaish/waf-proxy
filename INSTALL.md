@@ -1,24 +1,16 @@
 # waf-proxy — install guide
 
-Coraza-based reverse-proxy WAF with an embedded admin console. Single static
-binary; the console is compiled in (`go:embed`), so there are no runtime assets
-to deploy and no CDN dependencies.
+Coraza-based reverse-proxy WAF with an embedded admin console. The console is compiled in (`go:embed`) with no CDN dependency. The portable Coraza-only build is pure Go; optional VectorScan acceleration uses CGO/libhs.
 
-> **Status — read this first.** This code has been **verified statically only**
-> (structure, wiring, imports, cross-file consistency). It has **never been
-> compiled or run** by its author. `./build.sh` runs `go vet` and will surface
-> anything that doesn't hold. Treat the first deployment as a bring-up, not a
-> production cutover: run it in **DetectionOnly** beside real traffic and prove
-> it before it's in the path of anything that matters.
+> **Status — read this first.** The source is pinned to Coraza v3.7.0, which requires Go 1.25.0. Portable Coraza-API-stub regression/vet/race and native libhs ABI compile/vet/race gates pass, and release shell scripts are LF-normalized and `bash -n` clean. The isolated packaging environment cannot execute a real Go 1.25 + Coraza v3.7.0 + real libvectorscan gate, so those remain **NOT_RUN release gates**. Do not treat the stub or ABI-only library as WAF correctness/performance evidence. Start first deployment in **DetectionOnly** and run `./build.sh` on the actual release host.
 
 ---
 
 ## 1. Prerequisites
 
 - Debian 12 / Ubuntu 22.04+ (systemd), x86-64 or arm64
-- **Go ≥ 1.22** to build (`sudo apt install golang-go`, or the upstream tarball
-  if the distro Go is older)
-- Network access **once**, for `go mod tidy` (Coraza) and to fetch OWASP CRS
+- **Go ≥ 1.25.0** to build. Coraza v3.7.0 declares this minimum; distro Go may be too old, so install an upstream Go 1.25+ toolchain when necessary.
+- Network/module-cache access for Coraza v3.7.0 dependencies and to fetch OWASP CRS
 - `openssl` (token generation) and `curl`/`tar` (CRS fetch)
 - Root for the install step
 
@@ -32,7 +24,27 @@ cd go-waf
 ./build.sh            # go mod tidy → go vet → static binary
 ```
 
-Produces `./waf-proxy`. Set `VERSION=` / `COMMIT=` to stamp a build.
+Produces `./waf-proxy` and `./waf-tlsfront`. Set `VERSION=` / `COMMIT=` to stamp a build. `WAF_VECTORSCAN=auto` is the default; use `off` for portable Coraza-only, or install `pkg-config` + `libvectorscan-dev` and use `required` to fail closed unless native libhs is present.
+
+
+## 2a. Optional VectorScan Learning Accelerator
+
+VectorScan is never authoritative; Coraza v3.7.0 remains the final rule engine. The accelerator begins in Learning and only skips an eligible regex group after its learning thresholds have been met with zero observed false negatives. Any false negative or native scan error moves the group to `FAILSAFE` and Coraza-only processing continues.
+
+On Debian/Ubuntu, install the native build dependency before a required build:
+
+```bash
+sudo apt install pkg-config libvectorscan-dev
+WAF_VECTORSCAN=required ./build.sh
+```
+
+For a portable build with no CGO/libhs:
+
+```bash
+WAF_VECTORSCAN=off ./build.sh
+```
+
+Production release gate: run the repository tests with real Coraza v3.7.0 and real libvectorscan on the target/release architecture. The package's stub and ABI-only verification are compile/regression aids only. Learning state defaults to `/var/lib/waf-proxy/vector-learning.json`; preserve that path across restarts but expect rule/Coraza/VectorScan semantic fingerprint changes to force re-learning.
 
 ## 3. Install
 
@@ -425,3 +437,27 @@ rollback. Until then, use the build-and-install flow above.
 sudo ./uninstall.sh          # keeps /etc/waf by default
 sudo ./uninstall.sh --purge  # also removes /etc/waf and the waf user
 ```
+
+## TLS acceleration frontend (optional)
+
+The installer now installs both `waf-proxy` and the optional `waf-tlsfront`
+companion plus their systemd units. Go TLS remains the default and does not
+require NGINX. To enable frontend TLS termination, install NGINX and OpenSSL on
+the host, then choose **Setup → TLS acceleration → frontend**.
+
+Recommended baseline is NGINX >= 1.25.1 with OpenSSL 3.x. The companion probes
+the actual host: NGINX >= 1.25.1 gets the standalone `http2 on;` directive,
+while older NGINX gets the legacy compatible listen parameter. `ktls:auto` and
+`qat:auto` fall back to software TLS; `required` fails the Apply preflight if
+the requested capability is unavailable.
+
+```bash
+sudo systemctl enable --now waf-proxy waf-tls-frontend
+systemctl status waf-proxy waf-tls-frontend
+journalctl -u waf-tls-frontend -n 50 --no-pager
+```
+
+For QAT, install the vendor driver/provider separately and set
+`OPENSSL_MODULES` in `/etc/waf/waf-tls-frontend.env` only when the provider is
+outside OpenSSL's default module path. waf-proxy does not store or load QAT
+private material and does not use CGO for TLS acceleration.

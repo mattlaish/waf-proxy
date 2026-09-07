@@ -134,3 +134,40 @@ func BenchmarkPassiveJSONLargeValue(b *testing.B) {
 		_ = passiveFields(http.MethodPost, "/api", "application/json", body)
 	}
 }
+
+type headerCountWriter struct {
+	header      http.Header
+	writeHeader int
+	codes       []int
+}
+
+func (w *headerCountWriter) Header() http.Header { return w.header }
+func (w *headerCountWriter) WriteHeader(code int) {
+	w.writeHeader++
+	w.codes = append(w.codes, code)
+}
+func (w *headerCountWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+func TestStatusRecorderSuppressesDuplicateWriteHeader(t *testing.T) {
+	under := &headerCountWriter{header: make(http.Header)}
+	rec := &statusRecorder{ResponseWriter: under, code: http.StatusOK}
+	rec.WriteHeader(http.StatusCreated)
+	rec.WriteHeader(http.StatusTeapot)
+	if under.writeHeader != 1 {
+		t.Fatalf("underlying WriteHeader calls = %d, want 1", under.writeHeader)
+	}
+	if rec.code != http.StatusCreated {
+		t.Fatalf("recorded status = %d, want %d", rec.code, http.StatusCreated)
+	}
+}
+
+func TestStatusRecorderImplicitWriteUsesOK(t *testing.T) {
+	under := &headerCountWriter{header: make(http.Header)}
+	rec := &statusRecorder{ResponseWriter: under}
+	if _, err := rec.Write([]byte("ok")); err != nil {
+		t.Fatal(err)
+	}
+	if rec.code != http.StatusOK {
+		t.Fatalf("implicit status = %d, want 200", rec.code)
+	}
+}

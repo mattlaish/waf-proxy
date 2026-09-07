@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>waf-proxy console</title>
+<link rel="stylesheet" href="/theme.css">
 <style>
   :root{
-    --bg:#101519; --panel:#161C22; --raised:#1C242C; --line:#26303A;
-    --ink:#DCE3EA; --mut:#8494A2; --amber:#E8A33D; --red:#E5595E;
-    --green:#57B770; --blue:#5B9DD9;
-    --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,monospace;
-    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    /* Compatibility aliases: the uploaded theme.css is the canonical token set. */
+    --bg:var(--cg-background); --panel:var(--cg-surface); --raised:var(--cg-green-light); --line:var(--cg-border);
+    --ink:var(--cg-text); --mut:var(--cg-text-muted); --amber:var(--cg-warning); --red:var(--cg-danger);
+    --green:var(--cg-green); --blue:var(--cg-info);
+    --mono:var(--cg-font-mono); --sans:var(--cg-font-sans);
   }
   *{box-sizing:border-box;margin:0}
   html,body{height:100%}
@@ -41,7 +42,7 @@
   .tab{appearance:none;border:0;background:transparent;color:var(--mut);cursor:pointer;
     font:600 12px var(--mono);letter-spacing:.1em;padding:10px 16px;border-bottom:2px solid transparent;margin-bottom:-1px}
   .tab:hover{color:var(--ink)}
-  .tab.sel{color:var(--amber);border-bottom-color:var(--amber)}
+  .tab.sel{color:var(--green);border-bottom-color:var(--green)}
   .view{display:none;margin-top:20px}
   .view.sel{display:block}
 
@@ -80,11 +81,11 @@
   input[type=text],input[type=number],select{width:100%;background:var(--bg);border:1px solid var(--line);
     border-radius:6px;color:var(--ink);font:13px var(--mono);padding:8px 10px}
   select{appearance:auto}
-  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--green);outline-offset:2px}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
   .check{display:flex;align-items:center;gap:8px;font:13px var(--mono);color:var(--ink)}
-  .check input{accent-color:var(--amber);width:15px;height:15px}
+  .check input{accent-color:var(--green);width:15px;height:15px}
   .hint{font-size:12px;color:var(--mut);margin-top:4px;font-family:var(--sans)}
 
   .actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
@@ -92,7 +93,7 @@
     color:var(--ink);font:600 12px var(--mono);letter-spacing:.06em;padding:9px 16px;cursor:pointer}
   .btn:hover{border-color:var(--mut)}
   .btn.sm{padding:6px 10px}
-  .btn.primary{background:var(--amber);border-color:var(--amber);color:#141414}
+  .btn.primary{background:var(--green);border-color:var(--green);color:#fff}
   .btn.primary:hover{filter:brightness(1.08)}
   .btn.danger{color:var(--red)}
   .btn.danger:hover{border-color:var(--red)}
@@ -124,7 +125,7 @@
 
   .feedhead{display:flex;align-items:center;gap:10px}
   td.mono{font-family:var(--mono);font-size:12px;word-break:break-all}
-  .gate{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% -10%, #16202b, var(--bg));padding:20px}
+  .gate{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
   .gate[hidden]{display:none}
   .gatecard{width:min(380px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 24px;box-shadow:0 24px 80px rgba(0,0,0,.5)}
   .gatecard h1{font:600 17px var(--mono);letter-spacing:.04em;margin-bottom:20px;text-align:center}
@@ -394,6 +395,22 @@
 
   <!-- ══ SETUP / AI ══ -->
   <div id="view-setup" class="view">
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">TLS acceleration</div><h3 style="margin:2px 0 0">OpenSSL / NGINX frontend</h3></div><div class="count" id="tls_accel_state"></div></div>
+      <div class="row3">
+        <div class="field"><label>Mode</label><select id="tls_accel_mode"><option value="go">Go TLS (default)</option><option value="frontend">NGINX / OpenSSL frontend</option></select></div>
+        <div class="field"><label>kTLS</label><select id="tls_accel_ktls"><option value="off">off</option><option value="auto">auto</option><option value="required">required</option></select></div>
+        <div class="field"><label>Intel QAT</label><select id="tls_accel_qat"><option value="off">off</option><option value="auto">auto</option><option value="required">required</option></select></div>
+      </div>
+      <div class="row3">
+        <div class="field"><label>NGINX workers <span class="muted">0 = auto</span></label><input type="number" id="tls_accel_workers" min="0" max="256"></div>
+        <div class="field"><label>Worker connections</label><input type="number" id="tls_accel_connections" min="1" max="1048576"></div>
+        <div class="field check" style="display:flex;align-items:flex-end"><input type="checkbox" id="tls_accel_http2"><label for="tls_accel_http2" style="margin:0">Enable HTTP/2</label></div>
+      </div>
+      <div class="actions"><button class="btn primary" id="tls_accel_save">Save &amp; apply</button><button class="btn" id="tls_accel_refresh">Refresh status</button></div>
+      <div class="strip" id="tls_accel_runtime" style="margin-top:8px"></div>
+      <div class="hint" id="tls_accel_detail" style="margin-top:6px">Go TLS remains the default. Frontend mode preflights NGINX/OpenSSL before Apply; <code>auto</code> safely falls back to software TLS, while <code>required</code> fails closed if the accelerator is unavailable.</div>
+    </section>
     <div class="grid2">
       <section>
         <div class="eyebrow">LLM connector</div>
@@ -691,7 +708,7 @@
     if (v==="pools"){ renderNodes(); renderPools(); pollPools(); }
     if (v==="policies") renderPolicies();
     if (v==="logs") pollLogs();
-    if (v==="setup"){ pollAI(); loadUpdate(); }
+    if (v==="setup"){ pollAI(); pollTLSAcceleration(); loadUpdate(); }
     if (v==="users"){ loadWhoami(); loadUsers(); loadAudit(); }
     if (mapActive) pollMap();
   });
@@ -883,6 +900,7 @@
   function poolCard(p,pi){
     const mon=p.monitor||{type:"none"};
     const bt=p.backend_tls||{};
+    const tr=p.transport||{};
     const membersHTML = (p.members||[]).map((m,j)=>memberRow(m,pi,j)).join("");
     return `<div class="card" data-i="${pi}">
       <div class="cardhead">
@@ -903,6 +921,20 @@
           <option value="none" ${mon.type==="none"||!mon.type?"selected":""}>none</option>
           <option value="tcp" ${mon.type==="tcp"?"selected":""}>tcp</option>
           <option value="http" ${mon.type==="http"?"selected":""}>http</option></select></div>
+      </div>
+      <div class="card" style="margin-top:10px;padding:12px">
+        <div class="eyebrow">Backend connection pool</div>
+        <div class="row3">
+          <div class="field"><label>Max idle total</label><input type="number" data-ftr="max_idle_conns" min="0" max="65536" value="${tr.max_idle_conns||0}" placeholder="0 = 2048 default"></div>
+          <div class="field"><label>Max idle / host</label><input type="number" data-ftr="max_idle_conns_per_host" min="0" max="16384" value="${tr.max_idle_conns_per_host||0}" placeholder="0 = 256 default"></div>
+          <div class="field"><label>Max conns / host</label><input type="number" data-ftr="max_conns_per_host" min="0" max="65536" value="${tr.max_conns_per_host||0}" placeholder="0 = unlimited"></div>
+        </div>
+        <div class="row3" style="margin-top:8px">
+          <div class="field"><label>Idle connection timeout (s)</label><input type="number" data-ftr="idle_conn_timeout_sec" min="0" max="3600" value="${tr.idle_conn_timeout_sec||0}" placeholder="0 = 90"></div>
+          <div class="field"><label>Dial timeout (s)</label><input type="number" data-ftr="dial_timeout_sec" min="0" max="300" value="${tr.dial_timeout_sec||0}" placeholder="0 = 5"></div>
+          <div class="field"><label>TCP keepalive (s)</label><input type="number" data-ftr="keep_alive_sec" min="0" max="3600" value="${tr.keep_alive_sec||0}" placeholder="0 = 30"></div>
+        </div>
+        <div class="hint">Zero uses the tuned default. Max connections per host stays unlimited at zero; set a cap only when the backend itself needs protection.</div>
       </div>
       <div class="backendtls" style="${p.scheme==="https"?"":"display:none"};margin-top:10px">
         <div class="eyebrow">Backend TLS trust</div>
@@ -992,6 +1024,10 @@
         const f=el.dataset.fm;
         p.monitor[f] = (el.type==="number") ? Number(el.value||0) : el.value.trim();
       });
+      p.transport=p.transport||{};
+      card.querySelectorAll("[data-ftr]").forEach(el=>{
+        p.transport[el.dataset.ftr]=Number(el.value||0);
+      });
       p.backend_tls=p.backend_tls||{};
       card.querySelectorAll("[data-ft]").forEach(el=>{
         const f=el.dataset.ft;
@@ -1009,7 +1045,7 @@
       p.members=ms;
     });
   }
-  $("addpool").onclick=()=>{ syncPools(); pools.push({name:"pool-"+(pools.length+1),scheme:"http",lb_method:"round_robin",monitor:{type:"tcp",interval_sec:5,timeout_sec:2,rise:2,fall:3},members:[],backend_tls:{},_new:true}); selectedPool=pools.length-1; renderPools(); };
+  $("addpool").onclick=()=>{ syncPools(); pools.push({name:"pool-"+(pools.length+1),scheme:"http",lb_method:"round_robin",monitor:{type:"tcp",interval_sec:5,timeout_sec:2,rise:2,fall:3},members:[],backend_tls:{},transport:{},_new:true}); selectedPool=pools.length-1; renderPools(); };
 
   // ── policies ──
   function exclRow(x,j){
@@ -1040,6 +1076,14 @@
           <option value="4" ${pl===4?"selected":""}>PL4</option></select></div>
         <div class="field"><label>Request body limit (bytes)</label><input type="number" data-f="request_body_limit" min="0" value="${p.request_body_limit||0}"></div>
       </div>
+      <div class="row" style="margin-top:8px">
+        <div class="field"><label>Response body inspection</label><select data-f="response_body_inspection">
+          <option value="inherit" ${!p.response_body_inspection||p.response_body_inspection==="inherit"?"selected":""}>inherit rules file</option>
+          <option value="on" ${p.response_body_inspection==="on"?"selected":""}>on</option>
+          <option value="off" ${p.response_body_inspection==="off"?"selected":""}>off — fastest</option></select></div>
+        <div class="field"><label>Response body limit (bytes)</label><input type="number" data-f="response_body_limit" min="0" value="${p.response_body_limit||0}" placeholder="0 = inherit rules file"></div>
+      </div>
+      <div class="hint">Response inspection is useful for outbound leakage/rule checks but costs memory and latency on JSON/HTML responses. Use a dedicated site/policy with <b>off</b> for static, download, or API workloads that do not require response inspection.</div>
       <label style="margin-top:6px">Exclusions</label>
       <div class="colhead exclhead"><span>Path prefix</span><span>Rule IDs</span><span>Targets</span><span>Note</span><span></span></div>
       <div class="excls">${excl}</div>
@@ -1097,6 +1141,8 @@
       p.rules_path=(card.querySelector('[data-f="rules_path"]').value||"").trim();
       p.paranoia_level=Number(card.querySelector('[data-f="paranoia_level"]').value||0);
       p.request_body_limit=Number(card.querySelector('[data-f="request_body_limit"]').value||0);
+      p.response_body_inspection=card.querySelector('[data-f="response_body_inspection"]').value;
+      p.response_body_limit=Number(card.querySelector('[data-f="response_body_limit"]').value||0);
       const xs=[];
       card.querySelectorAll(".excl").forEach(row=>{
         const g=f=>row.querySelector(`[data-xf="${f}"]`).value;
@@ -1110,7 +1156,7 @@
       p.exclusions=xs;
     });
   }
-  $("addpolicy").onclick=()=>{ syncPolicies(); policies.push({name:"policy-"+(policies.length+1),rules_path:"coraza.conf",paranoia_level:1,request_body_limit:0,exclusions:[],_new:true}); selectedPolicy=policies.length-1; renderPolicies(); };
+  $("addpolicy").onclick=()=>{ syncPolicies(); policies.push({name:"policy-"+(policies.length+1),rules_path:"coraza.conf",paranoia_level:1,request_body_limit:0,response_body_inspection:"inherit",response_body_limit:0,exclusions:[],_new:true}); selectedPolicy=policies.length-1; renderPolicies(); };
 
   // live pool health
   async function pollPools(){
@@ -1138,11 +1184,11 @@
     cfg=c; engineMode=c.engine_mode||"DetectionOnly";
     sites=(c.sites||[]).map(x=>Object.assign({},x));
     nodes=(c.nodes||[]).map(x=>Object.assign({},x));
-    pools=(c.pools||[]).map(x=>Object.assign({},x,{monitor:Object.assign({},x.monitor),members:(x.members||[]).map(m=>Object.assign({},m)),backend_tls:Object.assign({},x.backend_tls||{})}));
+    pools=(c.pools||[]).map(x=>Object.assign({},x,{monitor:Object.assign({},x.monitor),members:(x.members||[]).map(m=>Object.assign({},m)),backend_tls:Object.assign({},x.backend_tls||{}),transport:Object.assign({},x.transport||{})}));
     policies=(c.policies||[]).map(x=>Object.assign({},x,{exclusions:(x.exclusions||[]).map(e=>Object.assign({},e,{rule_ids:(e.rule_ids||[]).slice(),targets:(e.targets||[]).slice()}))}));
     globalFields.forEach(f=>$(f).value = c[f] ?? "");
     $("passive_discovery_enabled").checked = c.passive_discovery_enabled !== false;
-    fillAI(c.ai, c.trusted_proxy_cidrs); fillHA(c.ha); fillNotify(c.notify); fillSyslog(c.syslog);
+    fillTLSAcceleration(c.tls_acceleration); fillAI(c.ai, c.trusted_proxy_cidrs); fillHA(c.ha); fillNotify(c.notify); fillSyslog(c.syslog);
     paintMode(); renderSites();
   }
   function collect(){
@@ -1152,7 +1198,7 @@
     c.passive_discovery_enabled=$("passive_discovery_enabled").checked;
     c.engine_mode=engineMode; c.sites=sites; c.nodes=nodes; c.pools=pools; c.policies=policies;
     c.trusted_proxy_cidrs=$("ai_trusted_proxies").value.split(",").map(x=>x.trim()).filter(Boolean);
-    c.ai=collectAI(); c.ha=collectHA(); c.notify=collectNotify(); c.syslog=collectSyslog();
+    c.tls_acceleration=collectTLSAcceleration(); c.ai=collectAI(); c.ha=collectHA(); c.notify=collectNotify(); c.syslog=collectSyslog();
     return c;
   }
   async function saveConfig(){
@@ -1933,6 +1979,44 @@
     catch(e){ toast(e.message,"err"); }
   };
 
+  // ── TLS acceleration ──
+  function fillTLSAcceleration(v){
+    v=v||{};
+    $("tls_accel_mode").value=v.mode||"go";
+    $("tls_accel_ktls").value=v.ktls||"off";
+    $("tls_accel_qat").value=v.qat||"off";
+    $("tls_accel_workers").value=v.worker_processes??0;
+    $("tls_accel_connections").value=v.worker_connections??4096;
+    $("tls_accel_http2").checked=v.http2!==false;
+  }
+  function collectTLSAcceleration(){
+    return {
+      mode:$("tls_accel_mode").value,
+      ktls:$("tls_accel_ktls").value,
+      qat:$("tls_accel_qat").value,
+      worker_processes:+$("tls_accel_workers").value||0,
+      worker_connections:+$("tls_accel_connections").value||4096,
+      http2:$("tls_accel_http2").checked
+    };
+  }
+  async function pollTLSAcceleration(){
+    try{
+      const v=await api("/api/tls-acceleration");
+      const rt=v.runtime||{}, rs=rt.resolved||{}, p=rt.probe||{};
+      $("tls_accel_state").textContent=(rt.active?"active":"inactive")+(rt.mode?" · "+rt.mode:"");
+      const parts=[`kTLS <b>${rs.ktls?"on":"off"}</b>`,`QAT <b>${rs.qat?"on":"off"}</b>`,`HTTP/2 syntax <b>${rs.modern_http2_directive?"modern":"legacy"}</b>`];
+      if(rt.nginx_pid) parts.push(`nginx pid <b>${rt.nginx_pid}</b>`);
+      $("tls_accel_runtime").innerHTML=parts.map(x=>`<div>${x}</div>`).join("");
+      const detail=[];
+      if(p.nginx_version) detail.push(p.nginx_version);
+      if(p.openssl_version) detail.push(p.openssl_version);
+      if(rt.last_error) detail.push("error: "+rt.last_error);
+      $("tls_accel_detail").textContent=detail.length?detail.join(" · "):"Go TLS remains the default. Frontend mode preflights NGINX/OpenSSL before Apply; auto falls back safely, required fails closed.";
+    }catch(e){}
+  }
+  $("tls_accel_save").onclick=()=>applyConfig().then(()=>{toast("TLS acceleration settings applied");pollTLSAcceleration();}).catch(e=>toast(e.message,"err"));
+  $("tls_accel_refresh").onclick=()=>pollTLSAcceleration();
+
   // ── AI setup ──
   function fillAI(ai, trustedProxies){
     ai=ai||{};
@@ -2037,7 +2121,7 @@
     // would rebuild the tree/panels under the user. Refresh on tab open and via
     // the explicit Refresh button instead.
     setInterval(()=>{ if(document.querySelector('.tab[data-view="pools"]').classList.contains("sel")) pollPools(); },3000);
-    setInterval(()=>{ if(document.querySelector('.tab[data-view="setup"]').classList.contains("sel")) pollAI(); },4000);
+    setInterval(()=>{ if(document.querySelector('.tab[data-view="setup"]').classList.contains("sel")){ pollAI(); pollTLSAcceleration(); } },4000);
     setInterval(pollLogs,3000);
     setInterval(pollHome,4000);
   }

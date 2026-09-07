@@ -20,7 +20,9 @@ set -uo pipefail
 ETC=/etc/waf
 LOGDIR=/var/log/waf
 BIN=/usr/local/bin/waf-proxy
+TLSBIN=/usr/local/bin/waf-tlsfront
 UNIT=/etc/systemd/system/waf-proxy.service
+TLSUNIT=/etc/systemd/system/waf-tls-frontend.service
 ENVF="$ETC/waf-proxy.env"
 CFG="$ETC/config.json"
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -78,8 +80,9 @@ if [[ "$MODE" == fix ]]; then
   # env file: root-only, NOT group-writable (waf must never read the token)
   [[ -e "$ENVF" ]] && { chown root:root "$ENVF"; chmod 0600 "$ENVF"; }
 
-  # binary: root-owned
+  # binaries: root-owned
   [[ -e "$BIN" ]] && { chown root:root "$BIN"; chmod 0755 "$BIN"; }
+  [[ -e "$TLSBIN" ]] && { chown root:root "$TLSBIN"; chmod 0755 "$TLSBIN"; }
 
   # sweep any stray root-owned files the atomic save / foreground runs left behind
   # (everything under /etc/waf except the env file should be group waf & writable
@@ -92,8 +95,9 @@ if [[ "$MODE" == fix ]]; then
   # install the packaged unit (has the capability + LogsDirectory) if we have it
   if [[ -f "$SRC/waf-proxy.service" ]]; then
     install -o root -g root -m 0644 "$SRC/waf-proxy.service" "$UNIT"
+    [[ ! -f "$SRC/waf-tls-frontend.service" ]] || install -o root -g root -m 0644 "$SRC/waf-tls-frontend.service" "$TLSUNIT"
     systemctl daemon-reload
-    echo "installed packaged unit"
+    echo "installed packaged units"
   fi
 fi
 
@@ -111,7 +115,9 @@ check "no stray non-waf files under /etc/waf (except env)"        "[[ -z \"\$(fi
 check "unit grants CAP_NET_BIND_SERVICE (80/443 bind as waf)"     "grep -q AmbientCapabilities=CAP_NET_BIND_SERVICE $UNIT"
 check "unit permits AF_NETLINK (managed-IP interface discovery)" "grep -Eq '^RestrictAddressFamilies=.*AF_NETLINK' $UNIT"
 check "unit has LogsDirectory=waf (sandbox log write)"            "grep -q LogsDirectory=waf $UNIT"
-check "binary present and root-owned"                             "[[ -x $BIN ]] && [[ \$(stat -c %U $BIN) == root ]]"
+check "waf-proxy binary present and root-owned"                   "[[ -x $BIN ]] && [[ \$(stat -c %U $BIN) == root ]]"
+check "waf-tlsfront binary present and root-owned"                 "[[ -x $TLSBIN ]] && [[ \$(stat -c %U $TLSBIN) == root ]]"
+check "TLS frontend unit installed"                                "[[ -f $TLSUNIT ]]"
 
 echo
 if [[ $FAILED -eq 0 ]]; then

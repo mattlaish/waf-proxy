@@ -2,7 +2,8 @@
 Description=waf-proxy — Coraza reverse-proxy WAF
 Documentation=file:/opt/waf-proxy/README.md
 After=network-online.target
-Wants=network-online.target
+Wants=network-online.target waf-tls-frontend.service
+Before=waf-tls-frontend.service
 
 [Service]
 Type=simple
@@ -15,6 +16,9 @@ ExecStart=/usr/local/bin/waf-proxy -config /etc/waf/config.json
 # Generate: openssl rand -hex 24
 # Prefer an EnvironmentFile (0600, root-owned) over inlining the secret here.
 EnvironmentFile=-/etc/waf/waf-proxy.env
+EnvironmentFile=-/etc/waf/waf-tls-frontend.env
+Environment=WAF_TLS_FRONTEND_CONTROL=/run/waf-proxy/tls-frontend-live.json
+Environment=WAF_TLS_FRONTEND_STATUS=/run/waf-tls-frontend/status.json
 
 # Admin console bind address. Default is loopback-only (reach it via ssh -L).
 # To expose it to a management network, set an IP or 0.0.0.0 here AND set TLS
@@ -68,6 +72,8 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 UMask=0077
+RuntimeDirectory=waf-proxy
+RuntimeDirectoryMode=0750
 
 # waf-proxy writes config.json back on save; /etc/waf must stay writable.
 ReadWritePaths=/etc/waf

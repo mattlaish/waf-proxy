@@ -12,7 +12,9 @@ set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
 BIN_DST=/usr/local/bin/waf-proxy
+TLS_BIN_DST=/usr/local/bin/waf-tlsfront
 UNIT=/etc/systemd/system/waf-proxy.service
+TLS_UNIT=/etc/systemd/system/waf-tls-frontend.service
 CORAZA=/etc/waf/coraza.conf
 
 [[ $EUID -eq 0 ]] || { echo "run as root: sudo $0" >&2; exit 1; }
@@ -22,22 +24,28 @@ if [[ ! -x "$SRC/waf-proxy" ]]; then
   echo "==> building (no ./waf-proxy present)"
   ( cd "$SRC" && ./build.sh )
 fi
-[[ -x "$SRC/waf-proxy" ]] || { echo "!! build did not produce ./waf-proxy" >&2; exit 1; }
+[[ -x "$SRC/waf-proxy" && -x "$SRC/waf-tlsfront" ]] || { echo "!! build did not produce ./waf-proxy and ./waf-tlsfront" >&2; exit 1; }
 
-echo "==> stopping service"
-systemctl stop waf-proxy || true
+echo "==> stopping services"
+systemctl stop waf-tls-frontend waf-proxy || true
 
-echo "==> installing binary"
+echo "==> installing binaries"
 install -o root -g root -m 0755 "$SRC/waf-proxy" "$BIN_DST"
+install -o root -g root -m 0755 "$SRC/waf-tlsfront" "$TLS_BIN_DST"
 
 # 2. unit: reinstall only if changed
+UNIT_CHANGED=0
 if [[ -f "$SRC/waf-proxy.service" ]] && ! cmp -s "$SRC/waf-proxy.service" "$UNIT"; then
-  echo "==> unit changed — updating"
+  echo "==> waf-proxy unit changed — updating"
   install -o root -g root -m 0644 "$SRC/waf-proxy.service" "$UNIT"
-  systemctl daemon-reload
-else
-  echo "    unit unchanged — skipped"
+  UNIT_CHANGED=1
 fi
+if [[ -f "$SRC/waf-tls-frontend.service" ]] && ! cmp -s "$SRC/waf-tls-frontend.service" "$TLS_UNIT"; then
+  echo "==> TLS frontend unit changed — updating"
+  install -o root -g root -m 0644 "$SRC/waf-tls-frontend.service" "$TLS_UNIT"
+  UNIT_CHANGED=1
+fi
+[[ $UNIT_CHANGED -eq 0 ]] || systemctl daemon-reload
 
 # 3. coraza.conf: reinstall only if changed (never clobbers if you customised it
 #    beyond ours — cmp just tells us whether the shipped file differs)
@@ -49,13 +57,15 @@ else
 fi
 
 # 4. ensure enabled (idempotent; only matters the first time) and start
-systemctl enable waf-proxy >/dev/null 2>&1 || true
-echo "==> starting service"
+systemctl enable waf-proxy waf-tls-frontend >/dev/null 2>&1 || true
+echo "==> starting services"
 systemctl start waf-proxy
+systemctl start waf-tls-frontend
 
 sleep 1
 echo
 systemctl is-active waf-proxy >/dev/null 2>&1 \
-  && echo "OK — waf-proxy is active" \
-  || { echo "!! service not active — check: journalctl -u waf-proxy -n 20 --no-pager" >&2; exit 1; }
+  && systemctl is-active waf-tls-frontend >/dev/null 2>&1 \
+  && echo "OK — waf-proxy and waf-tls-frontend are active" \
+  || { echo "!! service not active — check: journalctl -u waf-proxy -u waf-tls-frontend -n 40 --no-pager" >&2; exit 1; }
 ss -tlnp 2>/dev/null | grep waf-proxy || true

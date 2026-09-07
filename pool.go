@@ -18,7 +18,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"hash/fnv"
+	"errors"
 	"io"
 	"log/slog"
 	"math/rand"
@@ -28,10 +28,6 @@ import (
 	"sync/atomic"
 	"time"
 )
-
-type ctxKey int
-
-const memberCtxKey ctxKey = 0
 
 // ── runtime types ───────────────────────────────────────────────────────
 
@@ -49,65 +45,147 @@ type memberRuntime struct {
 }
 
 type poolRuntime struct {
-	name       string
-	method     string
-	members    []*memberRuntime
-	monitor    MonitorConfig
-	rr         uint64 // round-robin cursor (atomic)
-	backendTLS *tls.Config
+	name          string
+	method        string
+	members       []*memberRuntime
+	monitor       MonitorConfig
+	transport     BackendTransportConfig
+	httpTransport *http.Transport
+	rr            uint64 // round-robin cursor (atomic)
+	backendTLS    *tls.Config
 }
 
-func (p *poolRuntime) healthyMembers() []*memberRuntime {
-	out := make([]*memberRuntime, 0, len(p.members))
+// healthyCount returns the number of currently healthy members. A zero count
+// means selection should fail open across the full configured member set, which
+// preserves the pool's historical behavior when every active monitor is down.
+func (p *poolRuntime) healthyCount() int {
+	count := 0
 	for _, m := range p.members {
 		if atomic.LoadInt32(&m.healthy) == 1 {
-			out = append(out, m)
+			count++
 		}
 	}
-	if len(out) == 0 {
-		// Fail open: a misconfigured or flapping monitor should not take the
-		// whole site offline. Better to try a member than to blind-503.
-		return p.members
+	return count
+}
+
+func memberEligible(m *memberRuntime, healthyOnly bool) bool {
+	return !healthyOnly || atomic.LoadInt32(&m.healthy) == 1
+}
+
+func (p *poolRuntime) nthEligible(n int, healthyOnly bool) *memberRuntime {
+	for _, m := range p.members {
+		if !memberEligible(m, healthyOnly) {
+			continue
+		}
+		if n == 0 {
+			return m
+		}
+		n--
 	}
-	return out
+	return nil
 }
 
+// fnv32 implements FNV-1a directly over the string so ip_hash does not need to
+// allocate or construct a hash.Hash object on the request path.
 func fnv32(s string) uint32 {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(s))
-	return h.Sum32()
+	const (
+		offset32 = uint32(2166136261)
+		prime32  = uint32(16777619)
+	)
+	h := offset32
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= prime32
+	}
+	return h
 }
 
-// pick selects a member according to the pool's LB method.
+// pick selects a member according to the pool's LB method without materializing
+// a temporary healthy-member slice. Health can change concurrently between the
+// small counting and selection passes; if that happens, selection falls back to
+// the full member set rather than returning nil for a configured pool.
 func (p *poolRuntime) pick(clientIP string) *memberRuntime {
-	ms := p.healthyMembers()
-	if len(ms) == 0 {
+	if len(p.members) == 0 {
 		return nil
 	}
+	if len(p.members) == 1 {
+		return p.members[0]
+	}
+	healthy := p.healthyCount()
+	healthyOnly := healthy > 0
+	eligible := healthy
+	if !healthyOnly {
+		eligible = len(p.members)
+	}
+
 	switch p.method {
 	case "least_conn":
-		best, bestv := ms[0], atomic.LoadInt64(&ms[0].active)
-		for _, m := range ms[1:] {
-			if v := atomic.LoadInt64(&m.active); v < bestv {
+		var best *memberRuntime
+		var bestv int64
+		for _, m := range p.members {
+			if !memberEligible(m, healthyOnly) {
+				continue
+			}
+			v := atomic.LoadInt64(&m.active)
+			if best == nil || v < bestv {
+				best, bestv = m, v
+			}
+		}
+		if best != nil {
+			return best
+		}
+		// A monitor transition may have invalidated the healthy set between
+		// passes. Preserve fail-open behavior instead of transiently 503ing.
+		for _, m := range p.members {
+			v := atomic.LoadInt64(&m.active)
+			if best == nil || v < bestv {
 				best, bestv = m, v
 			}
 		}
 		return best
+
 	case "ip_hash":
-		return ms[fnv32(clientIP)%uint32(len(ms))]
+		idx := int(fnv32(clientIP) % uint32(eligible))
+		if m := p.nthEligible(idx, healthyOnly); m != nil {
+			return m
+		}
+		return p.members[int(fnv32(clientIP)%uint32(len(p.members)))]
+
 	case "random":
-		return ms[rand.Intn(len(ms))]
+		idx := rand.Intn(eligible)
+		if m := p.nthEligible(idx, healthyOnly); m != nil {
+			return m
+		}
+		return p.members[rand.Intn(len(p.members))]
+
 	default: // round_robin, weighted by member weight
 		total := 0
-		for _, m := range ms {
+		for _, m := range p.members {
+			if !memberEligible(m, healthyOnly) {
+				continue
+			}
 			w := m.weight
 			if w < 1 {
 				w = 1
 			}
 			total += w
 		}
+		if total == 0 {
+			// Health changed after healthyCount. Recompute across all members.
+			healthyOnly = false
+			for _, m := range p.members {
+				w := m.weight
+				if w < 1 {
+					w = 1
+				}
+				total += w
+			}
+		}
 		idx := int(atomic.AddUint64(&p.rr, 1) % uint64(total))
-		for _, m := range ms {
+		for _, m := range p.members {
+			if !memberEligible(m, healthyOnly) {
+				continue
+			}
 			w := m.weight
 			if w < 1 {
 				w = 1
@@ -117,7 +195,9 @@ func (p *poolRuntime) pick(clientIP string) *memberRuntime {
 			}
 			idx -= w
 		}
-		return ms[0]
+		// Concurrent health transitions can only reach this fallback; return a
+		// configured member to retain fail-open semantics.
+		return p.members[0]
 	}
 }
 
@@ -126,7 +206,11 @@ func (p *poolRuntime) pick(clientIP string) *memberRuntime {
 // lbTransport brackets each proxied request with active-connection accounting
 // for the chosen member, so least-connections balancing sees real in-flight
 // counts. The count is held until the response body is fully closed.
-type lbTransport struct{ base http.RoundTripper }
+type lbTransport struct {
+	base         http.RoundTripper
+	pool         *poolRuntime
+	preserveHost bool
+}
 
 type countingBody struct {
 	io.ReadCloser
@@ -142,14 +226,26 @@ func (c *countingBody) Close() error {
 }
 
 func (t lbTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	m, _ := r.Context().Value(memberCtxKey).(*memberRuntime)
-	if m != nil {
-		atomic.AddInt64(&m.active, 1)
+	if t.pool == nil {
+		return nil, errors.New("load balancer transport has no pool")
 	}
-	resp, err := t.base.RoundTrip(r)
+	m := t.pool.pick(clientIP(r))
 	if m == nil {
-		return resp, err
+		return nil, errors.New("load balancer pool has no members")
 	}
+
+	// ReverseProxy owns this outbound request. Select the backend here so the
+	// chosen member remains a local pointer for accounting, avoiding the former
+	// request-context value and its per-request allocation. Pool member targets
+	// are scheme://host:port only, so the original request path/query stay intact.
+	r.URL.Scheme = m.target.Scheme
+	r.URL.Host = m.target.Host
+	if !t.preserveHost {
+		r.Host = ""
+	}
+
+	atomic.AddInt64(&m.active, 1)
+	resp, err := t.base.RoundTrip(r)
 	if err != nil {
 		atomic.AddInt64(&m.active, -1)
 		return resp, err
@@ -203,6 +299,7 @@ func (p *poolRuntime) startMonitor(ctx context.Context, log *slog.Logger, n *not
 	}
 
 	go func() {
+		defer transport.CloseIdleConnections()
 		t := time.NewTicker(interval)
 		defer t.Stop()
 		check := func() {
@@ -290,10 +387,11 @@ type memberStatus struct {
 }
 
 type poolStatus struct {
-	Name    string         `json:"name"`
-	Method  string         `json:"method"`
-	Monitor string         `json:"monitor"`
-	Members []memberStatus `json:"members"`
+	Name      string                 `json:"name"`
+	Method    string                 `json:"method"`
+	Monitor   string                 `json:"monitor"`
+	Transport BackendTransportConfig `json:"transport"`
+	Members   []memberStatus         `json:"members"`
 }
 
 func (p *poolRuntime) status() poolStatus {
@@ -314,5 +412,5 @@ func (p *poolRuntime) status() poolStatus {
 			Active:  atomic.LoadInt64(&m.active),
 		})
 	}
-	return poolStatus{Name: p.name, Method: p.method, Monitor: mon, Members: ms}
+	return poolStatus{Name: p.name, Method: p.method, Monitor: mon, Transport: effectiveBackendTransport(p.transport), Members: ms}
 }

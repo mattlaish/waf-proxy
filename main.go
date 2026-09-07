@@ -43,6 +43,9 @@ import (
 	"syscall"
 	"time"
 
+	"waf-proxy/internal/tlsfront"
+	"waf-proxy/internal/vectoraccel"
+
 	"github.com/corazawaf/coraza/v3"
 	txhttp "github.com/corazawaf/coraza/v3/http"
 	"github.com/corazawaf/coraza/v3/types"
@@ -71,13 +74,23 @@ type MonitorConfig struct {
 	Fall         int    `json:"fall,omitempty"`
 }
 
+type BackendTransportConfig struct {
+	MaxIdleConns        int `json:"max_idle_conns,omitempty"`
+	MaxIdleConnsPerHost int `json:"max_idle_conns_per_host,omitempty"`
+	MaxConnsPerHost     int `json:"max_conns_per_host,omitempty"` // 0 = unlimited
+	IdleConnTimeoutSec  int `json:"idle_conn_timeout_sec,omitempty"`
+	DialTimeoutSec      int `json:"dial_timeout_sec,omitempty"`
+	KeepAliveSec        int `json:"keep_alive_sec,omitempty"`
+}
+
 type PoolConfig struct {
-	Name       string           `json:"name"`
-	Scheme     string           `json:"scheme"`    // http | https (to the backend)
-	LBMethod   string           `json:"lb_method"` // round_robin | least_conn | ip_hash | random
-	Monitor    MonitorConfig    `json:"monitor"`
-	Members    []MemberConfig   `json:"members"`
-	BackendTLS BackendTLSConfig `json:"backend_tls,omitempty"`
+	Name       string                 `json:"name"`
+	Scheme     string                 `json:"scheme"`    // http | https (to the backend)
+	LBMethod   string                 `json:"lb_method"` // round_robin | least_conn | ip_hash | random
+	Monitor    MonitorConfig          `json:"monitor"`
+	Members    []MemberConfig         `json:"members"`
+	BackendTLS BackendTLSConfig       `json:"backend_tls,omitempty"`
+	Transport  BackendTransportConfig `json:"transport,omitempty"`
 }
 
 // PolicyExclusion removes a CRS rule (or a specific target of it), optionally
@@ -94,11 +107,13 @@ type PolicyExclusion struct {
 // compiles its own engine from its policy (so per-site engine mode and correct
 // per-site match attribution are preserved).
 type PolicyConfig struct {
-	Name             string            `json:"name"`
-	RulesPath        string            `json:"rules_path"`         // SecLang file (usually includes CRS)
-	ParanoiaLevel    int               `json:"paranoia_level"`     // 1-4, 0 = leave file default
-	RequestBodyLimit int               `json:"request_body_limit"` // 0 = leave file default
-	Exclusions       []PolicyExclusion `json:"exclusions,omitempty"`
+	Name                   string            `json:"name"`
+	RulesPath              string            `json:"rules_path"`                         // SecLang file (usually includes CRS)
+	ParanoiaLevel          int               `json:"paranoia_level"`                     // 1-4, 0 = leave file default
+	RequestBodyLimit       int               `json:"request_body_limit"`                 // 0 = leave file default
+	ResponseBodyInspection string            `json:"response_body_inspection,omitempty"` // ""/inherit | on | off
+	ResponseBodyLimit      int               `json:"response_body_limit,omitempty"`      // 0 = leave file default
+	Exclusions             []PolicyExclusion `json:"exclusions,omitempty"`
 }
 
 // PageExcludeTarget removes a specific target of a rule (vs the whole rule).
@@ -174,17 +189,19 @@ type Config struct {
 	PassiveDiscoveryEnabled bool   `json:"passive_discovery_enabled"`
 	// TrustedProxyCIDRs controls which immediate network peers may supply the
 	// X-Forwarded-For chain used as the authoritative client address.
-	TrustedProxyCIDRs []string       `json:"trusted_proxy_cidrs,omitempty"`
-	Nodes             []NodeConfig   `json:"nodes"`
-	Pools             []PoolConfig   `json:"pools"`
-	Policies          []PolicyConfig `json:"policies"`
-	Sites             []SiteConfig   `json:"sites"`
-	Profiles          []Profile      `json:"profiles,omitempty"` // custom page profiles (built-ins always available)
-	Users             []UserConfig   `json:"users,omitempty"`
-	AI                AIConfig       `json:"ai"`
-	Notify            NotifyConfig   `json:"notify"`
-	HA                HAConfig       `json:"ha"`
-	Syslog            SyslogConfig   `json:"syslog"`
+	TrustedProxyCIDRs  []string                    `json:"trusted_proxy_cidrs,omitempty"`
+	Nodes              []NodeConfig                `json:"nodes"`
+	Pools              []PoolConfig                `json:"pools"`
+	Policies           []PolicyConfig              `json:"policies"`
+	Sites              []SiteConfig                `json:"sites"`
+	Profiles           []Profile                   `json:"profiles,omitempty"` // custom page profiles (built-ins always available)
+	Users              []UserConfig                `json:"users,omitempty"`
+	AI                 AIConfig                    `json:"ai"`
+	Notify             NotifyConfig                `json:"notify"`
+	HA                 HAConfig                    `json:"ha"`
+	Syslog             SyslogConfig                `json:"syslog"`
+	TLSAcceleration    tlsfront.AccelerationConfig `json:"tls_acceleration,omitempty"`
+	VectorAcceleration vectoraccel.Config          `json:"vector_acceleration,omitempty"`
 
 	// Legacy v2 fields, migrated on load.
 	LegacyListen string `json:"listen,omitempty"`
@@ -196,6 +213,24 @@ var (
 	buildCommit  = "unknown"
 )
 
+const (
+	defaultBackendMaxIdleConns        = 2048
+	defaultBackendMaxIdleConnsPerHost = 256
+	defaultBackendIdleConnTimeoutSec  = 90
+	defaultBackendDialTimeoutSec      = 5
+	defaultBackendKeepAliveSec        = 30
+)
+
+func defaultBackendTransportConfig() BackendTransportConfig {
+	return BackendTransportConfig{
+		MaxIdleConns:        defaultBackendMaxIdleConns,
+		MaxIdleConnsPerHost: defaultBackendMaxIdleConnsPerHost,
+		IdleConnTimeoutSec:  defaultBackendIdleConnTimeoutSec,
+		DialTimeoutSec:      defaultBackendDialTimeoutSec,
+		KeepAliveSec:        defaultBackendKeepAliveSec,
+	}
+}
+
 func defaultConfig() Config {
 	return Config{
 		Rules:                   "coraza.conf",
@@ -206,11 +241,12 @@ func defaultConfig() Config {
 		PassiveDiscoveryEnabled: true,
 		Nodes:                   []NodeConfig{{Name: "app1", Host: "127.0.0.1"}},
 		Pools: []PoolConfig{{
-			Name:     "default-pool",
-			Scheme:   "http",
-			LBMethod: "round_robin",
-			Monitor:  MonitorConfig{Type: "tcp", IntervalSec: 5, TimeoutSec: 2, Rise: 2, Fall: 3},
-			Members:  []MemberConfig{{Node: "app1", Port: 8080, Weight: 1}},
+			Name:      "default-pool",
+			Scheme:    "http",
+			LBMethod:  "round_robin",
+			Monitor:   MonitorConfig{Type: "tcp", IntervalSec: 5, TimeoutSec: 2, Rise: 2, Fall: 3},
+			Members:   []MemberConfig{{Node: "app1", Port: 8080, Weight: 1}},
+			Transport: defaultBackendTransportConfig(),
 		}},
 		Policies: []PolicyConfig{{
 			Name:          "default",
@@ -225,10 +261,12 @@ func defaultConfig() Config {
 			Policy:       "default",
 			PreserveHost: true,
 		}},
-		AI:     defaultAIConfig(),
-		Notify: defaultNotifyConfig(),
-		HA:     defaultHAConfig(),
-		Syslog: defaultSyslogConfig(),
+		AI:                 defaultAIConfig(),
+		Notify:             defaultNotifyConfig(),
+		HA:                 defaultHAConfig(),
+		Syslog:             defaultSyslogConfig(),
+		TLSAcceleration:    tlsfront.AccelerationConfig{Mode: tlsfront.ModeGo, KTLS: tlsfront.AccelOff, QAT: tlsfront.AccelOff},
+		VectorAcceleration: vectoraccel.Defaults(),
 	}
 }
 
@@ -278,6 +316,55 @@ func validPolicyMethod(v string) bool {
 	return false
 }
 
+func validResponseBodyInspection(v string) bool {
+	switch v {
+	case "", "inherit", "on", "off":
+		return true
+	}
+	return false
+}
+
+func validateBackendTransport(t BackendTransportConfig) error {
+	for name, value := range map[string]int{
+		"max_idle_conns":          t.MaxIdleConns,
+		"max_idle_conns_per_host": t.MaxIdleConnsPerHost,
+		"max_conns_per_host":      t.MaxConnsPerHost,
+		"idle_conn_timeout_sec":   t.IdleConnTimeoutSec,
+		"dial_timeout_sec":        t.DialTimeoutSec,
+		"keep_alive_sec":          t.KeepAliveSec,
+	} {
+		if value < 0 {
+			return fmt.Errorf("%s must be >= 0", name)
+		}
+	}
+	if t.MaxIdleConns > 65536 || t.MaxIdleConnsPerHost > 16384 || t.MaxConnsPerHost > 65536 {
+		return errors.New("connection pool limits exceed supported maximum")
+	}
+	if t.IdleConnTimeoutSec > 3600 || t.DialTimeoutSec > 300 || t.KeepAliveSec > 3600 {
+		return errors.New("backend transport timeouts exceed supported maximum")
+	}
+	return nil
+}
+
+func effectiveBackendTransport(t BackendTransportConfig) BackendTransportConfig {
+	if t.MaxIdleConns == 0 {
+		t.MaxIdleConns = defaultBackendMaxIdleConns
+	}
+	if t.MaxIdleConnsPerHost == 0 {
+		t.MaxIdleConnsPerHost = defaultBackendMaxIdleConnsPerHost
+	}
+	if t.IdleConnTimeoutSec == 0 {
+		t.IdleConnTimeoutSec = defaultBackendIdleConnTimeoutSec
+	}
+	if t.DialTimeoutSec == 0 {
+		t.DialTimeoutSec = defaultBackendDialTimeoutSec
+	}
+	if t.KeepAliveSec == 0 {
+		t.KeepAliveSec = defaultBackendKeepAliveSec
+	}
+	return t
+}
+
 func validFieldName(v string) bool {
 	if v == "" || len(v) > 128 {
 		return false
@@ -307,6 +394,12 @@ func (c Config) validateDraft() error {
 	if err := validateTrustedProxyCIDRs(c.TrustedProxyCIDRs); err != nil {
 		return err
 	}
+	if err := tlsfront.Validate(c.TLSAcceleration); err != nil {
+		return err
+	}
+	if err := vectoraccel.Validate(c.VectorAcceleration); err != nil {
+		return err
+	}
 	seen := func(kind string) func(string) error {
 		m := map[string]bool{}
 		return func(name string) error {
@@ -327,6 +420,12 @@ func (c Config) validateDraft() error {
 		}
 		if p.ParanoiaLevel < 0 || p.ParanoiaLevel > 4 {
 			return fmt.Errorf("policy %q: paranoia_level must be 0-4", p.Name)
+		}
+		if !validResponseBodyInspection(p.ResponseBodyInspection) {
+			return fmt.Errorf("policy %q: response_body_inspection must be inherit, on, or off", p.Name)
+		}
+		if p.ResponseBodyLimit < 0 {
+			return fmt.Errorf("policy %q: response_body_limit must be >= 0", p.Name)
 		}
 	}
 	for _, n := range c.Nodes {
@@ -349,6 +448,9 @@ func (c Config) validateDraft() error {
 		}
 		if err := validateBackendTLSDraft(p.Scheme, p.BackendTLS); err != nil {
 			return fmt.Errorf("pool %q: backend_tls: %w", p.Name, err)
+		}
+		if err := validateBackendTransport(p.Transport); err != nil {
+			return fmt.Errorf("pool %q: transport: %w", p.Name, err)
 		}
 		for j, m := range p.Members {
 			if m.Port != 0 && (m.Port < 1 || m.Port > 65535) {
@@ -373,6 +475,12 @@ func (c Config) validate() error {
 		return fmt.Errorf("engine_mode must be On, DetectionOnly, or Off (got %q)", c.EngineMode)
 	}
 	if err := validateTrustedProxyCIDRs(c.TrustedProxyCIDRs); err != nil {
+		return err
+	}
+	if err := tlsfront.Validate(c.TLSAcceleration); err != nil {
+		return err
+	}
+	if err := vectoraccel.Validate(c.VectorAcceleration); err != nil {
 		return err
 	}
 	if c.ReadTimeoutSec < 1 || c.IdleTimeoutSec < 1 || c.BackendTimeoutSec < 1 {
@@ -407,6 +515,12 @@ func (c Config) validate() error {
 		}
 		if p.RequestBodyLimit < 0 {
 			return fmt.Errorf("%s: request_body_limit must be >= 0", where)
+		}
+		if !validResponseBodyInspection(p.ResponseBodyInspection) {
+			return fmt.Errorf("%s: response_body_inspection must be inherit, on, or off", where)
+		}
+		if p.ResponseBodyLimit < 0 {
+			return fmt.Errorf("%s: response_body_limit must be >= 0", where)
 		}
 		for j, ex := range p.Exclusions {
 			for _, id := range ex.RuleIDs {
@@ -454,6 +568,9 @@ func (c Config) validate() error {
 		}
 		if err := validateBackendTLS(p.Scheme, p.BackendTLS); err != nil {
 			return fmt.Errorf("%s: backend_tls: %w", where, err)
+		}
+		if err := validateBackendTransport(p.Transport); err != nil {
+			return fmt.Errorf("%s: transport: %w", where, err)
 		}
 		if !validMonitorType(p.Monitor.Type) {
 			return fmt.Errorf("%s: monitor type must be none, tcp, or http", where)
@@ -695,9 +812,11 @@ func normalizeHost(h string) string {
 	return strings.TrimSuffix(h, ".")
 }
 
-// listenerSet returns the distinct listen addresses and whether each is TLS
-// (any site on it has a certificate).
-func listenerSet(c Config) map[string]bool {
+// publicListenerSet returns the configured/public listen addresses and whether
+// each one is TLS (any site on it has a certificate). In frontend TLS mode the
+// public socket is owned by waf-tlsfront while waf-proxy serves the same Host
+// routing over a private Unix-domain socket.
+func publicListenerSet(c Config) map[string]bool {
 	out := map[string]bool{}
 	for _, s := range c.Sites {
 		if _, ok := out[s.Listen]; !ok {
@@ -708,6 +827,37 @@ func listenerSet(c Config) map[string]bool {
 		}
 	}
 	return out
+}
+
+func tlsFrontendSites(c Config) []tlsfront.Site {
+	out := make([]tlsfront.Site, 0, len(c.Sites))
+	for _, s := range c.Sites {
+		out = append(out, tlsfront.Site{Name: s.Name, Listen: s.Listen, Hostnames: append([]string(nil), s.Hostnames...), TLSCert: s.TLSCert, TLSKey: s.TLSKey})
+	}
+	return out
+}
+
+// listenerSet returns the actual sockets owned by waf-proxy. With the optional
+// TLS frontend enabled, public TLS listeners become private Unix-domain HTTP
+// listeners; non-TLS listeners remain ordinary TCP sockets.
+func listenerSet(c Config) map[string]bool {
+	public := publicListenerSet(c)
+	out := make(map[string]bool, len(public))
+	for addr, isTLS := range public {
+		if tlsfront.FrontendEnabled(c.TLSAcceleration) && isTLS {
+			out[tlsfront.InternalListenerKey(addr)] = false
+			continue
+		}
+		out[addr] = isTLS
+	}
+	return out
+}
+
+func runtimeListenerKey(c Config, publicAddr string) string {
+	if tlsfront.FrontendEnabled(c.TLSAcceleration) && publicListenerSet(c)[publicAddr] {
+		return tlsfront.InternalListenerKey(publicAddr)
+	}
+	return publicAddr
 }
 
 // ── hot-swappable runtime ───────────────────────────────────────────────
@@ -752,6 +902,24 @@ type runtimeState struct {
 	cfg       Config
 	builtAt   time.Time
 	cancel    context.CancelFunc // stops this runtime's health monitors
+	vector    *vectoraccel.Manager
+}
+
+func (rt *runtimeState) close() {
+	if rt == nil {
+		return
+	}
+	if rt.cancel != nil {
+		rt.cancel()
+	}
+	if rt.vector != nil {
+		_ = rt.vector.Close()
+	}
+	for _, pool := range rt.pools {
+		if pool != nil && pool.httpTransport != nil {
+			pool.httpTransport.CloseIdleConnections()
+		}
+	}
 }
 
 type server struct {
@@ -766,6 +934,8 @@ type server struct {
 	ha            *haEngine
 	syslog        *syslogEngine
 	hosts         *hostObserver
+	observations  *observationPlane
+	matchLogs     *matchLogPlane
 	metrics       *metrics
 	ipmgr         *ipManager
 	listenMgr     *listenerManager
@@ -773,6 +943,7 @@ type server struct {
 	log           *slog.Logger
 	configPath    string
 	tlsBrowseRoot string
+	tlsFrontend   *tlsFrontendPublisher
 	bootCfg       Config
 }
 
@@ -797,20 +968,31 @@ func (s *server) applyEx(cfg Config, fromSync bool) error {
 	if err != nil {
 		return err
 	}
+	if s.tlsFrontend != nil {
+		if err := s.tlsFrontend.preflight(cfg); err != nil {
+			rt.close()
+			return fmt.Errorf("TLS frontend preflight: %w", err)
+		}
+	}
 	// Network ownership must succeed before the runtime becomes live. Otherwise
 	// the API could report Apply failure after already swapping the config.
 	if s.ipmgr != nil {
 		if err := s.ipmgr.reconcile(cfg); err != nil {
-			if rt.cancel != nil {
-				rt.cancel()
-			}
+			rt.close()
 			return err
 		}
 	}
-	old := s.rt.Swap(rt)
-	if old != nil && old.cancel != nil {
-		old.cancel() // stop the previous runtime's monitors
+	// Publish only the successfully built/live TLS frontend specification. Draft
+	// saves never touch this file, so the companion cannot bind public TLS ports
+	// before the WAF runtime is actually applied.
+	if s.tlsFrontend != nil {
+		if err := s.tlsFrontend.publish(cfg); err != nil {
+			rt.close()
+			return fmt.Errorf("publish TLS frontend config: %w", err)
+		}
 	}
+	old := s.rt.Swap(rt)
+	old.close() // stop previous monitors and release idle backend connections
 	s.ai.configure(cfg.AI)
 	s.notify.configure(cfg.Notify)
 	s.ha.configure(cfg.HA)
@@ -831,12 +1013,18 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 		cancel()
 		return nil, err
 	}
+	vectorMgr, err := vectoraccel.NewManager(cfg.VectorAcceleration)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("vector acceleration: %w", err)
+	}
 	rt := &runtimeState{
 		listeners: map[string]*listenerRuntime{},
 		pools:     map[string]*poolRuntime{},
 		cfg:       cfg,
 		builtAt:   time.Now(),
 		cancel:    cancel,
+		vector:    vectorMgr,
 	}
 
 	nodeHost := map[string]string{}
@@ -848,10 +1036,11 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 	for _, pc := range cfg.Pools {
 		backendTLS, err := buildBackendTLSConfig(pc.BackendTLS, pc.Scheme)
 		if err != nil {
-			cancel()
+			rt.close()
 			return nil, fmt.Errorf("pool %q: backend TLS: %w", pc.Name, err)
 		}
-		pr := &poolRuntime{name: pc.Name, method: pc.LBMethod, monitor: pc.Monitor, backendTLS: backendTLS}
+		pr := &poolRuntime{name: pc.Name, method: pc.LBMethod, monitor: pc.Monitor, transport: effectiveBackendTransport(pc.Transport), backendTLS: backendTLS}
+		pr.httpTransport = buildBackendTransport(pr, cfg)
 		for _, mc := range pc.Members {
 			w := mc.Weight
 			if w < 1 {
@@ -880,23 +1069,30 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 			mode = cfg.EngineMode
 		}
 		policy := policyByName[sc.Policy]
-		waf, err := s.buildWAF(policy, sc.PagePolicies, mode, sc.AIMode, sc.Name)
+		vectorPlan, err := vectorMgr.BuildSite(sc.Name, policy.RulesPath)
 		if err != nil {
-			cancel()
+			rt.close()
+			return nil, fmt.Errorf("site %q: vector acceleration: %w", sc.Name, err)
+		}
+		waf, err := s.buildWAF(policy, sc.PagePolicies, mode, sc.AIMode, sc.Name, vectorPlan.ControlDirectives())
+		if err != nil {
+			rt.close()
 			return nil, fmt.Errorf("site %q: %w", sc.Name, err)
 		}
+		waf = observeCorazaWAF(waf, vectorPlan)
 		pool := rt.pools[sc.Pool]
 		siteName := sc.Name
 		record := func(method, path, rawQuery, contentType string, code int, fields []DiscoveredField) {
-			s.maps.record(siteName, method, path, code, srcObserved)
-			s.learn.noteRequest(siteName, path, code)
-			s.signals.noteRequestShape(siteName, path, method, rawQuery, contentType, fields)
+			s.observeRequest(siteName, method, path, rawQuery, contentType, code, fields)
 		}
-		baseHandler := txhttp.WrapHandler(waf, buildProxy(pool, sc, cfg, s.log, record))
+		proxyHandler := vectoraccel.StripEgress(buildProxy(pool, sc, cfg, s.log, record))
+		baseHandler := txhttp.WrapHandler(waf, proxyHandler)
+		baseHandler = vectorPlan.Wrap(baseHandler)
 		aiHandler := s.ai.wrap(sc, baseHandler)
 		passiveHandler := passiveDiscoveryWrap(cfg.PassiveDiscoveryEnabled, aiHandler)
 		captureForAI := cfg.AI.Enabled && cfg.AI.IncludeBody && sc.AIMode != "" && sc.AIMode != "off"
 		handler := requestBodyPrefixWrap(captureForAI, cfg.PassiveDiscoveryEnabled, passiveHandler)
+		handler = vectoraccel.SanitizeIngress(handler)
 		sr := &siteRuntime{
 			handler: clientIPs.wrap(s.logWrap(sc.Name, handler)),
 			cfg:     sc,
@@ -905,16 +1101,17 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 		if sc.TLSCert != "" {
 			cert, err := tls.LoadX509KeyPair(sc.TLSCert, sc.TLSKey)
 			if err != nil {
-				cancel()
+				rt.close()
 				return nil, fmt.Errorf("site %q: tls: %w", sc.Name, err)
 			}
 			sr.cert = &cert
 		}
 
-		lr := rt.listeners[sc.Listen]
+		listenerKey := runtimeListenerKey(cfg, sc.Listen)
+		lr := rt.listeners[listenerKey]
 		if lr == nil {
 			lr = &listenerRuntime{exact: map[string]*siteRuntime{}, wildcard: map[string]*siteRuntime{}}
-			rt.listeners[sc.Listen] = lr
+			rt.listeners[listenerKey] = lr
 		}
 		if sr.cert != nil {
 			lr.tls = true
@@ -1026,6 +1223,44 @@ func drainDelay() time.Duration {
 	return 3 * time.Second
 }
 
+func (s *server) observeHost(listener, host string, declared bool) {
+	if s.observations != nil {
+		s.observations.noteHost(listener, host, declared)
+		return
+	}
+	// Unit-test/minimal-server fallback. Production initializes the bounded
+	// observation plane before listeners are exposed.
+	if s.hosts != nil {
+		s.hosts.note(listener, host, declared)
+	}
+}
+
+func (s *server) observeRequest(site, method, path, rawQuery, contentType string, code int, fields []DiscoveredField) {
+	if s.observations != nil {
+		s.observations.noteRequest(site, method, path, rawQuery, contentType, code, fields)
+		return
+	}
+	if s.maps != nil {
+		s.maps.record(site, method, path, code, srcObserved)
+	}
+	if s.learn != nil {
+		s.learn.noteRequest(site, path, code)
+	}
+	if s.signals != nil {
+		s.signals.noteRequestShape(site, path, method, rawQuery, contentType, fields)
+	}
+}
+
+func (s *server) observeMatch(site, path string, ruleID int, client, severity string) {
+	if s.observations != nil {
+		s.observations.noteMatch(site, path, ruleID, client, severity)
+		return
+	}
+	if s.learn != nil {
+		s.learn.noteMatch(site, path, ruleID, client, severity)
+	}
+}
+
 func (s *server) logWrap(siteName string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sw := &statusRecorder{ResponseWriter: w, code: 200}
@@ -1050,13 +1285,14 @@ func (s *server) logWrap(siteName string, next http.Handler) http.Handler {
 	})
 }
 
-func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode, siteName string) (coraza.WAF, error) {
+func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode, siteName, vectorControl string) (coraza.WAF, error) {
 	// Load directives from an absolute path (e.g. /etc/waf/coraza.conf) using
 	// Coraza's default OS filesystem, which resolves absolute paths and their
 	// absolute Include lines (the CRS files). Do NOT set WithRootFS(os.DirFS("/")):
 	// os.DirFS follows io/fs rules that reject any leading slash as
 	// "invalid argument", which breaks both this file and its CRS includes.
 	wc := coraza.NewWAFConfig().
+		WithDirectives(vectorControl).
 		WithDirectivesFromFile(policy.RulesPath).
 		WithErrorCallback(func(rule types.MatchedRule) {
 			rec := matchRec{
@@ -1071,12 +1307,11 @@ func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode,
 				Data:     rule.Data(),
 			}
 			s.matches.add(rec)
-			s.learn.noteMatch(siteName, rec.URI, rec.RuleID, rec.Client, rec.Severity)
+			s.observeMatch(siteName, rec.URI, rec.RuleID, rec.Client, rec.Severity)
 			s.syslog.forwardMatch(rec)
-			s.log.Warn("rule match",
-				"site", rec.Site, "rule_id", rec.RuleID, "severity", rec.Severity,
-				"phase", rec.Phase, "client", rec.Client, "uri", rec.URI,
-				"msg", rec.Msg, "data", rec.Data)
+			if s.matchLogs != nil {
+				s.matchLogs.enqueue(rec)
+			}
 			// Join the match to the live request so DetectionOnly analysis gets
 			// method/query/headers/body as well as the rule and matched value.
 			s.ai.enqueueMatch(siteName, aiMode, rec.Client, rec.URI, rec.RuleID, rec.Data)
@@ -1254,14 +1489,23 @@ func validateFieldPattern(pattern string) error {
 }
 
 // policyDirectives builds the SecLang overrides appended AFTER the policy's
-// rules file (last directive wins): engine mode, paranoia level, body limit,
-// and path-scoped exclusions. Values are allow-listed / integer, never raw
+// rules file (last directive wins): engine mode, paranoia level, request/response
+// body controls, and path-scoped exclusions. Values are allow-listed / integer, never raw
 // user strings, so this is not a directive-injection surface.
 func policyDirectives(p PolicyConfig, mode string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "SecRuleEngine %s\n", mode)
 	if p.RequestBodyLimit > 0 {
 		fmt.Fprintf(&b, "SecRequestBodyLimit %d\n", p.RequestBodyLimit)
+	}
+	switch p.ResponseBodyInspection {
+	case "on":
+		b.WriteString("SecResponseBodyAccess On\n")
+	case "off":
+		b.WriteString("SecResponseBodyAccess Off\n")
+	}
+	if p.ResponseBodyLimit > 0 {
+		fmt.Fprintf(&b, "SecResponseBodyLimit %d\n", p.ResponseBodyLimit)
 	}
 	if p.ParanoiaLevel >= 1 && p.ParanoiaLevel <= 4 {
 		// CRS 4 reads these tx vars; setting them after crs-setup overrides it.
@@ -1355,35 +1599,51 @@ func sanitizeTarget(t string) string {
 
 // ── reverse proxy (pooled) ──────────────────────────────────────────────
 
-func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger, record func(method, path, rawQuery, contentType string, code int, fields []DiscoveredField)) *httputil.ReverseProxy {
+func buildBackendTransport(pool *poolRuntime, cfg Config) *http.Transport {
 	backendTO := time.Duration(cfg.BackendTimeoutSec) * time.Second
-	base := &http.Transport{
+	tune := defaultBackendTransportConfig()
+	if pool != nil {
+		tune = effectiveBackendTransport(pool.transport)
+	}
+	var backendTLS *tls.Config
+	if pool != nil {
+		backendTLS = pool.backendTLS
+	}
+	return &http.Transport{
 		Proxy: nil,
 		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 30 * time.Second,
+			Timeout:   time.Duration(tune.DialTimeoutSec) * time.Second,
+			KeepAlive: time.Duration(tune.KeepAliveSec) * time.Second,
 		}).DialContext,
-		MaxIdleConns:          256,
-		MaxIdleConnsPerHost:   32,
-		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          tune.MaxIdleConns,
+		MaxIdleConnsPerHost:   tune.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       tune.MaxConnsPerHost,
+		IdleConnTimeout:       time.Duration(tune.IdleConnTimeoutSec) * time.Second,
 		ResponseHeaderTimeout: backendTO,
 		ExpectContinueTimeout: 1 * time.Second,
 		ForceAttemptHTTP2:     true,
-		TLSClientConfig:       pool.backendTLS,
+		TLSClientConfig:       backendTLS,
+	}
+}
+
+func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger, record func(method, path, rawQuery, contentType string, code int, fields []DiscoveredField)) *httputil.ReverseProxy {
+	base := (*http.Transport)(nil)
+	if pool != nil {
+		base = pool.httpTransport
+	}
+	if base == nil {
+		base = buildBackendTransport(pool, cfg)
 	}
 	return &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			ip := clientIP(pr.In)
-			m := pool.pick(ip)
-			if m != nil {
-				pr.SetURL(m.target)
-				// stash chosen member for the counting transport
-				pr.Out = pr.Out.WithContext(context.WithValue(pr.Out.Context(), memberCtxKey, m))
-			}
 			// Do not append to a client-supplied chain. The outer client-IP
 			// resolver has already reduced it to the one authoritative address.
 			pr.Out.Header.Del("X-Forwarded-For")
 			pr.SetXForwarded()
+			if scheme := originalRequestScheme(pr.In); scheme != "" {
+				pr.Out.Header.Set("X-Forwarded-Proto", scheme)
+			}
 			if site.PreserveHost {
 				pr.Out.Host = pr.In.Host
 			}
@@ -1392,7 +1652,7 @@ func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger
 			}
 			pr.Out.Header.Set("X-Real-IP", ip)
 		},
-		Transport: lbTransport{base: base},
+		Transport: lbTransport{base: base, pool: pool, preserveHost: site.PreserveHost},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.Error("backend error", "site", site.Name, "pool", pool.name,
 				"err", err, "uri", r.URL.RequestURI(), "client", clientIP(r))
@@ -1410,7 +1670,11 @@ func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger
 			}
 			return nil
 		},
-		FlushInterval: 100 * time.Millisecond,
+		// P0-A: reuse the 32 KiB response copy buffer instead of allocating one
+		// per response. Leave FlushInterval at zero; ReverseProxy still switches
+		// to immediate flushing for recognized streaming responses.
+		BufferPool:    reverseProxyCopyBuffers,
+		FlushInterval: 0,
 		ErrorLog:      slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 }
@@ -1493,6 +1757,7 @@ func main() {
 		log:           log,
 		configPath:    *configPath,
 		tlsBrowseRoot: filepath.Clean(root),
+		tlsFrontend:   newTLSFrontendPublisher(log),
 		bootCfg:       cfg,
 	}
 	notifier.sink = s.syslog.forwardNotify // fan notifications out to syslog
@@ -1501,14 +1766,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	// ── site-map persistence: restore state before traffic can mutate it ──
+	if err := s.maps.load(*configPath); err != nil {
+		log.Warn("could not load saved site map", "err", err)
+	}
+
+	// ── bounded observation plane ──
+	// Visibility/learning telemetry is fail-open: queue saturation drops and
+	// counts observations rather than blocking the WAF data plane.
+	s.observations = newObservationPlane(s.hosts, s.maps, s.learn, s.signals, log, observationQueueCapacity)
+	s.observations.start()
+
+	// ── bounded asynchronous match-log aggregation ──
+	// Structured console logging is visibility-only. Attack floods enqueue a
+	// compact match record without waiting for JSON encoding/stdout I/O.
+	s.matchLogs = newMatchLogPlane(log, matchLogQueueCapacity, matchLogMaxGroups, matchLogFlushInterval)
+	s.matchLogs.start()
+
 	// ── data-plane listeners (dynamic: opened/closed on config apply) ──
 	s.listenMgr = newListenerManager(s, log)
 	s.listenMgr.startAll(cfg)
 
-	// ── site-map persistence: reload observed structure, autosave periodically ──
-	if err := s.maps.load(*configPath); err != nil {
-		log.Warn("could not load saved site map", "err", err)
-	}
+	// ── site-map autosave ──
 	sitemapStop := make(chan struct{})
 	var sitemapWG sync.WaitGroup
 	s.maps.startAutosave(*configPath, 60*time.Second, sitemapStop, &sitemapWG)
@@ -1571,9 +1850,7 @@ func main() {
 	go s.runWatchdog(wdStop) // opt-in hardware watchdog feeder (no-op unless configured)
 	<-ctx.Done()
 	log.Info("shutting down")
-	close(sitemapStop) // triggers a final site-map flush
 	close(metricsStop)
-	sitemapWG.Wait()
 	// Managed service IPs intentionally survive a routine stop/restart. They are
 	// removed when manage_ip is disabled or the site is deleted, not merely
 	// because the process is being upgraded.
@@ -1589,9 +1866,19 @@ func main() {
 	defer cancel()
 	_ = adminSrv.Shutdown(shutCtx)
 	s.listenMgr.shutdown(shutCtx)
-	if rt := s.rt.Load(); rt != nil && rt.cancel != nil {
-		rt.cancel()
+	if rt := s.rt.Load(); rt != nil {
+		rt.close()
 	}
+	// No data-plane request can enqueue after listeners are down. Drain every
+	// accepted observation before the site's final persistence snapshot.
+	if s.observations != nil {
+		s.observations.stopAndDrain()
+	}
+	if s.matchLogs != nil {
+		s.matchLogs.stopAndDrain()
+	}
+	close(sitemapStop) // final site-map flush includes drained observations
+	sitemapWG.Wait()
 	log.Info("stopped cleanly")
 }
 

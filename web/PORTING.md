@@ -5,14 +5,15 @@
 > every tab is ported, dependencies are made reproducible with a lockfile, and
 > feature-parity tests pass.
 
-The shipping console is still `static/admin.html` (one self-contained file, no build
-step — ideal for an air-gapped box). This `web/` project is the migration target for
+The shipping console is still the embedded `static/admin.html` shell, now paired
+with embedded `static/theme.css` (still no CDN or runtime build step). This `web/`
+project imports the same `src/theme.css` tokens and is the migration target for
 when that file gets too big to maintain comfortably.
 
 ## What's done here
 
 - **Build + dev**: `vite.config.js` (dev proxies `/api` and `/healthz` to `127.0.0.1:9090`; build emits to `../static/app`).
-- **Shared infra**: `src/api.js` (bearer-token client + endpoint helpers), `src/store.js` (`useConfig` draft/save hook + `usePoll`), `src/style.css` (design tokens ported 1:1).
+- **Shared infra**: `src/api.js` (bearer-token client + endpoint helpers), `src/store.js` (`useConfig` draft/save hook + `usePoll`), `src/theme.css` (canonical shared theme tokens) + `src/style.css` (console compatibility/layout styles).
 - **App shell**: `src/App.jsx` — header, tab routing, toast.
 - **Bell**: `src/components/Bell.jsx` — notification dropdown with apply/dismiss/mark-read.
 - **Exemplar tab**: `src/tabs/HATab.jsx` — the HA + Notifications settings, fully ported. Use it as the template.

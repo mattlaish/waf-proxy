@@ -7,14 +7,17 @@ set -euo pipefail
 
 BIN_SRC="$(dirname "$0")/waf-proxy"
 BIN_DST=/usr/local/bin/waf-proxy
+TLS_BIN_SRC="$(dirname "$0")/waf-tlsfront"
+TLS_BIN_DST=/usr/local/bin/waf-tlsfront
 ETC=/etc/waf
 UNIT=/etc/systemd/system/waf-proxy.service
+TLS_UNIT=/etc/systemd/system/waf-tls-frontend.service
 SRC="$(cd "$(dirname "$0")" && pwd)"
 
 [[ $EUID -eq 0 ]] || { echo "run as root: sudo $0" >&2; exit 1; }
 
-if [[ ! -x "$BIN_SRC" ]]; then
-  echo "!! ./waf-proxy not found — run ./build.sh first" >&2
+if [[ ! -x "$BIN_SRC" || ! -x "$TLS_BIN_SRC" ]]; then
+  echo "!! ./waf-proxy or ./waf-tlsfront not found — run ./build.sh first" >&2
   exit 1
 fi
 
@@ -36,8 +39,9 @@ install -d -o waf -g waf -m 0750 /var/log/waf
 # root-owned (which would then block the waf service with EACCES).
 [[ -e /var/log/waf/audit.log ]] || install -o waf -g waf -m 0640 /dev/null /var/log/waf/audit.log
 
-echo "==> installing binary"
+echo "==> installing binaries"
 install -o root -g root -m 0755 "$BIN_SRC" "$BIN_DST"
+install -o root -g root -m 0755 "$TLS_BIN_SRC" "$TLS_BIN_DST"
 
 echo "==> installing rules"
 if [[ ! -f "$ETC/coraza.conf" ]]; then
@@ -73,8 +77,17 @@ else
   echo "    $ETC/waf-proxy.env exists — token unchanged"
 fi
 
-echo "==> installing systemd unit"
+echo "==> installing systemd units"
 install -o root -g root -m 0644 "$SRC/waf-proxy.service" "$UNIT"
+install -o root -g root -m 0644 "$SRC/waf-tls-frontend.service" "$TLS_UNIT"
+if [[ ! -f "$ETC/waf-tls-frontend.env" ]]; then
+  cat > "$ETC/waf-tls-frontend.env" <<'EOF'
+# Optional OpenSSL/QAT frontend environment. Keep values non-secret where possible.
+# OPENSSL_MODULES=/usr/lib/x86_64-linux-gnu/ossl-modules
+EOF
+  chown root:root "$ETC/waf-tls-frontend.env"
+  chmod 0644 "$ETC/waf-tls-frontend.env"
+fi
 systemctl daemon-reload
 if grep -q "AmbientCapabilities=CAP_NET_BIND_SERVICE" "$UNIT"; then
   echo "    unit grants CAP_NET_BIND_SERVICE — sites may bind privileged ports (80/443) as the unprivileged waf user"
@@ -116,8 +129,12 @@ Installed. Next steps:
       sudoedit /etc/waf/config.json     (or do it in the console)
 
  3. Start it:
-      sudo systemctl enable --now waf-proxy
-      systemctl status waf-proxy
+      sudo systemctl enable --now waf-proxy waf-tls-frontend
+      systemctl status waf-proxy waf-tls-frontend
+
+    Go TLS remains the default. To use the OpenSSL/NGINX frontend, install a
+    recent NGINX/OpenSSL and set tls_acceleration.mode=frontend in the console.
+    NGINX >= 1.25.1 automatically uses the modern `http2 on;` syntax.
 
  4. Open the console (admin is localhost-only by default):
       ssh -L 9090:127.0.0.1:9090 user@this-host

@@ -20,16 +20,72 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"waf-proxy/internal/tlsfront"
 )
 
 type managedListener struct {
-	srv   *http.Server
-	isTLS bool
+	srv        *http.Server
+	isTLS      bool
+	socketPath string
+}
+
+type originalSchemeContextKey struct{}
+
+func originalRequestScheme(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	v, _ := r.Context().Value(originalSchemeContextKey{}).(string)
+	return v
+}
+
+// prepareTLSFrontendRequest accepts the private metadata inserted by the local
+// TLS frontend only on Unix-domain listeners. External clients cannot reach the
+// socket through the public listener, and nginx overwrites (rather than appends)
+// this metadata before forwarding.
+func prepareTLSFrontendRequest(r *http.Request) (*http.Request, error) {
+	ipText := strings.TrimSpace(r.Header.Get(tlsfront.ClientIPHeader))
+	ip := net.ParseIP(ipText)
+	if ip == nil {
+		return nil, errors.New("missing or invalid TLS frontend client IP")
+	}
+	port := 0
+	if p := strings.TrimSpace(r.Header.Get(tlsfront.ClientPortHeader)); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 || n > 65535 {
+			return nil, errors.New("invalid TLS frontend client port")
+		}
+		port = n
+	}
+	proto := strings.ToLower(strings.TrimSpace(r.Header.Get(tlsfront.ProtoHeader)))
+	if proto != "https" {
+		return nil, errors.New("invalid TLS frontend protocol marker")
+	}
+	r.RemoteAddr = net.JoinHostPort(ip.String(), strconv.Itoa(port))
+	// Coraza's net/http connector derives the URI from r.URL. Restore the public
+	// HTTPS origin so scheme-sensitive rules behave like the built-in Go TLS path.
+	r.URL.Scheme = "https"
+	r.URL.Host = r.Host
+	// Never preserve forwarding material supplied by the Internet-facing side.
+	// The reverse proxy reconstructs one authoritative chain from RemoteAddr.
+	r.Header.Del("X-Forwarded-For")
+	r.Header.Del("Forwarded")
+	r.Header.Del("X-Real-IP")
+	r.Header.Del(tlsfront.ClientIPHeader)
+	r.Header.Del(tlsfront.ClientPortHeader)
+	r.Header.Del(tlsfront.ProtoHeader)
+	return r.WithContext(context.WithValue(r.Context(), originalSchemeContextKey{}, "https")), nil
 }
 
 type listenerManager struct {
@@ -48,6 +104,8 @@ func newListenerManager(s *server, log *slog.Logger) *listenerManager {
 // latest applied config without rebinding.
 func (m *listenerManager) buildServer(addr string, isTLS bool, cfg Config) *http.Server {
 	s := m.srv
+	frontendListener := tlsfront.IsInternalListenerKey(addr)
+	logicalAddr := tlsfront.PublicListenForKey(cfg.TLSAcceleration, tlsFrontendSites(cfg), addr)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		rt := s.rt.Load()
@@ -66,6 +124,14 @@ func (m *listenerManager) buildServer(addr string, isTLS bool, cfg Config) *http
 		writeHealth(w, true, false, role)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if frontendListener {
+			var err error
+			r, err = prepareTLSFrontendRequest(r)
+			if err != nil {
+				http.Error(w, "invalid TLS frontend request", http.StatusBadRequest)
+				return
+			}
+		}
 		rt := s.rt.Load()
 		if rt == nil {
 			http.Error(w, "starting", http.StatusServiceUnavailable)
@@ -77,7 +143,7 @@ func (m *listenerManager) buildServer(addr string, isTLS bool, cfg Config) *http
 			return
 		}
 		site := lr.lookup(r.Host)
-		s.hosts.note(addr, r.Host, site != nil)
+		s.observeHost(logicalAddr, r.Host, site != nil)
 		if site == nil {
 			http.Error(w, "unknown host", http.StatusMisdirectedRequest)
 			return
@@ -109,42 +175,91 @@ func (m *listenerManager) buildServer(addr string, isTLS bool, cfg Config) *http
 	return srv
 }
 
-// start launches a server in the background. A bind failure is logged but does
-// not crash the process — the rest of the WAF keeps running.
+// start launches a server in the background. Bind failures are retried while
+// the socket remains desired. This matters during a Go-TLS <-> external-TLS
+// mode transition, where the old owner may hold the public port briefly.
 func (m *listenerManager) start(addr string, isTLS bool, cfg Config) {
 	srv := m.buildServer(addr, isTLS, cfg)
-	m.live[addr] = &managedListener{srv: srv, isTLS: isTLS}
-	go func() {
-		m.log.Info("listener up", "addr", addr, "tls", isTLS)
-		// Create the listening socket with IP_FREEBIND so a site may bind an IP
-		// that isn't assigned to a local interface (floating/VIP, or one of
-		// several managed service IPs). Falls back to a normal bind off Linux.
+	ml := &managedListener{srv: srv, isTLS: isTLS}
+	if p, ok := tlsfront.SocketPathFromKey(addr); ok {
+		ml.socketPath = p
+	}
+	m.live[addr] = ml
+	go m.serve(addr, ml, cfg)
+}
+
+func (m *listenerManager) serve(addr string, ml *managedListener, cfg Config) {
+	m.log.Info("listener up", "addr", addr, "public_addr", tlsfront.PublicListenForKey(cfg.TLSAcceleration, tlsFrontendSites(cfg), addr), "tls", ml.isTLS, "tls_frontend_internal", ml.socketPath != "")
+	var ln net.Listener
+	var err error
+	if ml.socketPath != "" {
+		if err = os.MkdirAll(filepath.Dir(ml.socketPath), 0o750); err == nil {
+			if st, statErr := os.Lstat(ml.socketPath); statErr == nil {
+				if st.Mode()&os.ModeSocket == 0 {
+					err = fmt.Errorf("refusing to replace non-socket path %s", ml.socketPath)
+				} else {
+					err = os.Remove(ml.socketPath)
+				}
+			} else if !errors.Is(statErr, os.ErrNotExist) {
+				err = statErr
+			}
+		}
+		if err == nil {
+			ln, err = net.Listen("unix", ml.socketPath)
+		}
+		if err == nil {
+			err = os.Chmod(ml.socketPath, 0o660)
+		}
+	} else {
 		lc := net.ListenConfig{Control: freebindControl}
-		ln, err := lc.Listen(context.Background(), "tcp", addr)
-		if err != nil {
-			m.log.Error("listener error", "addr", addr, "err", err)
-			m.mu.Lock()
-			if ml, ok := m.live[addr]; ok && ml.srv == srv {
-				delete(m.live, addr)
-			}
-			m.mu.Unlock()
-			return
-		}
-		var e error
-		if isTLS {
-			e = srv.ServeTLS(ln, "", "")
-		} else {
-			e = srv.Serve(ln)
-		}
-		if e != nil && !errors.Is(e, http.ErrServerClosed) {
-			m.log.Error("listener error", "addr", addr, "err", e)
-			m.mu.Lock()
-			if ml, ok := m.live[addr]; ok && ml.srv == srv {
-				delete(m.live, addr)
-			}
-			m.mu.Unlock()
+		ln, err = lc.Listen(context.Background(), "tcp", addr)
+	}
+	if err != nil {
+		m.listenerFailed(addr, ml, err)
+		return
+	}
+	defer func() {
+		_ = ln.Close()
+		if ml.socketPath != "" {
+			_ = os.Remove(ml.socketPath)
 		}
 	}()
+	var serveErr error
+	if ml.isTLS {
+		serveErr = ml.srv.ServeTLS(ln, "", "")
+	} else {
+		serveErr = ml.srv.Serve(ln)
+	}
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		m.listenerFailed(addr, ml, serveErr)
+	}
+}
+
+func (m *listenerManager) listenerFailed(addr string, ml *managedListener, err error) {
+	m.log.Error("listener error", "addr", addr, "err", err)
+	m.mu.Lock()
+	if cur, ok := m.live[addr]; ok && cur == ml {
+		delete(m.live, addr)
+	}
+	m.mu.Unlock()
+	time.AfterFunc(time.Second, func() { m.retry(addr, ml.isTLS) })
+}
+
+func (m *listenerManager) retry(addr string, isTLS bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, running := m.live[addr]; running {
+		return
+	}
+	rt := m.srv.rt.Load()
+	if rt == nil {
+		return
+	}
+	desired, ok := listenerSet(rt.cfg)[addr]
+	if !ok || desired != isTLS {
+		return
+	}
+	m.start(addr, isTLS, rt.cfg)
 }
 
 // reconcile brings the running listeners in line with the desired set from cfg.

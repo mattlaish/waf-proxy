@@ -20,11 +20,16 @@ import (
 	"sync"
 	"time"
 
+	"waf-proxy/internal/tlsfront"
+
 	_ "embed"
 )
 
 //go:embed static/admin.html
 var adminHTML []byte
+
+//go:embed static/theme.css
+var adminThemeCSS []byte
 
 // ── rule-match ring buffer ──────────────────────────────────────────────
 
@@ -239,8 +244,15 @@ func (a *adminServer) handler() http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'")
+			"default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'")
 		_, _ = w.Write(adminHTML)
+	})
+
+	mux.HandleFunc("GET /theme.css", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(adminThemeCSS)
 	})
 
 	mux.HandleFunc("GET /api/status", a.auth(a.handleStatus))
@@ -288,6 +300,9 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("POST /api/sitemap/clear", a.auth(a.handleSitemapClear))
 	mux.HandleFunc("GET /api/discovered", a.auth(a.handleDiscovered))
 	mux.HandleFunc("GET /api/metrics", a.auth(a.handleMetrics))
+	mux.HandleFunc("GET /api/vector-acceleration", a.auth(a.handleVectorAcceleration))
+	mux.HandleFunc("POST /api/vector-acceleration/reset", a.authRole(roleReviewer, a.handleVectorAccelerationReset))
+	mux.HandleFunc("GET /api/tls-acceleration", a.auth(a.handleTLSAcceleration))
 	a.registerUpdateRoutes(mux) // signed self-update (localhost + admin, 404 when no key)
 	return mux
 }
@@ -315,29 +330,57 @@ func (a *adminServer) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		})
 	}
 	anyTLS := false
-	for _, t := range listenerSet(rt.cfg) {
+	for _, t := range publicListenerSet(rt.cfg) {
 		anyTLS = anyTLS || t
 	}
 	writeJSON(w, map[string]any{
-		"uptime":          time.Since(a.started).Truncate(time.Second).String(),
-		"engine_mode":     rt.cfg.EngineMode,
-		"listeners":       sortedListenAddrs(rt.cfg),
-		"sites":           sites,
-		"pools":           len(rt.cfg.Pools),
-		"policies":        len(rt.cfg.Policies),
-		"nodes":           len(rt.cfg.Nodes),
-		"tls":             anyTLS,
-		"match_count":     a.srv.matches.count(),
-		"restart_pending": a.srv.restartPending(rt.cfg),
-		"rules_built_at":  rt.builtAt.Format(time.RFC3339),
-		"ai_enabled":      rt.cfg.AI.Enabled,
-		"ai_key_set":      rt.cfg.AI.APIKey != "",
-		"version":         buildVersion,
-		"commit":          buildCommit,
-		"ha_enabled":      rt.cfg.HA.Enabled,
-		"ha":              a.srv.ha.status(),
-		"ha_token_set":    rt.cfg.HA.PeerToken != "",
-		"notify_unread":   a.srv.notify.unreadCount(),
+		"uptime":           time.Since(a.started).Truncate(time.Second).String(),
+		"engine_mode":      rt.cfg.EngineMode,
+		"listeners":        sortedListenAddrs(rt.cfg),
+		"sites":            sites,
+		"pools":            len(rt.cfg.Pools),
+		"policies":         len(rt.cfg.Policies),
+		"nodes":            len(rt.cfg.Nodes),
+		"tls":              anyTLS,
+		"tls_acceleration": rt.cfg.TLSAcceleration.Effective(),
+		"tls_frontend":     a.srv.tlsFrontend.status(),
+		"match_count":      a.srv.matches.count(),
+		"restart_pending":  a.srv.restartPending(rt.cfg),
+		"rules_built_at":   rt.builtAt.Format(time.RFC3339),
+		"ai_enabled":       rt.cfg.AI.Enabled,
+		"ai_key_set":       rt.cfg.AI.APIKey != "",
+		"version":          buildVersion,
+		"commit":           buildCommit,
+		"ha_enabled":       rt.cfg.HA.Enabled,
+		"ha":               a.srv.ha.status(),
+		"ha_token_set":     rt.cfg.HA.PeerToken != "",
+		"notify_unread":    a.srv.notify.unreadCount(),
+	})
+}
+
+func (a *adminServer) handleTLSAcceleration(w http.ResponseWriter, _ *http.Request) {
+	rt := a.srv.rt.Load()
+	if rt == nil {
+		http.Error(w, "runtime unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	effective := rt.cfg.TLSAcceleration.Effective()
+	mappings := []map[string]any{}
+	for addr, isTLS := range publicListenerSet(rt.cfg) {
+		if !isTLS {
+			continue
+		}
+		mappings = append(mappings, map[string]any{
+			"public":   addr,
+			"internal": tlsfront.InternalListenerKey(addr),
+		})
+	}
+	sort.Slice(mappings, func(i, j int) bool { return mappings[i]["public"].(string) < mappings[j]["public"].(string) })
+	writeJSON(w, map[string]any{
+		"configured": rt.cfg.TLSAcceleration,
+		"effective":  effective,
+		"runtime":    a.srv.tlsFrontend.status(),
+		"mappings":   mappings,
 	})
 }
 
@@ -1300,11 +1343,50 @@ func (a *adminServer) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 	if len(hist) > 0 {
 		cur = hist[len(hist)-1]
 	}
+	var vector any = map[string]any{"mode": "off", "native_available": false, "groups": []any{}}
+	if rt := a.srv.rt.Load(); rt != nil && rt.vector != nil {
+		vector = rt.vector.Status()
+	}
 	writeJSON(w, map[string]any{
-		"current": cur,
-		"history": hist,
-		"cpus":    runtime.NumCPU(),
+		"current":             cur,
+		"history":             hist,
+		"cpus":                runtime.NumCPU(),
+		"observations":        a.srv.observations.snapshot(),
+		"match_logging":       a.srv.matchLogs.snapshot(),
+		"ai_queue":            a.srv.ai.queueStats(),
+		"vector_acceleration": vector,
 	})
+}
+
+func (a *adminServer) handleVectorAcceleration(w http.ResponseWriter, _ *http.Request) {
+	rt := a.srv.rt.Load()
+	if rt == nil || rt.vector == nil {
+		writeJSON(w, map[string]any{"mode": "off", "native_available": false, "groups": []any{}})
+		return
+	}
+	writeJSON(w, rt.vector.Status())
+}
+
+func (a *adminServer) handleVectorAccelerationReset(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Site string `json:"site"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	in.Site = strings.TrimSpace(in.Site)
+	if in.Site == "" {
+		http.Error(w, "site is required", http.StatusBadRequest)
+		return
+	}
+	rt := a.srv.rt.Load()
+	if rt == nil || rt.vector == nil {
+		http.Error(w, "VectorScan accelerator unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	n := rt.vector.ResetFailsafe(in.Site)
+	writeJSON(w, map[string]any{"ok": true, "site": in.Site, "reset_groups": n})
 }
 
 func (a *adminServer) handleDiscovered(w http.ResponseWriter, _ *http.Request) {

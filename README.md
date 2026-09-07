@@ -1,6 +1,6 @@
 # waf-proxy
 
-Multi-site, **load-balancing** reverse proxy with an embedded [Coraza](https://github.com/corazawaf/coraza) WAF engine (SecLang-compatible, runs OWASP CRS 4.x) and a built-in admin console. No CGO, no CDN dependencies — the console works on an air-gapped management segment.
+Multi-site, **load-balancing** reverse proxy with an embedded [Coraza](https://github.com/corazawaf/coraza) WAF engine (SecLang-compatible, runs OWASP CRS 4.x) and a built-in admin console. The portable build remains pure Go; optional VectorScan acceleration uses CGO/libhs. The console has no CDN dependency and works on an air-gapped management segment.
 
 ```
                           ┌ site blog (:443, blog.example.com) ─┐
@@ -29,10 +29,14 @@ Listen addresses now live **on each site** — different sites can bind differen
 ## Build (Debian)
 
 ```bash
-sudo apt install golang-go        # want Go ≥ 1.22
-go mod init waf-proxy
-go get github.com/corazawaf/coraza/v3@latest
-go build -o waf-proxy .
+# Coraza v3.7.0 requires Go >= 1.25.0. Install a Go 1.25+ toolchain first.
+go version
+
+# Portable Coraza-only build
+WAF_VECTORSCAN=off ./build.sh
+
+# Native VectorScan build (Debian/Ubuntu: install libvectorscan-dev + pkg-config)
+WAF_VECTORSCAN=required ./build.sh
 ```
 
 ## Run
@@ -369,7 +373,7 @@ Endpoints (all admin+localhost, 404 when disabled): `GET /api/update/status` · 
 
 
 
-The shipping console is `static/admin.html` — one self-contained file, no build step (ideal air-gapped). A Vite + preact migration scaffold lives in `web/` with the shell, API client, config store, notification bell, and the HA/Notifications tab fully ported as the pattern; see `web/PORTING.md` for finishing the remaining tabs.
+The shipping console is embedded in the binary as `static/admin.html` plus `static/theme.css` — no external CDN or runtime build step is required, so it remains suitable for an air-gapped management segment. The theme stylesheet is served same-origin at `/theme.css` under the console CSP. A Vite + preact migration scaffold lives in `web/` and imports the same theme tokens; see `web/PORTING.md` for finishing the remaining tabs.
 
 ## Admin API
 
@@ -424,11 +428,13 @@ staticcheck ./...                              # honnef.co/go/tools/cmd/staticch
 golangci-lint run ./...
 gosec -severity=low -confidence=low ./...      # github.com/securego/gosec/v2
 go mod verify                                  # all modules verified
-bash -n *.sh                                   # all six scripts parse
+for f in *.sh benchmark/*.sh; do bash -n "$f"; done  # all release/build scripts syntax-clean
 node --check <inline JS from static/admin.html>
 ```
 
-`go vet` is clean. `staticcheck` reports two unused functions
+`go vet` is clean in the external Coraza-stub verification harness. The inherited release-script CRLF/EOF failures have now been repaired: all top-level shell scripts plus `benchmark/build.sh` are LF-normalized, executable, and pass `bash -n`. `release_scripts_test.go` keeps both the line-ending and syntax gates in the repository. The source is now pinned to Coraza v3.7.0 / Go 1.25.0. Real Coraza v3.7.0 and real libvectorscan execution remain release gates on a host with the required toolchain/dependencies; stub/ABI-only gates are not treated as substitutes.
+
+`staticcheck` reports two unused functions
 (`ipmanage.go:282`, `profiles.go:410`). `golangci-lint` adds 17 unchecked-error
 findings, all `Close()`/`Remove()` in cleanup paths. `gofmt -l` lists ten files
 because the codebase uses a deliberately compact single-line style; this is
@@ -525,3 +531,338 @@ When scanning with a reduced ruleset instead of full CRS, remember that CRS
 supplies the transformations: a rule written as `@contains ../` will miss
 `%2e%2e%2f` without `t:urlDecodeUni`. A miss under a hand-written test ruleset
 is usually the ruleset, not the engine.
+
+
+## Data-plane performance: P0-A response copy path
+
+P0-A removes a steady-state response-copy allocation from the standard-library
+reverse proxy. `buildProxy` now supplies a shared fixed 32 KiB
+`httputil.BufferPool`, backed by `sync.Pool` of fixed arrays, and leaves
+`FlushInterval` at zero for ordinary responses. Go's reverse proxy still selects
+immediate flushing for recognized streaming responses (for example SSE); normal
+responses no longer opt into a periodic timer/mutex flush writer. The buffer-pool
+component benchmark in the offline harness measured about 10.90 ns/op with
+0 B/op and 0 allocs/op for Get/Put. This is a component result, not end-to-end
+Coraza throughput.
+
+## Data-plane performance: P0-B load-balancer hot path
+
+P0-B removes the remaining per-request load-balancer allocation pair identified
+behind the reverse proxy. Pool selection no longer materializes a temporary
+`healthyMembers()` slice. Round-robin, least-connections, IP-hash, and random
+selection scan the immutable member list directly, preserve health filtering and
+all-down fail-open behavior, and allocate zero bytes in the component benchmark.
+
+The selected member is also no longer passed from `Rewrite` to `lbTransport`
+through `context.WithValue`. Backend selection now happens inside `lbTransport`,
+where the chosen member pointer stays local for active-request accounting until
+the response body closes. The transport applies the configured member's
+scheme/host immediately before the standard `http.Transport`, while preserving
+the original path/query and the site's `preserve_host` behavior. `Rewrite`
+continues to own trusted forwarded-header construction.
+
+On the offline AMD EPYC 9V74 harness with an 8-member healthy pool, the previous
+selector measured about 42–48 ns/op with 64 B/op and 1 alloc/op depending on the
+LB method. P0-B measured roughly 12–28 ns/op with 0 B/op and 0 allocs/op. The
+removed request-context handoff independently measured about 32 ns/op, 48 B/op,
+and 1 alloc/op in the pre-P0-B tree. These are component benchmarks, not
+end-to-end Coraza or network throughput claims.
+
+## Data-plane performance: P0-C bounded observation plane
+
+P0-C removes passive discovery/learning bookkeeping from the synchronous WAF
+request path. Host observation, live sitemap updates, learner request/rule
+accounting, and request-shape signals now enter one bounded in-memory observation
+queue with a non-blocking send. A background worker owns the existing store
+updates. Queue saturation is deliberately fail-open for traffic: the observation
+is dropped and counted rather than making an HTTP request wait for telemetry.
+
+The queue defaults to 8,192 events. `/api/metrics` now includes an additive
+`observations` object with current depth/capacity, processed count, dropped count,
+and whether the plane is accepting new events. Drop warnings are aggregated by
+the background worker rather than emitted once per dropped event. During graceful
+shutdown, listeners are stopped first, accepted observations are drained, and only
+then is the final sitemap snapshot persisted. Startup also restores the saved
+sitemap before exposing data-plane listeners, avoiding early live observations
+being overwritten by a later load.
+
+The live passive-field merge used by `signalStore` was also split from the more
+general crawl merge. Repeated request fields are now merged in place instead of
+copying the entire field slice, building a temporary map, and constructing string
+keys on every request; only genuinely new fields grow the slice.
+
+Offline component benchmarks on the AMD EPYC 9V74 harness:
+
+- original pre-P0-C synchronous request observation (sitemap + learner + signals):
+  roughly 2.56–2.63 µs/op, 1,664 B/op, 24 allocs/op;
+- the same stores after the live-field merge improvement, if called synchronously:
+  roughly 443–445 ns/op, 48 B/op, 3 allocs/op;
+- actual P0-C request-path enqueue: roughly 35–36 ns/op, 0 B/op, 0 allocs/op;
+- host observation before P0-C: roughly 213–229 ns/op, 48 B/op, 2 allocs/op;
+- P0-C host enqueue: roughly 36–38 ns/op, 0 B/op, 0 allocs/op.
+
+Under the harness's parallel benchmark, the optimized stores called directly were
+about 0.52–0.66 µs/op with 48 B/op and 3 allocs/op, while the bounded enqueue was
+about 0.13–0.15 µs/op with zero allocations. These are component measurements,
+not end-to-end Coraza/network throughput claims. The worker intentionally keeps
+telemetry eventual: admin discovery/learner views may lag live traffic by the
+queue processing interval, and overload may drop observations rather than affect
+WAF availability.
+
+
+## Data-plane performance: P0-D bounded match-log aggregation
+
+P0-D removes the synchronous structured `slog.Warn` call from Coraza's matched-rule
+callback. Match enforcement, the in-memory match ring, syslog forwarding, AI match
+handling, and learner observation semantics remain unchanged; only the human-oriented
+process log moves to a bounded background plane.
+
+The match-log plane uses an 8,192-event non-blocking queue. Events aggregate for five
+seconds by `site + rule_id + client`, with at most 1,024 active groups per window. Queue
+or group saturation drops logging telemetry rather than delaying a WAF request. The
+`/api/metrics` response exposes `match_logging` queue depth/capacity, total/queue/group
+drops, processed events, emitted summaries, active/max groups, and accepting state.
+
+Each summary carries one representative URI/message/matched-data sample plus a count and
+first/last-seen timestamps. Only the process-log sample is bounded (URI/message 1 KiB,
+matched data 2 KiB); the existing match ring and syslog forwarding retain their original
+records. Drop telemetry is itself summarized at most once per flush interval.
+
+AMD EPYC 9V74 component benchmark in the external Coraza-stub harness:
+
+- successful P0-D enqueue: roughly 39.7–42.7 ns/op, 0 B/op, 0 allocs/op;
+- old per-match JSON `slog.Warn` to `io.Discard`: roughly 1.45–1.51 µs/op,
+  232 B/op, 8 allocs/op.
+
+These are component measurements, not end-to-end Coraza throughput claims. Real Coraza v3.7.0 integration/load validation is still required before production release.
+
+## Data-plane performance: P1 response inspection + backend connection pools
+
+P1 makes two previously fixed data-plane choices explicit configuration.
+
+### Response-body inspection policy
+
+Each named WAF policy now accepts:
+
+```json
+{
+  "response_body_inspection": "inherit",
+  "response_body_limit": 0
+}
+```
+
+`response_body_inspection` is `inherit`, `on`, or `off` (legacy empty string is
+also treated as inherit). The override is appended after the policy's SecLang
+file, so `on`/`off` can override the shipped `SecResponseBodyAccess` setting
+without exposing raw SecLang through the admin API. `response_body_limit` is an
+optional byte limit; zero leaves the rules-file value unchanged. Existing
+configs therefore retain their prior response-inspection behavior until an
+operator explicitly selects a policy override.
+
+Response-body inspection remains a security/performance tradeoff rather than a
+global performance switch. Keep it enabled for sites whose outbound content
+needs WAF response rules; use a dedicated site/policy with inspection disabled
+for static/download/API workloads where those response checks are not required.
+The shipping admin console exposes both settings under **Policies**.
+
+### Backend Transport / connection-pool tuning
+
+Each pool now accepts a `transport` object:
+
+```json
+{
+  "transport": {
+    "max_idle_conns": 2048,
+    "max_idle_conns_per_host": 256,
+    "max_conns_per_host": 0,
+    "idle_conn_timeout_sec": 90,
+    "dial_timeout_sec": 5,
+    "keep_alive_sec": 30
+  }
+}
+```
+
+Zero means the tuned default for every field except `max_conns_per_host`, where
+zero deliberately means unlimited (the Go `http.Transport` behavior). Legacy
+pool configs that omit `transport` automatically receive the tuned effective
+defaults: 2,048 total idle connections, 256 idle connections per backend host,
+unlimited total connections per host, a 90-second idle timeout, 5-second dial
+timeout, and 30-second TCP keepalive. `backend_timeout_sec` continues to control
+the response-header timeout.
+
+The backend `http.Transport` is now **pool-scoped rather than site-scoped**.
+Multiple sites that reference the same pool therefore share one backend
+connection pool instead of maintaining duplicate keepalive pools. Runtime
+replacement and shutdown call `CloseIdleConnections()` on the retired pool
+transports; health-monitor transports also close idle connections when their
+monitor goroutine exits. Active requests are not interrupted by this cleanup.
+
+`GET /api/pools` now reports the effective transport settings so operators can
+confirm which values are actually live. The production console exposes the
+connection-pool settings under **Pools & Nodes**. These settings are sizing
+controls, not a throughput guarantee: HTTP/2 multiplexing, backend response
+latency, upstream connection limits, NAT/conntrack, TLS, and kernel/NIC behavior
+still determine real capacity.
+
+## Performance baseline tool: `wafbench`
+
+The repository now includes a repeatable benchmark harness under `cmd/wafbench`.
+It is designed for low-production-traffic environments where real traffic is not
+large enough to reveal whether the next data-plane optimization should target
+Coraza/CRS inspection or the L3/L4 path.
+
+Build it separately from the production WAF binary:
+
+```bash
+./benchmark/build.sh
+# or: go build -o ./bin/wafbench ./cmd/wafbench
+```
+
+The tool provides five commands:
+
+- `backend` — deterministic local HTTP backend with a fixed response size;
+- `http` — full running-waf load test with clean GET, 1/16/64/256 KiB JSON,
+  SQLi, XSS, and traversal workloads;
+- `coraza` — direct Coraza/CRS transactions with no NIC/TCP/TLS/reverse-proxy
+  or backend cost, with optional CPU/heap pprof output and response-inspection
+  on/off overrides;
+- `l4` — legal TCP connect/close or TLS-handshake pressure for connection-rate,
+  softirq and PPS baselining (no raw packet spoofing/flooding);
+- `compare` — compares JSON HTTP + Coraza results and optional L4 results. The
+  sizing heuristic uses clean traffic only for the Coraza-share median and
+  surfaces whether regex acceleration, XDP, or more profiling is the stronger
+  next experiment.
+
+Linux runs can add `--pid <waf-proxy-pid>` to measure WAF process CPU/RSS and
+CPU microseconds per operation, plus `--iface <nic>` for RX/TX Mbps and PPS.
+The load generator also reports its own CPU so a generator-limited run is not
+mistaken for a WAF ceiling. JSON result files include CPU model, kernel, Go
+version, architecture, and CPU count for repeatability.
+
+See [`benchmark/README.md`](benchmark/README.md) for the exact baseline flow,
+response-inspection comparisons, 1/4/8-core matrix, pprof commands, and the
+XDP-vs-regex interpretation rules.
+
+
+## P2 non-XDP/VectorScan hardening
+
+This slice closes the remaining low-risk performance/release debt that does not depend on
+choosing XDP or a regex accelerator.
+
+### AI lazy capture and queue hardening
+
+AI-enabled sites still preserve the rule that a Coraza match can be analyzed even when the
+clean-request sample rate is zero. The request path no longer eagerly builds a full
+`analysisJob` for every AI-enabled request, though. It now registers a lightweight live
+request pointer keyed by `{client, URI}` while the WAF runs. Header filtering/redaction, query
+redaction, body-prefix attachment, timestamping, and `analysisJob` construction happen only
+when Coraza actually matches or when the request was pre-selected by the clean-traffic sample.
+The pending key is a small struct rather than a concatenated string, removing the prior key
+allocation.
+
+AI queue saturation is still fail-open, but repeated drops no longer perform one synchronous
+warning log per request. Drops are counted and the warning is rate-limited to at most once per
+five seconds. `GET /api/metrics` exposes `ai_queue` depth, physical capacity, configured logical
+limit, cumulative enqueued count, and cumulative dropped count. AI workers reuse a ticker
+instead of allocating `time.After` timers in their polling loop.
+
+For AI `block` mode, the dynamic blocklist is also published as an immutable atomic snapshot.
+The request path performs an atomic load plus map lookup and never takes the blocklist write
+mutex; add/unblock/expiry cleanup use copy-on-write under the update mutex. Expired entries are
+ignored immediately by reads and pruned by the janitor off the request path. In the component
+benchmark, an active-block lookup under 8/32-way parallelism measured about 22/21 ns/op versus
+about 93/115 ns/op for the former mutex-protected lookup.
+
+On the AMD EPYC 9V74 external stub harness, the unsampled/no-match AI wrapper path measured
+about **169–175 ns/op, 0 B/op, 0 allocs/op**, versus the pre-lazy eager-capture model at about
+**1.49–1.55 µs/op, 848 B/op, 17 allocs/op**. These are component measurements, not LLM or
+end-to-end Coraza throughput claims.
+
+### ResponseWriter correctness
+
+The remaining `statusRecorder` now suppresses duplicate `WriteHeader` calls instead of
+forwarding later status codes to the underlying writer. Implicit `Write` records HTTP 200 when
+no explicit status was set. `Unwrap()` remains in place so `http.ResponseController` can reach
+optional capabilities such as `Hijacker`.
+
+### Release scripts
+
+`build.sh`, `install.sh`, `setup-interfaces.sh`, `uninstall.sh`, `upgrade.sh`,
+`waf-doctor.sh`, and `benchmark/build.sh` are LF-normalized and executable. All pass `bash -n`.
+A repository test now fails if carriage returns reappear, executable mode is lost, or Bash
+syntax regresses. This resolves the inherited installer EOF/CRLF release blocker documented by
+P0-B through P1.
+
+### Access-ring sharding decision
+
+A 16-shard prototype was benchmarked before changing production code and was rejected. The
+current fixed circular ring is ~9.5–10.2 ns/op serial; under the test host it was ~26–36 ns/op
+at 8-way parallelism and ~43–49 ns/op at 32-way parallelism. The sharded prototype regressed to
+~14.6–15.1 ns/op serial, ~42 ns/op at 8-way and ~61 ns/op at 32-way because the global sequence
+atomic plus shard lock cost more than the existing short critical section. Production therefore
+keeps the simpler fixed ring until a real profile proves it is a bottleneck.
+
+## TLS acceleration frontend (C1-C3)
+
+`tls_acceleration` is optional and defaults to `mode: "go"`, preserving the
+existing Go `crypto/tls` path. `mode: "frontend"` moves public TLS termination
+to the companion `waf-tlsfront`, which renders and supervises NGINX/OpenSSL and
+forwards decrypted HTTP over private Unix-domain sockets back to waf-proxy.
+Coraza, policy evaluation, backend selection, and logging remain in waf-proxy.
+
+```json
+"tls_acceleration": {
+  "mode": "frontend",
+  "ktls": "auto",
+  "qat": "auto",
+  "worker_processes": 0,
+  "worker_connections": 4096,
+  "http2": true
+}
+```
+
+`ktls` and `qat` accept `off`, `auto`, or `required`. `auto` safely falls back
+to ordinary OpenSSL software TLS when the capability is absent; `required`
+rejects Apply during preflight instead of silently degrading. QAT uses the
+OpenSSL 3 `qatprovider` path and also loads the default provider. Real QAT
+hardware/provider validation remains deployment-specific and is not claimed by
+this package.
+
+HTTP/2 syntax is selected from the detected NGINX version. NGINX 1.25.1 and
+newer receive the modern `listen ... ssl;` plus `http2 on;` form; older NGINX
+receives the compatible legacy `listen ... ssl http2;` form. This keeps one
+package compatible with both generations while avoiding the deprecation warning
+on current NGINX.
+
+The public client cannot supply trusted forwarding metadata: the frontend
+clears Internet-provided forwarding headers, writes private client IP/port/proto
+headers itself, and waf-proxy accepts those headers only on its private Unix
+listener. Before switching modes, waf-proxy performs host capability checks and
+an `nginx -t` preflight, then publishes the live control file consumed by the
+companion. The Setup tab exposes configuration and live probe/resolution state.
+
+
+## VectorScan Learning Accelerator — 2026-09-04
+
+The optional VectorScan path is a **learning accelerator**, not a replacement WAF engine. Coraza v3.7.0 remains authoritative. Eligible standalone positive `@rx` rules are conservatively grouped only when the request data source and transformation semantics can be reproduced exactly; unsupported rules remain `CORAZA_ONLY`. Initial supported sources are `REQUEST_URI`, `REQUEST_FILENAME`, `REQUEST_METHOD`, `REQUEST_PROTOCOL`, and fixed-name `REQUEST_HEADERS:name`, with explicit `t:none` and optional `t:lowercase`. Chains, negated regex, aggregate/multi-variable selectors, ARGS/body rules, and unsupported transforms are not accelerated.
+
+Each group moves through `LEARNING -> VALIDATED -> ACCELERATED`. Learning compares VectorScan candidates with the transaction-final `tx.MatchedRules()` set after Coraza `ProcessLogging()`. The wrapper uses Coraza v3.7's context-aware transaction creation so concurrent HTTP/2 requests are correlated by request context rather than client/URI heuristics. A false negative or native scan error immediately puts that group into `FAILSAFE`; Coraza-only processing continues. While accelerated, no-hit groups are periodically fully verified according to `verification_sample_rate`. Rule/adapter/Coraza/native-version fingerprints invalidate stale learning state automatically.
+
+Config:
+
+```json
+{
+  "vector_acceleration": {
+    "mode": "off",
+    "state_path": "/var/lib/waf-proxy/vector-learning.json",
+    "min_samples": 100000,
+    "min_coraza_matches": 10,
+    "min_learning_sec": 3600,
+    "verification_sample_rate": 0.01
+  }
+}
+```
+
+`mode` is `off`, `auto`, or `required`. `auto` falls back to Coraza-only if libhs is unavailable; `required` fails the runtime build if native VectorScan is missing. `/api/vector-acceleration` and `/api/metrics.vector_acceleration` expose group state, samples, Coraza matches, false negatives, skips and scan errors. Reviewer-or-higher can reset a site from FAILSAFE back to Learning through `POST /api/vector-acceleration/reset`.
+
+Build policy is controlled by `WAF_VECTORSCAN=off|auto|required`. Coraza v3.7.0 declares Go 1.25.0, and `build.sh` rejects older toolchains before attempting the build. The final source has passed portable Coraza-API-stub regression/vet/race and a native libhs ABI compile/vet/race gate. **Real Go 1.25 + Coraza v3.7.0 execution and real libvectorscan matching remain NOT_RUN in the isolated packaging environment** and must pass on the release/target host; no stub-derived result is a Coraza or VectorScan performance/correctness claim.

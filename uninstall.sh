@@ -7,12 +7,12 @@ PURGE=0
 [[ $EUID -eq 0 ]] || { echo "run as root: sudo $0 [--purge]" >&2; exit 1; }
 
 echo "==> stopping service"
-systemctl disable --now waf-proxy 2>/dev/null || true
+systemctl disable --now waf-tls-frontend waf-proxy 2>/dev/null || true
 
 echo "==> removing unit + binary"
-rm -f /etc/systemd/system/waf-proxy.service
+rm -f /etc/systemd/system/waf-proxy.service /etc/systemd/system/waf-tls-frontend.service
 systemctl daemon-reload
-rm -f /usr/local/bin/waf-proxy
+rm -f /usr/local/bin/waf-proxy /usr/local/bin/waf-tlsfront
 rm -rf /opt/waf-proxy
 
 if [[ $PURGE -eq 1 ]]; then

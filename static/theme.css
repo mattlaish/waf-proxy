@@ -1,0 +1,72 @@
+:root {
+  --cg-font-sans: "Noto Sans", "Noto Sans TC", "Segoe UI", "Microsoft JhengHei",
+    "PingFang TC", Arial, sans-serif;
+  --cg-font-mono: "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --cg-text: #17211c;
+  --cg-text-muted: #617067;
+  --cg-background: #f6f9f7;
+  --cg-surface: #ffffff;
+  --cg-border: #dce6e0;
+
+  --cg-green: #247a4d;
+  --cg-green-dark: #185c39;
+  --cg-green-light: #eaf5ef;
+
+  --cg-danger: #b42318;
+  --cg-danger-light: #fdecea;
+  --cg-warning: #8a5a00;
+  --cg-warning-light: #fff6e5;
+  --cg-info: #356b50;
+  --cg-info-light: #edf5f0;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+body {
+  background: var(--cg-background);
+  color: var(--cg-text);
+  font-family: var(--cg-font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--cg-green);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--cg-green-light);
+  color: var(--cg-green-dark);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

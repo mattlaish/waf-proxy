@@ -176,6 +176,8 @@ type blockEntry struct {
 	Expires time.Time `json:"expires"`
 }
 
+type blockSnapshot map[string]blockEntry
+
 type aiEngine struct {
 	cfg      atomic.Pointer[AIConfig]
 	client   atomic.Pointer[http.Client]
@@ -186,13 +188,22 @@ type aiEngine struct {
 	hmacKey  []byte
 	verdicts *verdictRingBuf
 
-	blockMu   sync.Mutex
-	block     map[string]blockEntry
+	blockMu sync.Mutex // serializes copy-on-write blocklist updates only
+	block   atomic.Pointer[blockSnapshot]
+
 	pendingMu sync.RWMutex
-	pending   map[string]*analysisJob
+	// pending only keeps a pointer to the live request. Expensive AI capture
+	// (header map/redaction, query parsing, analysisJob construction) is lazy:
+	// it happens only when Coraza actually matches or when the request was
+	// pre-sampled for clean-traffic analysis.
+	pending map[pendingKey]*http.Request
 
 	dedupeMu sync.Mutex
 	dedupe   map[string]time.Time
+
+	queueDropped  atomic.Uint64
+	queueEnqueued atomic.Uint64
+	lastQueueWarn atomic.Int64
 }
 
 func newAIEngine(log *slog.Logger) *aiEngine {
@@ -203,10 +214,11 @@ func newAIEngine(log *slog.Logger) *aiEngine {
 		log:      log,
 		hmacKey:  key,
 		verdicts: newVerdictRing(200),
-		block:    map[string]blockEntry{},
 		dedupe:   map[string]time.Time{},
-		pending:  map[string]*analysisJob{},
+		pending:  map[pendingKey]*http.Request{},
 	}
+	emptyBlocks := blockSnapshot{}
+	e.block.Store(&emptyBlocks)
 	e.configure(defaultAIConfig())
 	for i := 0; i < 32; i++ { // configured subset is active; others remain idle
 		go e.worker(i)
@@ -241,16 +253,24 @@ func max(a, b int) int {
 
 func blockKey(site, ip string) string { return site + "\x00" + ip }
 
-func (e *aiEngine) isBlocked(site, ip string) (blockEntry, bool) {
-	e.blockMu.Lock()
-	defer e.blockMu.Unlock()
-	key := blockKey(site, ip)
-	be, ok := e.block[key]
-	if !ok {
-		return blockEntry{}, false
+func (e *aiEngine) loadBlocks() blockSnapshot {
+	if snap := e.block.Load(); snap != nil {
+		return *snap
 	}
-	if time.Now().After(be.Expires) {
-		delete(e.block, key)
+	return nil
+}
+
+func cloneBlocks(src blockSnapshot) blockSnapshot {
+	next := make(blockSnapshot, len(src)+1)
+	for key, be := range src {
+		next[key] = be
+	}
+	return next
+}
+
+func (e *aiEngine) isBlocked(site, ip string) (blockEntry, bool) {
+	be, ok := e.loadBlocks()[blockKey(site, ip)]
+	if !ok || time.Now().After(be.Expires) {
 		return blockEntry{}, false
 	}
 	return be, true
@@ -258,8 +278,11 @@ func (e *aiEngine) isBlocked(site, ip string) (blockEntry, bool) {
 
 func (e *aiEngine) addBlock(be blockEntry) {
 	e.blockMu.Lock()
-	defer e.blockMu.Unlock()
-	e.block[blockKey(be.Site, be.IP)] = be
+	next := cloneBlocks(e.loadBlocks())
+	next[blockKey(be.Site, be.IP)] = be
+	e.block.Store(&next)
+	e.blockMu.Unlock()
+
 	e.log.Warn("ai block added", "ip", be.IP, "site", be.Site, "score", be.Score, "reason", be.Reason)
 	if e.notify != nil {
 		e.notify.push(notifyAIBlock, "warn", "AI blocked a source",
@@ -270,38 +293,58 @@ func (e *aiEngine) addBlock(be blockEntry) {
 
 func (e *aiEngine) unblock(site, ip string) {
 	e.blockMu.Lock()
-	defer e.blockMu.Unlock()
-	if site != "" {
-		delete(e.block, blockKey(site, ip))
-		return
-	}
-	for key, be := range e.block {
-		if be.IP == ip {
-			delete(e.block, key)
+	current := e.loadBlocks()
+	next := make(blockSnapshot, len(current))
+	for key, be := range current {
+		remove := be.IP == ip && (site == "" || be.Site == site)
+		if !remove {
+			next[key] = be
 		}
 	}
+	e.block.Store(&next)
+	e.blockMu.Unlock()
 }
 
 func (e *aiEngine) blocklist() []blockEntry {
-	e.blockMu.Lock()
-	defer e.blockMu.Unlock()
+	current := e.loadBlocks()
 	now := time.Now()
-	out := make([]blockEntry, 0, len(e.block))
-	for key, be := range e.block {
-		if now.After(be.Expires) {
-			delete(e.block, key)
-			continue
+	out := make([]blockEntry, 0, len(current))
+	for _, be := range current {
+		if now.Before(be.Expires) {
+			out = append(out, be)
 		}
-		out = append(out, be)
 	}
 	return out
+}
+
+func (e *aiEngine) pruneExpiredBlocks() {
+	now := time.Now()
+	e.blockMu.Lock()
+	current := e.loadBlocks()
+	changed := false
+	for _, be := range current {
+		if now.After(be.Expires) {
+			changed = true
+			break
+		}
+	}
+	if changed {
+		next := make(blockSnapshot, len(current))
+		for key, be := range current {
+			if now.Before(be.Expires) {
+				next[key] = be
+			}
+		}
+		e.block.Store(&next)
+	}
+	e.blockMu.Unlock()
 }
 
 func (e *aiEngine) janitor() {
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 	for range t.C {
-		_ = e.blocklist() // side-effect: expiry sweep
+		e.pruneExpiredBlocks()
 		e.dedupeMu.Lock()
 		now := time.Now()
 		for k, exp := range e.dedupe {
@@ -336,29 +379,74 @@ func (e *aiEngine) enqueue(j analysisJob) {
 		return
 	}
 	if len(e.queue) >= cfg.QueueSize {
-		e.log.Warn("ai analysis queue full; request dropped", "site", j.site, "queue_size", cfg.QueueSize)
+		e.noteQueueDrop(j.site, cfg.QueueSize)
 		return
 	}
 	select {
 	case e.queue <- j:
+		e.queueEnqueued.Add(1)
 	default:
-		e.log.Warn("ai analysis queue hard limit reached; request dropped", "site", j.site)
+		e.noteQueueDrop(j.site, cfg.QueueSize)
 	}
 }
 
-func requestKey(client, uri string) string { return client + "\x00" + uri }
+// noteQueueDrop keeps queue saturation fail-open without turning the drop path
+// into another synchronous logging bottleneck. At most one warning is emitted
+// per five-second window; the cumulative counter remains available to tests and
+// future metrics surfaces.
+func (e *aiEngine) noteQueueDrop(site string, queueSize int) {
+	dropped := e.queueDropped.Add(1)
+	now := time.Now().UnixNano()
+	const warnEvery = int64(5 * time.Second)
+	for {
+		last := e.lastQueueWarn.Load()
+		if now-last < warnEvery {
+			return
+		}
+		if e.lastQueueWarn.CompareAndSwap(last, now) {
+			if e.log != nil {
+				e.log.Warn("ai analysis queue saturated; requests dropped",
+					"site", site, "queue_size", queueSize, "dropped_total", dropped)
+			}
+			return
+		}
+	}
+}
+
+type pendingKey struct {
+	client string
+	uri    string
+}
+
+type aiQueueStats struct {
+	Depth        int    `json:"depth"`
+	Capacity     int    `json:"capacity"`
+	LogicalLimit int    `json:"logical_limit"`
+	Enqueued     uint64 `json:"enqueued"`
+	Dropped      uint64 `json:"dropped"`
+}
+
+func (e *aiEngine) queueStats() aiQueueStats {
+	cfg := e.snapshotCfg()
+	return aiQueueStats{
+		Depth: len(e.queue), Capacity: cap(e.queue), LogicalLimit: cfg.QueueSize,
+		Enqueued: e.queueEnqueued.Load(), Dropped: e.queueDropped.Load(),
+	}
+}
 
 // enqueueMatch enriches Coraza callbacks from the currently active request.
 // This also works in DetectionOnly, where the response status is not 403.
 func (e *aiEngine) enqueueMatch(site, mode, client, uri string, ruleID int, data string) {
 	e.pendingMu.RLock()
-	p := e.pending[requestKey(client, uri)]
-	if p == nil {
-		p = e.pending[requestKey(client, strings.SplitN(uri, "?", 2)[0])]
+	r := e.pending[pendingKey{client: client, uri: uri}]
+	if r == nil {
+		if i := strings.IndexByte(uri, '?'); i >= 0 {
+			r = e.pending[pendingKey{client: client, uri: uri[:i]}]
+		}
 	}
-	if p != nil {
-		j := *p
-		e.pendingMu.RUnlock()
+	e.pendingMu.RUnlock()
+	if r != nil {
+		j := e.captureRequestJob(site, mode, client, r, e.snapshotCfg())
 		j.rules = []int{ruleID}
 		if data != "" {
 			j.matchedData = []string{data}
@@ -366,7 +454,6 @@ func (e *aiEngine) enqueueMatch(site, mode, client, uri string, ruleID int, data
 		e.enqueue(j)
 		return
 	}
-	e.pendingMu.RUnlock()
 	e.enqueue(analysisJob{site: site, mode: mode, client: client, path: uri,
 		rules: []int{ruleID}, matchedData: []string{data}, ts: time.Now()})
 }
@@ -383,16 +470,20 @@ type statusRecorder struct {
 }
 
 func (s *statusRecorder) WriteHeader(c int) {
-	if !s.written {
-		s.code = c
-		s.written = true
+	if s.written {
+		return
 	}
+	s.code = c
+	s.written = true
 	s.ResponseWriter.WriteHeader(c)
 }
 
 func (s *statusRecorder) Write(b []byte) (int, error) {
 	if !s.written {
 		s.written = true
+		if s.code == 0 {
+			s.code = http.StatusOK
+		}
 	}
 	n, err := s.ResponseWriter.Write(b)
 	s.nbytes += int64(n)
@@ -459,6 +550,25 @@ func redactQuery(raw string) string {
 	return q.Encode()
 }
 
+func (e *aiEngine) captureRequestJob(site, mode, client string, r *http.Request, cfg AIConfig) analysisJob {
+	if r == nil {
+		return analysisJob{site: site, mode: mode, client: client, ts: time.Now()}
+	}
+	hdrs := e.redactHeaders(r, cfg)
+	var body []byte
+	if cfg.IncludeBody {
+		body = requestBodyPrefixFromRequest(r)
+	}
+	query := r.URL.RawQuery
+	if cfg.RedactHeaders {
+		query = redactQuery(query)
+	}
+	return analysisJob{
+		site: site, mode: mode, client: client, method: r.Method, host: r.Host,
+		path: r.URL.Path, query: query, headers: hdrs, body: body, ts: time.Now(),
+	}
+}
+
 // wrap adds AI enforcement + analysis around a site's WAF+proxy handler.
 // Sites with AI mode off are unwrapped entirely; globally disabled AI costs only
 // an atomic boolean load on advisory/block sites.
@@ -493,54 +603,56 @@ func (e *aiEngine) wrap(site SiteConfig, next http.Handler) http.Handler {
 			}
 		}
 
-		hdrs := e.redactHeaders(r, cfg)
-		var body []byte
-		if cfg.IncludeBody {
-			body = requestBodyPrefixFromRequest(r)
+		// Decide clean-request sampling before the expensive capture work. Every
+		// request is still registered while Coraza runs so an actual WAF match can
+		// build a fully enriched job lazily, preserving match-analysis semantics.
+		sampled := !cfg.OnlyOnMatch && cfg.SampleRate > 0 && rand.Intn(100) < cfg.SampleRate
+		requestURI := r.RequestURI
+		if requestURI == "" {
+			requestURI = r.URL.RequestURI()
 		}
-		query := r.URL.RawQuery
-		if cfg.RedactHeaders {
-			query = redactQuery(query)
+		keyURI := pendingKey{client: ip, uri: requestURI}
+		keyPath := keyURI
+		if r.URL.RawQuery != "" {
+			keyPath = pendingKey{client: ip, uri: r.URL.Path}
 		}
-		pending := &analysisJob{site: siteName, mode: mode, client: ip, method: r.Method,
-			host: r.Host, path: r.URL.Path, query: query, headers: hdrs, body: body, ts: time.Now()}
-		keys := []string{requestKey(ip, r.URL.RequestURI()), requestKey(ip, r.URL.Path)}
 		e.pendingMu.Lock()
-		for _, key := range keys {
-			e.pending[key] = pending
-		}
+		e.pending[keyURI] = r
+		e.pending[keyPath] = r
 		e.pendingMu.Unlock()
 		defer func() {
 			e.pendingMu.Lock()
-			for _, key := range keys {
-				if e.pending[key] == pending {
-					delete(e.pending, key)
-				}
+			if e.pending[keyURI] == r {
+				delete(e.pending, keyURI)
+			}
+			if e.pending[keyPath] == r {
+				delete(e.pending, keyPath)
 			}
 			e.pendingMu.Unlock()
 		}()
 
 		next.ServeHTTP(w, r)
 
-		sampled := cfg.SampleRate > 0 && rand.Intn(100) < cfg.SampleRate
-		if cfg.OnlyOnMatch || !sampled {
+		if !sampled {
 			return
 		}
-		e.enqueue(*pending)
+		e.enqueue(e.captureRequestJob(siteName, mode, ip, r, cfg))
 	})
 }
 
 func (e *aiEngine) worker(id int) {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		cfg := e.snapshotCfg()
 		if !cfg.Enabled || id >= cfg.Workers {
-			time.Sleep(100 * time.Millisecond)
+			<-ticker.C
 			continue
 		}
 		select {
 		case j := <-e.queue:
 			e.analyze(j)
-		case <-time.After(250 * time.Millisecond):
+		case <-ticker.C:
 		}
 	}
 }
