@@ -44,7 +44,7 @@ For a portable build with no CGO/libhs:
 WAF_VECTORSCAN=off ./build.sh
 ```
 
-Production release gate: run the repository tests with real Coraza v3.7.0 and real libvectorscan on the target/release architecture. The package's stub and ABI-only verification are compile/regression aids only. Learning state defaults to `/var/lib/waf-proxy/vector-learning.json`; preserve that path across restarts but expect rule/Coraza/VectorScan semantic fingerprint changes to force re-learning.
+Production release gate: run the repository tests with real Coraza v3.7.0 and real libvectorscan on the target/release architecture. Use `./qualify-release-host.sh --preflight` first; it exits 3 when prerequisites are **BLOCKED** (for example, Go <1.25 or no verified real libvectorscan provenance). On a qualified host, run `./qualify-release-host.sh --core`; it requires native VectorScan rather than silently falling back, executes the real-Coraza DetectionOnly+nolog `MatchedRules()` gate and the native `hs_compile_multi`/`hs_scan` semantic gate, and checks that qualification did not drift `go.mod`/`go.sum`. A source-installed VectorScan build requires an explicit `WAF_VECTORSCAN_PROVENANCE_ACK` string so ABI-only shims cannot be mislabeled as real release evidence. The package's stub and ABI-only verification are compile/regression aids only. Learning state defaults to `/var/lib/waf-proxy/vector-learning.json`; preserve that path across restarts but expect rule/Coraza/VectorScan semantic fingerprint changes to force re-learning.
 
 ## 3. Install
 
@@ -461,3 +461,14 @@ For QAT, install the vendor driver/provider separately and set
 `OPENSSL_MODULES` in `/etc/waf/waf-tls-frontend.env` only when the provider is
 outside OpenSSL's default module path. waf-proxy does not store or load QAT
 private material and does not use CGO for TLS acceleration.
+
+## Phase 4 runtime state
+
+The service uses `/var/lib/waf-proxy` for mutable security state. `install.sh` creates the directory and the systemd unit declares `StateDirectory=waf-proxy`, which is required because the service otherwise runs with `ProtectSystem=strict`.
+
+Default files/directories:
+
+- `/var/lib/waf-proxy/security-state.json` — atomic security/session/audit/learner snapshot, mode 0600;
+- `/var/lib/waf-proxy/crl-cache/` — last-known-good URL CRL cache, directory mode 0700 and files mode 0600.
+
+Do not copy these files into release/source archives. Back them up only as protected mutable runtime state. CRL URL sources must use HTTPS on port 443 and must resolve exclusively to public/global-unicast addresses; redirects and proxy traversal are intentionally disabled.

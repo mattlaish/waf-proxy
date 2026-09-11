@@ -14,7 +14,7 @@ import (
 )
 
 const maxRuleSourceBytes = 64 << 20
-const semanticAdapterVersion = "vectorscan-learning-v2-coraza37-context-truth"
+const semanticAdapterVersion = "vectorscan-learning-v4-phase2-request-metadata-encodings"
 
 type SourceKind string
 
@@ -23,26 +23,33 @@ const (
 	SourceRequestFilename SourceKind = "REQUEST_FILENAME"
 	SourceRequestMethod   SourceKind = "REQUEST_METHOD"
 	SourceRequestProtocol SourceKind = "REQUEST_PROTOCOL"
+	SourceRequestURIRaw   SourceKind = "REQUEST_URI_RAW"
+	SourceRequestLine     SourceKind = "REQUEST_LINE"
+	SourceRequestBasename SourceKind = "REQUEST_BASENAME"
+	SourceQueryString     SourceKind = "QUERY_STRING"
+	SourceServerName      SourceKind = "SERVER_NAME"
+	SourceRemoteAddr      SourceKind = "REMOTE_ADDR"
+	SourceRemotePort      SourceKind = "REMOTE_PORT"
 	SourceRequestHeader   SourceKind = "REQUEST_HEADERS"
 )
 
 type RuleSpec struct {
-	ID        int        `json:"id"`
-	Phase     int        `json:"phase"`
-	Source    SourceKind `json:"source"`
-	Header    string     `json:"header,omitempty"`
-	Lowercase bool       `json:"lowercase,omitempty"`
-	Pattern   string     `json:"pattern"`
+	ID         int             `json:"id"`
+	Phase      int             `json:"phase"`
+	Source     SourceKind      `json:"source"`
+	Header     string          `json:"header,omitempty"`
+	Transforms []TransformKind `json:"transforms,omitempty"`
+	Pattern    string          `json:"pattern"`
 }
 
 type GroupSpec struct {
-	Key         string     `json:"key"`
-	Source      SourceKind `json:"source"`
-	Header      string     `json:"header,omitempty"`
-	Lowercase   bool       `json:"lowercase,omitempty"`
-	Phase       int        `json:"phase"`
-	Rules       []RuleSpec `json:"rules"`
-	Fingerprint string     `json:"fingerprint"`
+	Key         string          `json:"key"`
+	Source      SourceKind      `json:"source"`
+	Header      string          `json:"header,omitempty"`
+	Transforms  []TransformKind `json:"transforms,omitempty"`
+	Phase       int             `json:"phase"`
+	Rules       []RuleSpec      `json:"rules"`
+	Fingerprint string          `json:"fingerprint"`
 }
 
 var (
@@ -89,10 +96,10 @@ func ParseRules(path string) ([]GroupSpec, map[int]struct{}, error) {
 		if !ok {
 			continue
 		}
-		key := fmt.Sprintf("p%d|%s|%s|lc=%t", spec.Phase, spec.Source, strings.ToLower(spec.Header), spec.Lowercase)
+		key := fmt.Sprintf("p%d|%s|%s|t=%s", spec.Phase, spec.Source, strings.ToLower(spec.Header), transformKey(spec.Transforms))
 		g := groups[key]
 		if g == nil {
-			g = &GroupSpec{Key: key, Source: spec.Source, Header: spec.Header, Lowercase: spec.Lowercase, Phase: spec.Phase}
+			g = &GroupSpec{Key: key, Source: spec.Source, Header: spec.Header, Transforms: append([]TransformKind(nil), spec.Transforms...), Phase: spec.Phase}
 			groups[key] = g
 		}
 		g.Rules = append(g.Rules, spec)
@@ -150,17 +157,16 @@ func classifyRule(id int, vars, op, actions string) (RuleSpec, bool) {
 	if len(transforms) == 0 || transforms[0] != "none" {
 		return RuleSpec{}, false
 	}
-	lowercase := false
+	pipeline := make([]TransformKind, 0, len(transforms)-1)
 	for _, t := range transforms[1:] {
-		switch t {
-		case "lowercase":
-			lowercase = true
-		default:
+		tk, ok := parseExactTransform(t)
+		if !ok {
 			return RuleSpec{}, false
 		}
+		pipeline = append(pipeline, tk)
 	}
 	v := strings.TrimSpace(vars)
-	spec := RuleSpec{ID: id, Phase: phase, Lowercase: lowercase, Pattern: pattern}
+	spec := RuleSpec{ID: id, Phase: phase, Transforms: pipeline, Pattern: pattern}
 	switch {
 	case v == "REQUEST_URI":
 		spec.Source = SourceRequestURI
@@ -170,6 +176,20 @@ func classifyRule(id int, vars, op, actions string) (RuleSpec, bool) {
 		spec.Source = SourceRequestMethod
 	case v == "REQUEST_PROTOCOL":
 		spec.Source = SourceRequestProtocol
+	case v == "REQUEST_URI_RAW":
+		spec.Source = SourceRequestURIRaw
+	case v == "REQUEST_LINE":
+		spec.Source = SourceRequestLine
+	case v == "REQUEST_BASENAME":
+		spec.Source = SourceRequestBasename
+	case v == "QUERY_STRING":
+		spec.Source = SourceQueryString
+	case v == "SERVER_NAME":
+		spec.Source = SourceServerName
+	case v == "REMOTE_ADDR":
+		spec.Source = SourceRemoteAddr
+	case v == "REMOTE_PORT":
+		spec.Source = SourceRemotePort
 	case strings.HasPrefix(v, "REQUEST_HEADERS:"):
 		h := strings.TrimSpace(strings.TrimPrefix(v, "REQUEST_HEADERS:"))
 		if h == "" || strings.ContainsAny(h, " /\\\"'|!&") {

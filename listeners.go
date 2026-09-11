@@ -161,13 +161,19 @@ func (m *listenerManager) buildServer(addr string, isTLS bool, cfg Config) *http
 		MaxHeaderBytes:    64 << 10,
 		ErrorLog:          slog.NewLogLogger(m.log.Handler(), slog.LevelWarn),
 	}
+	if s.security != nil {
+		srv.ConnState = s.security.connState
+	}
 	if isTLS {
 		srv.TLSConfig = &tls.Config{
 			MinVersion:       tls.VersionTLS12,
 			CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
 			GetCertificate:   s.getCertificate(addr),
-			GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
+			GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
 				s.metrics.addTLSHandshake() // fires once per handshake attempt
+				if s.security != nil && chi != nil && !s.security.allowTLSHandshake(chi.Conn.RemoteAddr()) {
+					return nil, fmt.Errorf("TLS handshake rate limit exceeded")
+				}
 				return nil, nil
 			},
 		}

@@ -1,0 +1,240 @@
+Version: waf-proxy phase4-security-product 2026-09-11
+Flavor: portable
+Build Timestamp: 2026-09-11T11:13:09+0800
+Source File Count: 143
+Generated Evidence File Count: 8
+
+Tests:
+  # Testing Results and Qualification Ledger
+  
+  Handover checkpoint: 2026-09-07 (Asia/Taipei)
+  
+  This file separates **real execution**, **stub/API integration**, **ABI-only native checks**, **component benchmarks**, and **NOT_RUN release gates**. Do not promote one evidence class into another.
+  
+  ## Final packaged baseline
+  
+  - Source artifact: `waf-proxy-vectorscan-learning-coraza37-2026-09-04.zip`
+  - SHA-256: `64dc3034865d20aedaa38e10af5459da844ae6f6d92960e224223ec0ed359b22`
+  - Size: 342,234 bytes
+  - Patch artifact: `waf-proxy-vectorscan-learning-coraza37-2026-09-04.patch`
+  - SHA-256: `a24645a911caaa986c310509103093ba0cdc5e7bdcd4801251ccadd4e17a8398`
+  - Size: 77,830 bytes
+  - Patch baseline: TLS Acceleration / modern-NGINX release line
+  
+  Previous packaging verification already completed:
+  
+  - ZIP integrity test: PASS
+  - ZIP re-extract vs source: 106 files, byte-for-byte identical, file modes identical
+  - patch reconstruction from TLS/modern-NGINX baseline: byte-for-byte/file-mode identical to final source
+  - diff hygiene: 20 expected files changed for the VectorScan/Coraza phase; unrelated TLS/AI/LB files did not drift
+  
+  ## Real host evidence already obtained
+  
+  ### TLS frontend / modern NGINX
+  
+  Host evidence previously recorded:
+  
+  - NGINX 1.26.3
+  - OpenSSL 3.5.5
+  - modern syntax generated as `listen ... ssl;` + `http2 on;`
+  - `nginx -t`: PASS with no deprecated `listen ... http2` warning
+  - HTTPS -> NGINX -> private Unix socket -> WAF-side endpoint smoke: PASS
+  - curl negotiated HTTP/2: PASS
+  - forged Internet-side internal forwarding/private TLS headers were overwritten/cleared: PASS
+  - kTLS auto detection fell back to software TLS on the available host because kernel kTLS was not available
+  - QAT auto detection fell back to software TLS because `qatprovider` was unavailable
+  
+  This proves frontend/fallback behavior on that host. It does **not** prove real QAT hardware acceleration or active kTLS.
+  
+  ## Portable Coraza API-stub regression
+  
+  Purpose: validate project control flow, compile compatibility with the intended Coraza API surface, Go logic, and race behavior when the real module cannot be downloaded. It is **not** real Coraza correctness evidence.
+  
+  Final VectorScan/Coraza integration round:
+  
+  - full repository `go test`: PASS
+  - `go vet ./...`: PASS
+  - bounded `go test -race` groups: PASS
+    - root package: PASS (~14.4 s in the recorded run)
+    - `internal/vectoraccel`: PASS (~1.1 s)
+    - `internal/tlsfront`: PASS (~1.17 s)
+    - `internal/sigupdate`: PASS (~4.6 s)
+    - `cmd/wafbench`: PASS (~1.15 s)
+  
+  A single all-packages race invocation exceeded the execution runner timeout; no race detector report was produced. The bounded package runs are the recorded PASS evidence.
+  
+  ## Native libhs ABI-only gate
+  
+  Purpose: compile/link/exercise the actual CGO adapter shape without claiming real VectorScan regex behavior.
+  
+  Using a local ABI-compatible libhs test library:
+  
+  - vectorscan build-tag compile: PASS
+  - vectorscan-tag tests: PASS
+  - vectorscan-tag `go vet`: PASS
+  - vectorscan root race: PASS
+  - scan/close lifecycle paths compiled and ran
+  
+  This gate found and caused removal of an unsafe `cgo.Handle` integer -> `unsafe.Pointer` bridge. The final adapter uses C-owned context storage carrying `uintptr_t` handle data instead.
+  
+  **Evidence boundary:** this does not prove `hs_compile_multi`/`hs_scan` correctness, pattern compatibility, performance, SIMD behavior, or real libvectorscan lifecycle.
+  
+  ## Coraza transaction-truth integration
+  
+  Implemented and covered by project tests/stub API integration:
+  
+  - Learning truth source is transaction-final `tx.MatchedRules()` after `ProcessLogging()`;
+  - ErrorCallback remains available for existing match logging/AI/syslog but is not a Learning truth source;
+
+Files:
+2e2a0e492385ee1383fcfd59b0c4909a701708f033e0d5988d7da6b5b9860b2c  AGENTS.md
+8b91999ff9e1d3f9fe4a5b312e0ddc3c316136a0ae8aab99c879adfb26029d50  AI_HANDOFF.md
+85a7e76acbdad58f2eda3b72bc1fb28d692d7d045489020705bc00c49c392486  CLAUDE.md
+3b9ed504d280f818b4cec08e22c4b4e8b090b1d9fdc3f5bd372e6aa96c71de7e  DEVELOPMENT.md
+6267ab9931cbcec17987f6312dc2fd3aaf5e738d8870cb8b3437e4b5c8b1956b  DEVELOPMENT_ROADMAP.md
+9895c7188835d97c84e8169aec12e7bfbcfbdcb9f98b9ea68f6c2841668f480f  HANDOVER_PROMPT.md
+925a333b3c2511a77fa52c144b25da11e5c46a35bafcbc352f1324fb411316d0  HANDOVER_STATUS.md
+42dcd9036beb149818cc484b57bdf23f6d37f78b370766db594d0f11887e1cef  INSTALL.md
+41d7d8456fcc46fa2c734c647f59e344ce16249da609b4cbd90496c9a29afec0  MANIFEST.md
+a384651c3df0da11283178b0c0d7ae3669bd0da66190e4c3bb2b570b63f36c04  PHASE0_PHASE1_QUALIFICATION_REPORT_2026-09-11.md
+3ec6b420dc50111653ac053619bf931a4a228878c2f0efd72041e416897fdce0  PHASE2_VECTORSCAN_COVERAGE_REPORT_2026-09-11.md
+5c63aea82b47cc906eceb65f2b0a0bb71e044fb38638acb3b515f965cd2ec449  PHASE3_RELEASE_ENGINEERING_REPORT_2026-09-11.md
+f3389b4090c0b8189dcb06ea524f84dcf3062bb745fd00e33c5473f00ffd69e8  PHASE4_SECURITY_PRODUCT_REPORT_2026-09-11.md
+60bf26bd9430158e52193daf5b3a4e3dd02484aace886233c40aa99ebacd9e02  README.md
+0fd5016a68c574ce88a1418a0d0d82021ecb71178193df34ef20683c1e0b52c0  RELEASE_PROCESS.md
+50db43f0e0ea423a85149d3786bcc68bcf79ff6a6ef2a230da93ccce6b2e46ee  TESTING.md
+1e196b8b91871583a5e11738afb410157e4cb1467bc6930d3b8b7ed001430e1c  TESTING_RESULTS.md
+49ab8f43cdec0d616d6ba211bd3c9177c48ee193eb65b70959600a90ce5d6b18  admin.go
+1ed6532d13cbc18b6be719d0697c0d8e76446f4d811812ba91f43e2f1cc781c0  ai.go
+6a8f1b9b977f5245fccb02a08c4825799c23bce47e3c6b7ada570095205b3878  ai_test.go
+303835dccd0cc3c710a7dd7edc43ddbd5fd99a512eb5ef437cffef3ae5f04c60  benchmark/README.md
+3f47bb42840b0b2ac99494ef25d6d15fccee70d20a524088cd0a17ac4a469faf  benchmark/build.sh
+af5a3a2af4d375b7d94d3c7d9329754421f2cbbd881221e7c0a86587cfbdedac  build-release-artifact.sh
+65de7f2c81fbb4588d137d70367464638acfa692aa2d5a67199968b7f6664f35  build.sh
+92cd8026f8464524dcf0d1f99363741ccc36c4d105100e2a0fc39e6513ede29f  clientip.go
+ba55c0fa472aa7b9dbc6b75f9e50f2128e266e42127b92631894635c34cdffb3  clientip_test.go
+f1cd316df60b9313c1c143dfdd2debb7bb6d8546312d66b89d8bdf656e01acbf  cmd/waf-tlsfront/main.go
+60b5e79884a991c8c6c2822898fc930923af7b43239f7f1c4de4f9c201fa56c1  cmd/wafbench/backend_mode.go
+dd29da1191382120af8e77f37f056347bf9f0c4c69a79a77b931ecd1487529e6  cmd/wafbench/compare.go
+0c4a800c47ae264c91f2dfbc446973707d1624bc591b742fc928e029a329f3b4  cmd/wafbench/coraza_mode.go
+7d45b41f686d7cb2ac174f46f43800c55ab3fe2faebbc07457d710ca18f7a907  cmd/wafbench/hist.go
+5ae7f9c3c99d838d8858cff860e7d5779f56b9733fcad07f285faeb3a5a7108b  cmd/wafbench/http_mode.go
+a8aecb59facce26cc0e3f83655ca5ea29f032c468433194d72426a96b0f21ab7  cmd/wafbench/l4_mode.go
+8d88d3c449a518b5c1284508f53bd9b9e973b78a07dd06638da4a4df9e8958d0  cmd/wafbench/main.go
+8cdd4b9f93943241c3f8ceeca6e157f7591f1f3112af03e52f86cc3563d4bc55  cmd/wafbench/model.go
+7341f6487b8173b2215e2d793a926f0870db9ce964286a84a219aa9879c85b7c  cmd/wafbench/proc_linux.go
+0e237d3b19649fd4c06580f3e53dc82bbd07625df8f5e667312fa92df01461da  cmd/wafbench/proc_other.go
+6973e4e453e73655dfdaf62f83dc268beb69e9ab62ccc892261761df8c6cea09  cmd/wafbench/scenario.go
+d64e0bfe64ed12a7ee72ff930a0020734b8964785dfa1b51e3d83c1d236aac0c  cmd/wafbench/wafbench_test.go
+f83164be149b7d071432a909fbf6d400dadfb6f6b49ed66e910eaf4dfe506611  cmd/wafctl/main.go
+2bfecc0503ebee25215d1429495a768002e539cbf944a9195ec76cd0818ad5cb  config.sample.json
+40875efeef531386cef5a586ed4cccef5fb4091a27c6431422155ddbc518e352  config_pool_test.go
+c38880848c57e91179030b0c84b889b5d86c8adcf023f8e7a1bae8b29b7df71b  coraza.conf
+b57b00894064bda2aedafeb91e63cb4df7d55ea4ee90c254bf4f0cfa0ee19a76  coraza_observer.go
+3dc913cd9d832abb076199b1130f175966ab34719acb625b7ba7bfb65e4bb77b  coraza_real_gate_test.go
+0dc0f031fe43ade59700c04baf2dfd195daf305577797c140a5e673bdbe38dd8  debug_bundle.go
+833e100b9b2e19fbb28c8c759503eb0197fbc57f42668980544508b7a682789f  debug_evidence.go
+83be06587baeab0a9dae01fd52dbcbe3432ab1229212d4c3627b517cb4743c1e  debug_evidence_test.go
+0bf75a5ec806334c97a99c2896e9ea33c08ef70b14a213d79a0b23b6e23f557d  discovery.go
+c021fc346e6ec0c9ce8502e9d68a142f180f2ec5f562b27b9e0c5ebc9de8b71a  fieldpolicy_test.go
+18c9013683d6d5da7fdfe013ef86d289ee8fbefe1d7f6c4328a66d088d13d5e3  freebind_linux.go
+4d655dc660a83e528f2ec970c72ac77aa58c9588a8f4229081e67cf91de246e9  freebind_other.go
+71d73e1a14dcfb10cb9eb86c032fef1b0b50b28d4fc3fdad5c71c23c7a65347f  generate-release-evidence.sh
+5aef978f8f0c66df4d51f7606ddfa5f367d4e8ebc4a96579fcb13e49264d0ade  go.mod
+cce4707d40a0347bdd9044b7b97a88711450a8f726ad3422fa9e44d4ffff35f5  go.sum
+3de828e1fc17537c8f0d486a2e72b1c884f70c3e517a61fe419b855e04d596c6  ha.go
+47c768dfc972967fbce509d4c0cf32b1138d7fd6a22745f73960ec6d43526ae5  hotpath_test.go
+86d31edf86e19e76ed371cb5a4eb94ccc2028240ddb6e4fc20bbcdd1369d6ec2  hybrid_discovery_test.go
+88949d64582da82e91052151d1d9a77e8c21cd87bd68069896a9c834bb9286b3  install.sh
+a6e108db0e31d3b449b3badadbb53bdf87a1cee92d0c607145ccddc907b2aa8c  internal/sigupdate/sigupdate.go
+0a50122ea2d93aea94c16e9bf3af0e2fdd0fcf10ab2073d85adfea2c01584279  internal/sigupdate/sigupdate_test.go
+9c7d12f8979eab88f44be211a817a6b761c6edca7a3a70119f007e903fdaa453  internal/sigupdate/sigupdate_unix.go
+550dbbe2c03e61ad80506def06abda50a46f1af8871fcfefe76e1b7cd89fa037  internal/sigupdate/sigupdate_windows.go
+bec52525fdfe0926d3da1f3d9c824bf8c5ad3d2df1dd80cbb5b55fea3cfceafb  internal/tlsfront/tlsfront.go
+e7e99b5e504e74117f91ab4946fae3c2f990da77753be1823e59d533b0fdd8f4  internal/tlsfront/tlsfront_test.go
+9e390539096a11481fae2f6db24abc9304149776c628cb5d2830117159aee93f  internal/vectoraccel/config.go
+4a7a28d6d8b030197e25f4dae98237b2615d332c2071c92fbe8fd80dee12b0f6  internal/vectoraccel/engine.go
+0669f48d8b9f60a25262a28221fd50e73a6903864d360d96b7fd4146ce17a4d4  internal/vectoraccel/engine_test.go
+ee3c6e29af867d1ff8c963a802ad316a17068aefe4654e9c87613afa996b0491  internal/vectoraccel/phase2_realcoraza_test.go
+00e5d3239611cd6fc32784fdcd46aa1b362890731b386126cce1c51ea6e7327f  internal/vectoraccel/qualification.go
+ff321bb17ae757ff208272a10c6a58cbe5d6a346f2b0ead4e8248eca36ada64f  internal/vectoraccel/qualification_test.go
+9ac3d50110d9dad18407ba812c4d83b10b15ea86304dc2f19f70f6d4d9105c19  internal/vectoraccel/rules.go
+d0739c16be1eecf747d407fe90130a37fe69b90b22681ce386969c391158530a  internal/vectoraccel/scanner.go
+088f56be585b230b8afecadd970ff46cf644f9edb893b5a4d1d4845a27cdbc7b  internal/vectoraccel/scanner_native.go
+89d14d2cdfb4e5a59b7ae9f7c3455cfd690e8a85f2806418bae70eb90877ab2a  internal/vectoraccel/scanner_native_gate_test.go
+820097c83c1aecf86e1da5b18b3dd8d0dbc5bc92d5106b862cd4bce4f711639f  internal/vectoraccel/scanner_stub.go
+b485c6e027f2cb1173073a7aaba7319f85f3e86829e74b135d8591b2c59d2c72  internal/vectoraccel/transforms.go
+4ff3ef2a2d7a34ee9d4453fb877ea9161644c9788f6deade6ccdd2da58774e98  internal/vectoraccel/transforms_test.go
+7158c527b610d4ba3b341b9acd94578135afa80a1d5d2848545e16bb02b9e89d  ipmanage.go
+e889cae3bdeac1b4f1fec5820a4c658cb39fc5592b74c68b6de9f2ed46fb536e  learn.go
+20e1a553b9bcf83f9c13adedd1e590cb0a8bc440c3e27cad42ef2bb1b78d86f7  listeners.go
+802ac7daea89b7279836a87907bd767767f3e588a0a0ca9b00c6331e7c5e62b0  main.go
+c5b49ae1c9272eb670e95b620d717cf897681940c9917f23c3dce0cef5923f80  matchlog.go
+70bbcf28c4bba3be500874cb2606b5313c2a9e00b0351ba470be26c4414a01e4  matchlog_test.go
+b6f1fb83ebb589e19afe23deaf11e2e23ea57b57eca23a8e667adc2288a9ddb6  metrics.go
+8be0e3135956cbb5cb9fe4ea8c9d4bbf9bcd6b8a7028a80d2d367120e710de8c  notify.go
+6282fa9bd309b19c7bda3afaa05d90eb64d673edf465133c0f0488f23c241b4d  observations.go
+177c443e50d98d8b116591b0b4306916361f53ba16bb777bd565166d67699205  observations_test.go
+9dc5c57f5722a742ec24250f19202413427559627c6ca0894addb19f05251842  p1_tuning_test.go
+ff9fd876c679b10cad575f51025bb0b30683caecdc66ab11f541e9e783dd6f80  patch.md
+febd25153bd333794da094f9b481cc2f3d2963298efb4eb847394128880846cd  phase3-release-tooling-test.sh
+5c5b50c5c974f71d3b022df2008670445a654cc10fb1e8cb8b6290558cb5613a  pki.go
+620d5e73937908db4ea8d45246d0bd668dafe79fb494ce4151889eb991d5ecf3  pki_crl_test.go
+cbb63e8542ff49ddd97fbfb707d9ea00dc8ef2ba039695e3287bae627ecec470  pki_test.go
+954496c52cf14c0de11894c72add74c69724f5b3b949a0fbf54f6485e9fd50b7  pki_url.go
+fdac41005cda5ba665ca0ab02d46b8147687ca249b179bf2c4e5ca9cdae2de96  pki_url_phase4_test.go
+7b5af99ebc17dad60b6eb80fc36de6da631de8d4d334c988ea30e99f5e8b1602  pool.go
+9bb7519bba24659a6de6bb292d56df7b431983d4efe007dfa997c4239c431a45  pool_hotpath_test.go
+5db84e4ec24132b46a3d0bba9c3ed532e0ff9474113d6e5443643f0536f7da1a  profiles.go
+641473f825cffd18ba326a1bd4f979e455d57f3d4d25bfa0e3db89fed1793e9e  proxy_buffer.go
+1404a38bb350194e9b2becafe51f4b3a12833edb062c2adb4102b7e3af89de4b  proxy_buffer_test.go
+39be9cef6cec29299cddb0488b2b5bfe274d4c40a7f5d7186a8c37d0af7468ae  qualification/phase1_runner.go
+a67982dca65a3f62143965a6d58ade359bfdbf4a6fb0c22644d62083cea9bc9e  qualification_diff.go
+9f783bae55922b0075919c363cb90d426e57e3c3f819413016646f11fc574750  qualify-release-host.sh
+b8339c83a2728de323a8a69ed2e9787b6a567ab76c027ac9fdcc919e9c46e479  release-evidence/SHA256SUMS.txt
+5ec5736b813da4af536cfecd691082cec932a713b25b5dc6cbefd0520b32717e  release-evidence/govulncheck-status.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  release-evidence/govulncheck.json
+c563c71dfbaf0b2add3347b2596dd95215415e8c897e162f5dbd18d6edf811d1  release-evidence/govulncheck.stderr
+473678fda101988f2dbfa5c924ca119f90812279d7b8530075a64a10134a239d  release-evidence/provenance.json
+0e199bd207f92b7427ff7c4191135c521bbea5145fdceade63c918d3c3924407  release-evidence/sbom.cdx.json
+557296530860d441e51fce0c4f2852877271cc7b505e6b233a643bd6063019cd  release-evidence/sbom.spdx.json
+0028453026dd951d9fc6175ff475f9c3cac01ab51e66d105e7ac69e1492958ce  release-evidence/versions.json
+41077daf7a3ce02ce66a78482cf283454e5d8c2dcdf2faad81629b20c2129a9f  release_scripts_test.go
+0c279ca0888658b1eba9912d9f2e679d5f8bda4909f51b5104eedd2e675ed516  request_id_coraza_phase4_test.go
+98fa5ab0314590989c5de9585368c019d312c6b01ef578941d7de42c4fbfc770  runtime_smoke_test.go
+f896e8a21205afdb48451998a55c6dd270bf1025cb8d151536ba146b696df049  security.go
+de5cc58aa21263b3d81cc1f104d332373e26f0e6727c6184a449cffb2922bd46  security_phase4_test.go
+8f30cb43611ac90ea38bc29724658c8d744200d09b9c0fe157787ec4af4759a0  security_state.go
+20c8decd5139cc9a4ac314a60899989413ffd40cbf9d16496149ec42e3ae6995  security_state_phase4_test.go
+9a744231904128ef5fe1ae837c1878102069b8aa4133bdec8fa5c7d9284cc2f7  setup-interfaces.sh
+d5792b403d3bb3426df8178ae1c0d4e26e7648baa7ae8d39a8aa1f18d8c2778f  sign-release-artifact.sh
+a38d95b50b43dfc179a515a82d80224c817551a0882b36dba6fe8a27b343f10a  sitemap.go
+f5f409a80b0956e7a06d3a7f1ac654e33e2795442f775d71b315d0f52ebcd79a  sitemap_persist.go
+7094d3429be1b724291710bb231c416adddcb63b12480eee289617f45a33d5d8  static/admin.html
+83aae56abd54b9837adffcb93138becd01d1bd2941664f1948a13f56a418f753  static/theme.css
+2550edd0944cee68ec55d8f0fd7e361dbe65abe6f462e6f682818d01ea747a81  syslog.go
+dc93c0f6736f453bac76b76ec17764bbb357a4adb01ef87d7b1f690584561c19  theme_test.go
+f5d1ce056074d7d7330bd8ae8dcc026423a82c5d6c7992e1736339a2701a498c  tls_acceleration_test.go
+3e5ea16e498e81d9fe402d422dca7607d74f119921cea01cb2ba8e3cde3fb3c4  tls_frontend_control.go
+b34c5c1ecccf567b46cce188054e0ef5c985aa0256b4e9e4057bf2ae20c9cabe  uninstall.sh
+be9bfc302858774a96498fdaa54c3d78b94206439d9b021a1053ac92f4b6b90c  update.go
+5983f1ba900a0f43e3698ea7fe7edf089f7caa7ba998c22d650b86f8368a8260  upgrade.sh
+1ea8cdae833e553eced4fad5991aea802bd408bb0393578239768390bc83c3fe  users.go
+bfd71bb3df40b2b334224fee44634eb1f03c2761ab60ff460f739d149fdb5e02  verify-release-artifact.sh
+2fd7191ea02b95904584e3c93ba8a19df6af3e43771afa6fcb6faecac926590b  verify-release-signature.sh
+ed14782162b5b66967baab9829d368ec5f310813606cd1ad41319572be65c41b  waf-doctor.sh
+05b53b7ae434506f4b10f21852417be90965c1c3f5324df58db5b5aa363dd0e1  waf-proxy.service
+ab36c65679dd1565993bc944e002cf1628ab4de23134dbc8988f66d603df1d2b  waf-tls-frontend.service
+c4f2fb801cb98ba49ae85ebcf8819f44c77ec2fbb0934f03070e506edc45fa8e  watchdog.go
+89a6ddef8bbf5d1b624839c413df669a0ee579981277867b90430ab8a739ab6e  web/PORTING.md
+7aeeb91ae9f6b9a12fba1b10061ee5e69f5b35f5afecb152cac6be072d4983b8  web/index.html
+a2598cf033c4ccb4077e8067656a45d0ffda165cd013b44c041d5313358c4135  web/package.json
+eff9e7fe8d0e5a254ff5af6ccd5e861f63e7071a258e4efbcebf7dfc4dea702e  web/src/App.jsx
+44a563fe148386368fd95584cae3d1010ebc585be273ab1f5d17e32ca2ae74db  web/src/api.js
+22fc4e00749d4f7d4c595ede6e692e72d1593c458deb51d17cf2a6a6622eab39  web/src/components/Bell.jsx
+ecc32c14f98325968b6a8ea608c191682845f6de129cb9ed07a0b1aba68cfb67  web/src/main.jsx
+9b3857a5ec73a0f3d0e6e2c7b444817b6964797fa1c55d95a47154fc657f3a89  web/src/store.js
+45835451648102db89a6ca904d05ef49163601fbb31a20dc29e92d47132f658c  web/src/style.css
+cabc2f7f4df48054eecaeaf93a8dab1e4602982c70559d1f16623d9adde81c2f  web/src/tabs/HATab.jsx
+83aae56abd54b9837adffcb93138becd01d1bd2941664f1948a13f56a418f753  web/src/theme.css
+811d52c96525b069ec83e446e7688f216300754ce74f5177daff3c83270c129d  web/vite.config.js

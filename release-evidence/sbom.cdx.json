@@ -1,0 +1,94 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "name": "github.com/corazawaf/coraza/v3",
+      "purl": "pkg:golang/github.com/corazawaf/coraza/v3@v3.7.0",
+      "type": "library",
+      "version": "v3.7.0"
+    },
+    {
+      "name": "github.com/corazawaf/libinjection-go",
+      "purl": "pkg:golang/github.com/corazawaf/libinjection-go@v0.3.2",
+      "type": "library",
+      "version": "v0.3.2"
+    },
+    {
+      "name": "github.com/magefile/mage",
+      "purl": "pkg:golang/github.com/magefile/mage@v1.15.1-0.20241126214340-bdc92f694516",
+      "type": "library",
+      "version": "v1.15.1-0.20241126214340-bdc92f694516"
+    },
+    {
+      "name": "github.com/petar-dambovaliev/aho-corasick",
+      "purl": "pkg:golang/github.com/petar-dambovaliev/aho-corasick@v0.0.0-20250424160509-463d218d4745",
+      "type": "library",
+      "version": "v0.0.0-20250424160509-463d218d4745"
+    },
+    {
+      "name": "github.com/tidwall/gjson",
+      "purl": "pkg:golang/github.com/tidwall/gjson@v1.18.0",
+      "type": "library",
+      "version": "v1.18.0"
+    },
+    {
+      "name": "github.com/tidwall/match",
+      "purl": "pkg:golang/github.com/tidwall/match@v1.1.1",
+      "type": "library",
+      "version": "v1.1.1"
+    },
+    {
+      "name": "github.com/tidwall/pretty",
+      "purl": "pkg:golang/github.com/tidwall/pretty@v1.2.1",
+      "type": "library",
+      "version": "v1.2.1"
+    },
+    {
+      "name": "github.com/valllabh/ocsf-schema-golang",
+      "purl": "pkg:golang/github.com/valllabh/ocsf-schema-golang@v1.0.3",
+      "type": "library",
+      "version": "v1.0.3"
+    },
+    {
+      "name": "golang.org/x/net",
+      "purl": "pkg:golang/golang.org/x/net@v0.52.0",
+      "type": "library",
+      "version": "v0.52.0"
+    },
+    {
+      "name": "golang.org/x/sync",
+      "purl": "pkg:golang/golang.org/x/sync@v0.20.0",
+      "type": "library",
+      "version": "v0.20.0"
+    },
+    {
+      "name": "google.golang.org/protobuf",
+      "purl": "pkg:golang/google.golang.org/protobuf@v1.36.11",
+      "type": "library",
+      "version": "v1.36.11"
+    },
+    {
+      "name": "rsc.io/binaryregexp",
+      "purl": "pkg:golang/rsc.io/binaryregexp@v0.2.0",
+      "type": "library",
+      "version": "v0.2.0"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "name": "waf-proxy",
+      "properties": [
+        {
+          "name": "waf-proxy:release-flavor",
+          "value": "portable"
+        }
+      ],
+      "type": "application",
+      "version": "waf-proxy phase4-security-product 2026-09-11"
+    },
+    "timestamp": "2026-09-11T03:13:09Z"
+  },
+  "serialNumber": "urn:uuid:652266c2-3261-50be-901f-fa5a4722458a",
+  "specVersion": "1.5",
+  "version": 1
+}

@@ -17,9 +17,9 @@ VECTOR_MODE="${WAF_VECTORSCAN:-auto}"
 version_ge() {
   [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]
 }
-GO_VERSION="$(go env GOVERSION | sed 's/^go//')"
-if ! version_ge "$GO_VERSION" "1.25.0"; then
-  echo "!! Go >= 1.25.0 is required for Coraza v3.7.0 (found ${GO_VERSION})" >&2
+GO_VERSION="$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)"
+if [ -z "$GO_VERSION" ] || ! version_ge "$GO_VERSION" "1.25.0"; then
+  echo "!! Go >= 1.25.0 is required for Coraza v3.7.0 (found ${GO_VERSION:-unavailable})" >&2
   exit 1
 fi
 

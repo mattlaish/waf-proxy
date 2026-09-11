@@ -22,7 +22,7 @@ type observedCorazaWAF struct {
 }
 
 func observeCorazaWAF(w coraza.WAF, plan *vectoraccel.SitePlan) coraza.WAF {
-	if w == nil || plan == nil {
+	if w == nil {
 		return w
 	}
 	return &observedCorazaWAF{WAF: w, plan: plan}
@@ -35,6 +35,9 @@ func (w *observedCorazaWAF) NewTransactionWithID(id string) types.Transaction {
 	return w.wrap(w.WAF.NewTransactionWithID(id), context.Background())
 }
 func (w *observedCorazaWAF) NewTransactionWithOptions(opts experimental.Options) types.Transaction {
+	if opts.ID == "" {
+		opts.ID = requestIDFromContext(opts.Context)
+	}
 	var tx types.Transaction
 	if ow, ok := w.WAF.(experimental.WAFWithOptions); ok {
 		tx = ow.NewTransactionWithOptions(opts)
@@ -74,6 +77,9 @@ func (t *observedCorazaTx) observe() {
 			ids = append(ids, id)
 		}
 		t.plan.Observe(t.obs, ids)
+		if c := currentDebugEvidenceCapture(); c != nil {
+			c.Capture("coraza-tx", map[string]any{"matched_rules": ids, "source": "tx.MatchedRules-after-ProcessLogging"})
+		}
 	})
 }
 func (t *observedCorazaTx) ProcessLogging() { t.Transaction.ProcessLogging(); t.observe() }

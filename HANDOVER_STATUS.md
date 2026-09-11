@@ -1,0 +1,51 @@
+# New-Chat Handover Status
+
+Checkpoint: 2026-09-07 (Asia/Taipei)
+
+## One-line state
+
+The WAF implementation line is **Go 1.25 / Coraza v3.7.0 + optional VectorScan Learning Accelerator + optional NGINX/OpenSSL TLS acceleration**. Portable/stub and native-ABI validation remain complete; Phase 0 now has a strict `qualify-release-host.sh` preflight/core runner and a native semantic compile/scan test, but real Coraza v3.7 / real libvectorscan production qualification is still outstanding because this packaging host has Go 1.23.2 and no real libhs.
+
+## Selected architecture
+
+- Coraza/CRS remains authoritative.
+- VectorScan is a candidate-prefilter/skip accelerator for conservatively compatible regex groups.
+- Learning Period and continuous verification are permanent product behavior, not temporary development scaffolding.
+- Zero observed VectorScan false negatives is the safety objective; mismatch/native scan error -> FAILSAFE -> Coraza-only.
+- XDP is deferred and independent.
+- TLS acceleration is independent and already implemented as optional NGINX/OpenSSL frontend with fallback-safe kTLS/QAT capability handling.
+
+## What the next chat should not redo
+
+- hot-path ring/config/body work;
+- ReverseProxy BufferPool;
+- load-balancer zero-allocation work;
+- P0-C observation async plane;
+- P0-D match-log async plane;
+- P1 response-body inspection and backend transport tuning;
+- P2 release-script/AI/statusRecorder hardening;
+- benchmark harness;
+- TLS frontend/modern NGINX implementation;
+- VectorScan basic classifier/manager/state machine/native adapter/Coraza transaction observer.
+
+## What blocks production VectorScan enablement
+
+Real release-host execution of Go 1.25 + Coraza v3.7.0 + real libvectorscan/CRS. Run `./qualify-release-host.sh --preflight` then `--core`; this packaging host returns BLOCKED because it has Go 1.23.2 and no real libhs. See `DEVELOPMENT_ROADMAP.md` Phase 0 and `TESTING_RESULTS.md` for the exact gates and evidence boundary.
+
+## Artifacts
+
+Previous final implementation source:
+
+- `waf-proxy-vectorscan-learning-coraza37-2026-09-04.zip`
+- SHA-256 `64dc3034865d20aedaa38e10af5459da844ae6f6d92960e224223ec0ed359b22`
+
+Previous implementation patch:
+
+- `waf-proxy-vectorscan-learning-coraza37-2026-09-04.patch`
+- SHA-256 `a24645a911caaa986c310509103093ba0cdc5e7bdcd4801251ccadd4e17a8398`
+
+The 2026-09-07 continuation slice adds release-host qualification automation/tests and deterministic build preflight only; it does not alter Coraza/VectorScan authority, eligibility, Learning/FAILSAFE semantics, request processing, or TLS architecture.
+
+## 2026-09-11 Phase 4 checkpoint
+
+Phase 4 security/product backlog is implemented in source and remains `IMPLEMENTED_TESTING_DEFERRED / DEPLOYMENT_QUALIFICATION_REQUIRED`. L7/CIDR/request-ID/custom-block/persistent-state/PKI URL CRL features are present. Isolated security/PKI/persistence race suites pass; full Go 1.25 + real Coraza/deployed external qualification remains open. See `PHASE4_SECURITY_PRODUCT_REPORT_2026-09-11.md`.

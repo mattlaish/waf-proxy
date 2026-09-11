@@ -74,6 +74,8 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RuntimeDirectory=waf-proxy
 RuntimeDirectoryMode=0750
+StateDirectory=waf-proxy
+StateDirectoryMode=0750
 
 # waf-proxy writes config.json back on save; /etc/waf must stay writable.
 ReadWritePaths=/etc/waf

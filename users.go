@@ -9,8 +9,9 @@ package main
 //
 // The startup admin token remains a break-glass credential (always full admin)
 // so you can never lock yourself out. Named users are layered on top for
-// day-to-day access and audit attribution. Sessions are in-memory (re-login
-// after a restart); a persistence seam exists for later.
+// day-to-day access and audit attribution. Session map keys are SHA-256 hashes
+// of bearer tokens; Phase 4 persists only those hashes and expiry metadata, never
+// reusable raw bearer tokens.
 
 import (
 	"crypto/hmac"
@@ -58,7 +59,9 @@ func validRole(r string) bool { return roleRank(r) > 0 }
 // agree. "review" = apply page policies / profiles / learned suggestions.
 func canManageUsers(role string) bool { return role == roleAdmin }
 func canEditConfig(role string) bool  { return roleRank(role) >= roleRank(roleOperator) }
-func canReview(role string) bool      { return role == roleReviewer || roleRank(role) >= roleRank(roleOperator) }
+func canReview(role string) bool {
+	return role == roleReviewer || roleRank(role) >= roleRank(roleOperator)
+}
 
 // ── user model ──────────────────────────────────────────────────────────
 
@@ -153,7 +156,10 @@ func verifyPassword(pw, encoded string) bool {
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
-// ── sessions (in-memory) ────────────────────────────────────────────────
+// ── sessions ─────────────────────────────────────────────────────────────
+// Session bearer tokens are never stored directly. The server stores only a
+// SHA-256 lookup key, which allows crash/restart persistence without writing
+// reusable bearer credentials to disk.
 
 type session struct {
 	user    string
@@ -171,12 +177,17 @@ func newSessionStore() *sessionStore {
 	return &sessionStore{byID: map[string]session{}, ttl: 12 * time.Hour}
 }
 
+func sessionTokenKey(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
 func (s *sessionStore) create(user, role string) string {
 	b := make([]byte, 24)
 	_, _ = rand.Read(b)
 	id := base64.RawURLEncoding.EncodeToString(b)
 	s.mu.Lock()
-	s.byID[id] = session{user: user, role: role, expires: time.Now().Add(s.ttl)}
+	s.byID[sessionTokenKey(id)] = session{user: user, role: role, expires: time.Now().Add(s.ttl)}
 	s.mu.Unlock()
 	return id
 }
@@ -184,12 +195,13 @@ func (s *sessionStore) create(user, role string) string {
 func (s *sessionStore) lookup(id string) (session, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	sess, ok := s.byID[id]
+	key := sessionTokenKey(id)
+	sess, ok := s.byID[key]
 	if !ok {
 		return session{}, false
 	}
 	if time.Now().After(sess.expires) {
-		delete(s.byID, id)
+		delete(s.byID, key)
 		return session{}, false
 	}
 	return sess, true
@@ -197,7 +209,7 @@ func (s *sessionStore) lookup(id string) (session, bool) {
 
 func (s *sessionStore) destroy(id string) {
 	s.mu.Lock()
-	delete(s.byID, id)
+	delete(s.byID, sessionTokenKey(id))
 	s.mu.Unlock()
 }
 

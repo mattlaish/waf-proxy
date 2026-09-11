@@ -19,6 +19,7 @@ set -uo pipefail
 
 ETC=/etc/waf
 LOGDIR=/var/log/waf
+STATEDIR=/var/lib/waf-proxy
 BIN=/usr/local/bin/waf-proxy
 TLSBIN=/usr/local/bin/waf-tlsfront
 UNIT=/etc/systemd/system/waf-proxy.service
@@ -56,6 +57,9 @@ if [[ "$MODE" == fix ]]; then
   install -d -o root   -g "$GROUP_" -m 0750 "$ETC/certs"
   install -d -o root   -g "$GROUP_" -m 0750 "$ETC/crs"
   install -d -o "$USER_" -g "$GROUP_" -m 0750 "$LOGDIR"
+  install -d -o "$USER_" -g "$GROUP_" -m 0750 "$STATEDIR"
+  [[ ! -d "$STATEDIR/crl-cache" ]] || { chown -R "$USER_:$GROUP_" "$STATEDIR/crl-cache"; chmod 0700 "$STATEDIR/crl-cache"; find "$STATEDIR/crl-cache" -type f -exec chmod 0600 {} \;; }
+  [[ ! -e "$STATEDIR/security-state.json" ]] || { chown "$USER_:$GROUP_" "$STATEDIR/security-state.json"; chmod 0600 "$STATEDIR/security-state.json"; }
 
   # config.json: waf owns it (console writes it), 0600 (secrets)
   if [[ -e "$CFG" ]]; then
@@ -115,6 +119,9 @@ check "no stray non-waf files under /etc/waf (except env)"        "[[ -z \"\$(fi
 check "unit grants CAP_NET_BIND_SERVICE (80/443 bind as waf)"     "grep -q AmbientCapabilities=CAP_NET_BIND_SERVICE $UNIT"
 check "unit permits AF_NETLINK (managed-IP interface discovery)" "grep -Eq '^RestrictAddressFamilies=.*AF_NETLINK' $UNIT"
 check "unit has LogsDirectory=waf (sandbox log write)"            "grep -q LogsDirectory=waf $UNIT"
+check "waf can write Phase 4 state directory"                      "sudo -u $USER_ test -w $STATEDIR"
+check "unit has StateDirectory=waf-proxy (strict sandbox state write)" "grep -q '^StateDirectory=waf-proxy$' $UNIT"
+check "security state is 0600 when present"                        "[[ ! -e $STATEDIR/security-state.json ]] || [[ \$(stat -c %a $STATEDIR/security-state.json) == 600 ]]"
 check "waf-proxy binary present and root-owned"                   "[[ -x $BIN ]] && [[ \$(stat -c %U $BIN) == root ]]"
 check "waf-tlsfront binary present and root-owned"                 "[[ -x $TLSBIN ]] && [[ \$(stat -c %U $TLSBIN) == root ]]"
 check "TLS frontend unit installed"                                "[[ -f $TLSUNIT ]]"

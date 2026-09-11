@@ -1,0 +1,278 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "creationInfo": {
+    "created": "2026-09-11T03:13:09Z",
+    "creators": [
+      "Tool: waf-proxy/generate-release-evidence.sh"
+    ]
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://waf-proxy.invalid/spdx/389ea97952762bfc09a0c983ba48799c699722af855393ad14a41b0461193a5c",
+  "name": "waf-proxy-portable-waf-proxy phase4-security-product 2026-09-11",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-waf-proxy",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "waf-proxy",
+      "versionInfo": "waf-proxy phase4-security-product 2026-09-11"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-1",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/github.com/corazawaf/coraza/v3@v3.7.0",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "github.com/corazawaf/coraza/v3",
+      "versionInfo": "v3.7.0"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-2",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/github.com/corazawaf/libinjection-go@v0.3.2",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "github.com/corazawaf/libinjection-go",
+      "versionInfo": "v0.3.2"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-3",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/github.com/magefile/mage@v1.15.1-0.20241126214340-bdc92f694516",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "github.com/magefile/mage",
+      "versionInfo": "v1.15.1-0.20241126214340-bdc92f694516"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-4",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/github.com/petar-dambovaliev/aho-corasick@v0.0.0-20250424160509-463d218d4745",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "github.com/petar-dambovaliev/aho-corasick",
+      "versionInfo": "v0.0.0-20250424160509-463d218d4745"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-5",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/github.com/tidwall/gjson@v1.18.0",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "github.com/tidwall/gjson",
+      "versionInfo": "v1.18.0"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-6",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/github.com/tidwall/match@v1.1.1",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "github.com/tidwall/match",
+      "versionInfo": "v1.1.1"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-7",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/github.com/tidwall/pretty@v1.2.1",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "github.com/tidwall/pretty",
+      "versionInfo": "v1.2.1"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-8",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/github.com/valllabh/ocsf-schema-golang@v1.0.3",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "github.com/valllabh/ocsf-schema-golang",
+      "versionInfo": "v1.0.3"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-9",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/golang.org/x/net@v0.52.0",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "golang.org/x/net",
+      "versionInfo": "v0.52.0"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-10",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/golang.org/x/sync@v0.20.0",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "golang.org/x/sync",
+      "versionInfo": "v0.20.0"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-11",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/google.golang.org/protobuf@v1.36.11",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "google.golang.org/protobuf",
+      "versionInfo": "v1.36.11"
+    },
+    {
+      "SPDXID": "SPDXRef-GoModule-12",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:golang/rsc.io/binaryregexp@v0.2.0",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "name": "rsc.io/binaryregexp",
+      "versionInfo": "v0.2.0"
+    }
+  ],
+  "relationships": [
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-1",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-2",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-3",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-4",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-5",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-6",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-7",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-8",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-9",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-10",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-11",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-GoModule-12",
+      "relationshipType": "DEPENDS_ON",
+      "spdxElementId": "SPDXRef-Package-waf-proxy"
+    }
+  ],
+  "spdxVersion": "SPDX-2.3"
+}

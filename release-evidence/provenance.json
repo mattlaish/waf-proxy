@@ -1,0 +1,16 @@
+{
+  "flavor": "portable",
+  "generated_at": "2026-09-11T03:13:09Z",
+  "schema_version": 1,
+  "source": {
+    "go_mod_sha256": "5aef978f8f0c66df4d51f7606ddfa5f367d4e8ebc4a96579fcb13e49264d0ade",
+    "go_sum_sha256": "cce4707d40a0347bdd9044b7b97a88711450a8f726ad3422fa9e44d4ffff35f5",
+    "module": "waf-proxy"
+  },
+  "truth_boundary": {
+    "binary_sbom": false,
+    "real_release_host_qualification": false,
+    "sbom_source": "go.mod plus native libhs when flavor=native"
+  },
+  "version": "waf-proxy phase4-security-product 2026-09-11"
+}

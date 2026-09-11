@@ -1386,3 +1386,151 @@ Passed in the packaging environment:
 ### Next engineering step
 
 Run `WAF_VECTORSCAN=required ./build.sh` on a Go 1.25+ host with real `libvectorscan-dev`, then run DetectionOnly Learning with production CRS/corpus. Do not enable or preserve `ACCELERATED` state across a semantic fingerprint change; the implementation will re-learn automatically. XDP remains separate and deferred.
+
+## 2026-09-07 — New-chat handover checkpoint
+
+This checkpoint is documentation-only and does not change production behavior. Added `DEVELOPMENT_ROADMAP.md`, `TESTING_RESULTS.md`, `HANDOVER_STATUS.md`, and `HANDOVER_PROMPT.md` so a new chat can continue without reconstructing the implementation history. VectorScan remains the selected acceleration direction; XDP is deferred and must not be reintroduced as a selection prerequisite. The immediate release engineering priority is real Go 1.25 + Coraza v3.7.0 + real libvectorscan qualification on a capable Linux host, followed by DetectionOnly Learning Period qualification with zero observed false negatives. Stub/API and ABI-only gates remain explicitly non-production evidence. The project completion timestamp convention in `AGENTS.md` is synchronized to the owner's required `UTM+8: YYYY-MM-DD HH:MM:SS` format.
+
+## 2026-09-07 — Phase 0 release-host qualification automation
+
+A focused qualification slice was added because this packaging host still cannot execute the real Go 1.25 + Coraza v3.7.0 + real VectorScan gates. Production WAF request-processing semantics were not broadened or refactored.
+
+Changes:
+
+- Added `qualify-release-host.sh` with `--preflight` and `--core`. It distinguishes **BLOCKED** release-host prerequisites (exit 3) from a correctness **FAIL** (exit 1), checks the installed local Go toolchain without auto-download, validates exact Go/Coraza pins, CGO/compiler and `pkg-config libhs`, and requires real VectorScan provenance through Debian `libvectorscan-dev` metadata or an explicit reviewed source-install attestation.
+- Added `internal/vectoraccel/scanner_native_gate_test.go` under `vectorscan && cgo`. It compiles two native expressions, scans two-hit/clean inputs, and verifies the exact rule-ID set, directly covering the `hs_compile_multi`/`hs_scan` semantic path. This must only be counted as real VectorScan evidence after provenance is established; ABI shims remain non-production evidence.
+- Changed `build.sh` to inspect the installed toolchain with `GOTOOLCHAIN=local go version`; an old host now fails with the explicit Go >=1.25 requirement instead of first attempting an implicit Go toolchain download.
+- Updated README, INSTALL, MANIFEST, DEVELOPMENT_ROADMAP and TESTING_RESULTS with the new qualification workflow and truth boundary.
+
+Evidence executed on this host:
+
+- release shell `bash -n`: PASS;
+- `qualify-release-host.sh --preflight`: expected BLOCKED/exit 3 because local Go is 1.23.2 and real `libhs`/VectorScan provenance is unavailable;
+- synthetic command-shim preflight branch: PRECHECK_PASS; control-flow validation only, not real release-host evidence;
+- `GOTOOLCHAIN=local WAF_VECTORSCAN=required ./build.sh`: expected early rejection for Go 1.23.2 with no toolchain/network download attempt.
+
+Still NOT_RUN: real Coraza v3.7.0 tests, DetectionOnly+nolog `MatchedRules()` truth gate, real VectorScan semantic test/race, clean-VM install/upgrade/uninstall/doctor smoke, and production CRS Learning Period qualification.
+
+Exact next step: on a Linux release host with Go >=1.25.0 and verified real libvectorscan, run `./qualify-release-host.sh --preflight` and then `./qualify-release-host.sh --core`. Only after `CORE_PASS` should Phase 1 DetectionOnly Learning qualification begin; zero observed false negatives remains mandatory.
+
+## 2026-09-09 — Mandatory Artifact Packaging Integrity Gate
+
+A cross-project release-safety rule is now implemented in this WAF source line. The motivating mini-SIEM incident was a generated ZIP in which an installer script was accidentally replaced by README content even though the source repository and live application data were intact. The WAF release process must therefore validate the extracted artifact itself, not infer package correctness from source tests.
+
+New files:
+
+- `RELEASE_PROCESS.md` — canonical packaging-integrity policy, incident summary and release sequence;
+- `DEVELOPMENT.md` — cross-cutting engineering ledger entry;
+- `TESTING.md` — artifact test-policy entry;
+- `build-release-artifact.sh` — stages a clean complete-source tree, generates `RELEASE_MANIFEST.txt`, creates a deterministic ZIP, invokes the verifier and emits the ZIP SHA-256;
+- `verify-release-artifact.sh` — validates ZIP CRC/path safety, rejects symlinks, checks required files and critical scripts, runs shell syntax checks against extracted scripts, compares source/package SHA-256 and modes, and verifies manifest hashes.
+
+This is now a mandatory release gate. It does not change the Coraza/VectorScan architecture or Phase 0 truth boundary. Real Go 1.25/Coraza v3.7.0 and real libvectorscan release-host qualification remains required independently.
+
+Artifact-gate validation executed on 2026-09-09:
+
+- all shipped shell scripts: `bash -n` PASS;
+- clean generated complete-source ZIP: artifact verifier PASS;
+- 117 source files: extracted ZIP SHA-256 and Unix modes matched the source tree;
+- generated `RELEASE_MANIFEST.txt`: file-set/hash verification PASS;
+- simulated mini-SIEM-class corruption (`install.sh` replaced with README bytes): correctly rejected;
+- simulated ZIP path traversal (`../escape.txt`): correctly rejected.
+
+During validation, the verifier was corrected to restore stored Unix modes from ZIP metadata after Python extraction before permission checks. Final packaging must use the corrected verifier and rebuild the ZIP after documentation/evidence updates.
+
+The 2026-09-09 packaging run also demonstrated why patch reconstruction is mandatory: an initial `git diff --binary` omitted five new untracked files. Reconstruction failed, the patch-generation procedure was corrected to include intent-to-add paths before diffing, and only the corrected reconstruction is valid release evidence.
+
+## 2026-09-10 Continuation
+
+Added Debug Evidence Capture foundation and Phase 1 qualification tracking. Existing Coraza authoritative boundary remains unchanged. Real release-host qualification remains mandatory.
+
+## Latest slice
+
+Debug Evidence now consumes transaction-final Coraza MatchedRules evidence and keeps VectorScan qualification based on candidate coverage with zero false-negative requirement.
+
+## Current Slice
+
+Debug evidence supportability foundation added. Continue with CLI integration, full capture wiring, and release qualification when real dependencies are available.
+
+
+## 2026-09-11 Supportability Slice
+
+Added wafctl debug export/doctor/support bundle foundation and Phase 1 differential qualification helper. Real Coraza/libvectorscan execution remains NOT_RUN.
+
+
+## Stage 2 Supportability Implementation
+- Added wafctl supportability command foundation.
+- Added qualification phase1 differential runner foundation.
+- Real Go 1.25/Coraza/libvectorscan qualification remains NOT_RUN.
+
+## 2026-09-11 Phase 0 / Phase 1 real qualification attempt
+
+- Baseline: roadmap-synchronized Stage 2 source.
+- `./qualify-release-host.sh --preflight`: **BLOCKED (exit 3)**. Linux/C compiler/pins passed; local Go is 1.23.2, `pkg-config libhs` is unavailable, and real VectorScan provenance is unavailable.
+- `./qualify-release-host.sh --core`: **BLOCKED (exit 3)** at the same preflight boundary; no core real-Coraza/libvectorscan correctness command executed.
+- No local Go 1.25 or real libvectorscan cache/package was found; external dependency acquisition was unavailable.
+- Phase 1 production CRS replay and zero-false-negative qualification remain **NOT_RUN** because Phase 0 did not pass and the package does not embed a production CRS tree.
+- Exact evidence: `PHASE0_PHASE1_QUALIFICATION_REPORT_2026-09-11.md`.
+- Do not mark Phase 0 or Phase 1 production qualification PASS until those gates are executed on a suitable release host.
+
+
+## 2026-09-11 Phase 2 — conservative VectorScan coverage expansion
+
+Owner explicitly directed entry into Phase 2 despite Phase 0/Phase 1 real qualification remaining blocked on this host. This is an implementation authorization only; production qualification requirements remain unchanged.
+
+Implemented source changes:
+
+- bumped the VectorScan semantic adapter fingerprint version so prior persisted learning state is invalidated and groups re-enter Learning;
+- replaced the previous lowercase-only group semantic flag with an ordered allow-listed transform pipeline;
+- added exact local implementations for Coraza v3.7.0 `uppercase`, `trim`, `trimLeft`, `trimRight`, `removeNulls`, `replaceNulls`, `compressWhitespace`, `removeWhitespace`, and `length`, while retaining `lowercase`;
+- added `QUERY_STRING` and `SERVER_NAME` as selected single-value sources;
+- fixed special fixed-header reconstruction for `REQUEST_HEADERS:Host` and `REQUEST_HEADERS:Transfer-Encoding` to match the Coraza HTTP connector;
+- retained explicit exclusions for ARGS/body, chains, negation, multi-variable selectors, dynamic macros, URL decode/normalization and every non-allow-listed transform;
+- added portable Phase 2 tests plus `internal/vectoraccel/phase2_realcoraza_test.go` for real Coraza v3.7.0 parity on a qualified release host.
+
+Executed evidence on this host:
+
+- isolated temporary-module `go test ./internal/vectoraccel`: PASS using local Go 1.23.2;
+- isolated `go vet ./internal/vectoraccel`: PASS;
+- isolated `go test -race ./internal/vectoraccel`: PASS;
+- focused Phase 2 transform/source tests: PASS;
+- full repository `GOTOOLCHAIN=local go test ./...`: BLOCKED because `go.mod` requires Go >=1.25.0;
+- Phase 2 `realcoraza` parity test: NOT_RUN;
+- real libvectorscan and production CRS replay: NOT_RUN.
+
+Do not use the isolated Go 1.23 checks as production Coraza/VectorScan evidence. The next qualified release host must run Phase 0, Phase 1, and the new Phase 2 real-Coraza parity gate before any new coverage group can be considered production-qualified.
+
+
+### Phase 2 artifact verification
+
+Final Phase 2 delivery uses the mandatory Artifact Packaging Integrity Gate. The baseline-relative patch reconstructs the development workspace byte-for-byte and mode-for-mode. The generated complete-source ZIP is independently extracted and compared against the source set by SHA-256 and Unix mode; secret-pattern and generated-ELF hygiene checks are also required. The packaged baseline remains development/qualification-required evidence only; artifact integrity does not promote the NOT_RUN real Coraza/libvectorscan/CRS gates.
+
+## 2026-09-11 Phase 2 — coverage increment 2
+
+Continued the explicit owner-directed VectorScan coverage expansion from `waf-proxy-vectorscan-phase2-coverage-2026-09-11.zip`. Coraza remains authoritative and no Phase 0/1 qualification requirement was waived.
+
+Implemented additional conservative sources: `REQUEST_URI_RAW`, `REQUEST_LINE`, `REQUEST_BASENAME`, `REMOTE_ADDR`, and `REMOTE_PORT`. These are reconstructed from the same `http.Request` fields and Coraza HTTP connector semantics seen by the authoritative transaction. Added exact `base64Encode` and `hexEncode` transforms only; decode/hash/URL/path/parser-dependent transforms remain Coraza-only. Semantic adapter version is now `vectorscan-learning-v4-phase2-request-metadata-encodings`, forcing affected persisted groups to re-enter Learning.
+
+Validation executed: isolated `internal/vectoraccel` unit/focused/vet/race PASS using local Go 1.23.2. Full repository remains BLOCKED by the Go 1.25 module requirement. Expanded `realcoraza` parity, real libvectorscan scan and production CRS zero-false-negative qualification remain NOT_RUN.
+
+Next safe expansion boundary: do not enter ARGS/body/chains or decode/normalization semantics without a dedicated exact-input design and real Coraza parity. The first suitable release host should run the existing Phase 0/1 gates plus the expanded Phase 2 `realcoraza` parity gate before production acceleration of these groups.
+
+## Phase 3 handoff — 2026-09-11
+
+Phase 3 release engineering is implemented in source and remains `IMPLEMENTED_TESTING_DEFERRED` for external release-host gates. New tooling: `generate-release-evidence.sh`, `sign-release-artifact.sh`, `verify-release-signature.sh`, and `phase3-release-tooling-test.sh`. `build-release-artifact.sh` now accepts `--flavor portable|native`, `--crs-version`, `--require-govulncheck`, generates `release-evidence/`, and honors `SOURCE_DATE_EPOCH`. `verify-release-artifact.sh` validates SBOM/evidence/checksum/flavor data in addition to the existing source byte/mode gate.
+
+Packaging-host evidence: portable tooling PASS; repeated same-input SOURCE_DATE_EPOCH builds byte-identical; native flavor BLOCKED because real libhs is absent; required govulncheck BLOCKED because the tool is absent; signing NOT_RUN because no organizational key is configured. Do not convert these blocked/not-run items or Phase 0/1/2 real qualification into PASS.
+
+## 2026-09-11 — Phase 4 security/product baseline
+
+Phase 4 was explicitly owner-prioritized and is now `IMPLEMENTED_TESTING_DEFERRED / DEPLOYMENT_QUALIFICATION_REQUIRED`. New source includes `security.go`, `security_state.go`, Phase 4 security/persistence tests, request-ID Coraza regression, and PKI URL/refresh/LKG support in `pki_url.go`. The HTTP request ID is generated by the WAF, replaces any inbound value, is injected as Coraza transaction ID, and is carried through access/match/syslog evidence. Do not regress to IP/URI correlation.
+
+CIDR and HTTP rate/in-flight decisions use the already normalized trusted client IP. TCP connection/TLS-handshake caps use the direct peer because forwarded HTTP identity is unavailable before request parsing. Security limiter maps are bounded. CIDR `ttl_sec` API input is persisted as absolute RFC3339 expiry.
+
+Persistent state defaults to `/var/lib/waf-proxy/security-state.json`; bearer session tokens are hashed before entering the session map, so only token hashes may be persisted. systemd `StateDirectory=waf-proxy` is required under `ProtectSystem=strict`.
+
+PKI URL CRLs are HTTPS-only/443, SSRF checked across all DNS answers, pinned to the verified resolved IP for the dial, non-redirecting/non-proxying, bounded, scheduled/deduplicated, and retain valid LKG state. Cache is `/var/lib/waf-proxy/crl-cache`. Admin status/manual refresh exists and mutations are operator/audited.
+
+Executed isolated security/PKI/persistence race suites PASS. Full Go 1.25 test/vet, real Coraza request-ID test, positive external CRL/deployed Linux/HA/load/govulncheck remain open. Never report the isolated Go 1.23 stdlib suites as full project qualification.
+
+Phase 4 pre-final artifact verifier: PASS with 143 source files / 151 packaged manifest-tracked files, portable flavor. The delivery artifact must be rebuilt after final evidence text, then patch-reconstructed against the Phase 3 baseline before handoff.

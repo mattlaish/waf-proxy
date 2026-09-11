@@ -22,8 +22,8 @@ Before pushing:
 - Ensure no unrelated files, secrets, credentials, generated binaries, or temporary files are included.
 
 After completing a development stage that updates `README.md`,
-`AI_HANDOFF.md`, or `patch.md`, end the final user feedback with the current
-Taiwan time in this exact format: `YYYY-MM-DD HH:mm:ss UTC+8 (Taiwan)`.
+`AI_HANDOFF.md`, or `patch.md`, end the final user feedback with the current Taiwan time in this exact format:
+`UTM+8: YYYY-MM-DD HH:MM:SS`.
 
 Rules:
 

@@ -9,6 +9,11 @@ client ─▶ listener :443 ──┤                                     ├─
 client ─▶ listener :8443 ─ site api  (:8443, api.example.com) ───▶ pool ─▶ ...
 ```
 
+## New-chat continuation
+
+For current development state and the next engineering gates, read `AI_HANDOFF.md`, `DEVELOPMENT_ROADMAP.md`, and `TESTING_RESULTS.md`. `HANDOVER_PROMPT.md` is the copy/paste bootstrap prompt for a fresh development chat.
+
+
 ## Model (F5-style)
 
 | Object | Meaning |
@@ -37,6 +42,10 @@ WAF_VECTORSCAN=off ./build.sh
 
 # Native VectorScan build (Debian/Ubuntu: install libvectorscan-dev + pkg-config)
 WAF_VECTORSCAN=required ./build.sh
+
+# Release-host truth preflight/core qualification (never substitutes ABI stubs)
+./qualify-release-host.sh --preflight
+./qualify-release-host.sh --core
 ```
 
 ## Run
@@ -844,7 +853,7 @@ companion. The Setup tab exposes configuration and live probe/resolution state.
 
 ## VectorScan Learning Accelerator — 2026-09-04
 
-The optional VectorScan path is a **learning accelerator**, not a replacement WAF engine. Coraza v3.7.0 remains authoritative. Eligible standalone positive `@rx` rules are conservatively grouped only when the request data source and transformation semantics can be reproduced exactly; unsupported rules remain `CORAZA_ONLY`. Initial supported sources are `REQUEST_URI`, `REQUEST_FILENAME`, `REQUEST_METHOD`, `REQUEST_PROTOCOL`, and fixed-name `REQUEST_HEADERS:name`, with explicit `t:none` and optional `t:lowercase`. Chains, negated regex, aggregate/multi-variable selectors, ARGS/body rules, and unsupported transforms are not accelerated.
+The optional VectorScan path is a **learning accelerator**, not a replacement WAF engine. Coraza v3.7.0 remains authoritative. Eligible standalone positive `@rx` rules are conservatively grouped only when the request data source and transformation semantics can be reproduced exactly; unsupported rules remain `CORAZA_ONLY`. Phase 2 now supports `REQUEST_URI`, `REQUEST_URI_RAW`, `REQUEST_FILENAME`, `REQUEST_BASENAME`, `REQUEST_LINE`, `REQUEST_METHOD`, `REQUEST_PROTOCOL`, `QUERY_STRING`, `SERVER_NAME`, `REMOTE_ADDR`, `REMOTE_PORT`, and fixed-name `REQUEST_HEADERS:name`. `Host` and `Transfer-Encoding` use the same special request fields that Coraza's HTTP connector feeds into the transaction; remote address/port reconstruction mirrors that connector's final-colon split after the existing trusted-proxy resolver has normalized `RemoteAddr`. Transform pipelines must begin with explicit `t:none`; the exact allow-list is `lowercase`, `uppercase`, `trim`, `trimLeft`, `trimRight`, `removeNulls`, `replaceNulls`, `compressWhitespace`, `removeWhitespace`, `length`, `base64Encode`, and `hexEncode`, in the original action order. Decode transforms, hashes, URL/path/HTML/JS/CSS normalization, chains, negated regex, aggregate/multi-variable selectors, ARGS/body rules, and dynamic macro semantics remain Coraza-only.
 
 Each group moves through `LEARNING -> VALIDATED -> ACCELERATED`. Learning compares VectorScan candidates with the transaction-final `tx.MatchedRules()` set after Coraza `ProcessLogging()`. The wrapper uses Coraza v3.7's context-aware transaction creation so concurrent HTTP/2 requests are correlated by request context rather than client/URI heuristics. A false negative or native scan error immediately puts that group into `FAILSAFE`; Coraza-only processing continues. While accelerated, no-hit groups are periodically fully verified according to `verification_sample_rate`. Rule/adapter/Coraza/native-version fingerprints invalidate stale learning state automatically.
 
@@ -865,4 +874,42 @@ Config:
 
 `mode` is `off`, `auto`, or `required`. `auto` falls back to Coraza-only if libhs is unavailable; `required` fails the runtime build if native VectorScan is missing. `/api/vector-acceleration` and `/api/metrics.vector_acceleration` expose group state, samples, Coraza matches, false negatives, skips and scan errors. Reviewer-or-higher can reset a site from FAILSAFE back to Learning through `POST /api/vector-acceleration/reset`.
 
-Build policy is controlled by `WAF_VECTORSCAN=off|auto|required`. Coraza v3.7.0 declares Go 1.25.0, and `build.sh` rejects older toolchains before attempting the build. The final source has passed portable Coraza-API-stub regression/vet/race and a native libhs ABI compile/vet/race gate. **Real Go 1.25 + Coraza v3.7.0 execution and real libvectorscan matching remain NOT_RUN in the isolated packaging environment** and must pass on the release/target host; no stub-derived result is a Coraza or VectorScan performance/correctness claim.
+Build policy is controlled by `WAF_VECTORSCAN=off|auto|required`. Coraza v3.7.0 declares Go 1.25.0, and `build.sh` now checks the installed local toolchain with `GOTOOLCHAIN=local` so an old host is rejected deterministically instead of triggering an implicit toolchain download. `qualify-release-host.sh --preflight` checks the release-host prerequisites and real VectorScan provenance; exit code 3 means **BLOCKED**, not a WAF correctness failure. `--core` then runs the required native build/test/race path, the real-Coraza DetectionOnly+nolog `MatchedRules()` gate, and a native multi-pattern compile/scan semantic gate. The final source has passed portable Coraza-API-stub regression/vet/race and a native libhs ABI compile/vet/race gate. **Real Go 1.25 + Coraza v3.7.0 execution and real libvectorscan matching remain NOT_RUN until `--core` passes on a qualified release/target host**; no stub-derived result is a Coraza or VectorScan performance/correctness claim.
+
+### Phase 2 conservative coverage note — 2026-09-11
+
+Phase 2 source implementation was explicitly authorized before Phase 0/Phase 1 real-host qualification could be completed on the packaging host. The semantic adapter version is bumped so persisted learning state is invalidated and affected groups re-enter Learning. Portable isolated `internal/vectoraccel` unit/vet/race checks pass on the available Go 1.23.2 host, but the project-wide Go 1.25 build, the new `realcoraza` parity gate, real libvectorscan execution, and production CRS replay remain `NOT_RUN`. This source baseline must therefore be treated as `IMPLEMENTED_TESTING_DEFERRED`, not production-qualified acceleration.
+
+## Phase 3 release engineering / supply-chain hardening — 2026-09-11
+
+Release artifacts now carry explicit `portable` or `native` flavor evidence. `generate-release-evidence.sh` emits `versions.json`, `provenance.json`, SPDX 2.3 and CycloneDX 1.5 SBOMs, `govulncheck` status/output, and evidence checksums. The source ZIP builder invokes it automatically and the post-packaging verifier independently checks the evidence and checksums.
+
+For reproducible source artifacts, set `SOURCE_DATE_EPOCH` and keep version/flavor/source inputs identical. Two such builds must be byte-identical. Native flavor generation fails closed unless a real `pkg-config libhs` is present. `--require-govulncheck` likewise fails closed when the scanner cannot run. Optional detached signing uses an externally supplied `WAF_RELEASE_SIGNING_KEY`; the repository never generates or ships an organizational private key.
+
+Example:
+
+```bash
+SOURCE_DATE_EPOCH=1789092000 \
+  ./build-release-artifact.sh /tmp/waf-source-portable.zip \
+  --version "waf-proxy 2026-09-11" --flavor portable \
+  --test-summary TESTING_RESULTS.md
+
+# Native release evidence requires a verified real libhs installation.
+./build-release-artifact.sh /tmp/waf-source-native.zip \
+  --version "waf-proxy 2026-09-11" --flavor native \
+  --require-govulncheck --test-summary TESTING_RESULTS.md
+```
+
+This hardens release evidence only. It does not turn outstanding real Coraza/VectorScan/CRS qualification into PASS.
+
+## Phase 4 security controls, persistent state and CRL lifecycle — 2026-09-11
+
+`security` adds opt-in L7 abuse controls without changing Coraza authority. HTTP-layer rate and in-flight limits use the client IP after the existing trusted-proxy resolver; direct TCP connection and TLS-handshake limits use the immediate peer because forwarded HTTP identity does not exist before request parsing. CIDR allow entries override deny entries at the HTTP layer and may carry an absolute expiry. The operator API exposes `/api/security`, `/api/security/cidrs`, and audited CIDR upsert/delete operations.
+
+Every request receives a WAF-generated `X-WAF-Request-ID`; an inbound value with that name is discarded. The same value is placed into Coraza's transaction ID and emitted in access/match/syslog evidence, providing exact correlation rather than an IP/URI heuristic. `security.block_page` is a bounded Go HTML template with `RequestID`, `Status`, and `Reason` fields and is used by the Phase 4 deny/rate/in-flight paths and AI blocklist responses.
+
+Security state is persisted atomically to `/var/lib/waf-proxy/security-state.json` by default. It covers AI blocks, learner aggregates, notifications, hashed sessions, audit history and cumulative security counters. Raw reusable session bearer tokens are not stored. The systemd unit provisions `StateDirectory=waf-proxy` so this remains writable under `ProtectSystem=strict`.
+
+Backend TLS now accepts HTTPS `crl_urls`. URL fetching is SSRF hardened: redirects/proxies/userinfo/non-443 ports are rejected, every DNS answer must be public/global-unicast, and the selected address is pinned for the actual dial while TLS continues to verify the original hostname. Refresh is bounded and deduplicated, failure retains the previous valid snapshot, and successful lists are cached under `/var/lib/waf-proxy/crl-cache` for last-known-good restart behavior. `/api/pki/crl` exposes status and operator-or-higher may invoke `/api/pki/crl/refresh`.
+
+See `PHASE4_SECURITY_PRODUCT_REPORT_2026-09-11.md` for the executed test boundary. Full Go 1.25/Coraza/VectorScan/CRS and deployed Linux qualification remain open.

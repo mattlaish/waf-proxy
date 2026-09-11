@@ -185,6 +185,7 @@ type aiEngine struct {
 	queue    chan analysisJob
 	log      *slog.Logger
 	notify   *notifier
+	security *securityManager
 	hmacKey  []byte
 	verdicts *verdictRingBuf
 
@@ -598,7 +599,11 @@ func (e *aiEngine) wrap(site SiteConfig, next http.Handler) http.Handler {
 					Verdict: "malicious", Score: be.Score, Category: "blocklist",
 					Reason: "active AI block: " + be.Reason, Action: "blocked",
 				})
-				http.Error(w, "forbidden", http.StatusForbidden)
+				if e.security != nil {
+					e.security.writeBlock(w, requestIDFromContext(r.Context()), http.StatusForbidden, "ai_blocklist")
+				} else {
+					http.Error(w, "forbidden", http.StatusForbidden)
+				}
 				return
 			}
 		}

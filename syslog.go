@@ -308,6 +308,9 @@ func (s *syslogEngine) forwardMatch(m matchRec) {
 		"rule_id", fmt.Sprintf("%d", m.RuleID), "severity", m.Severity,
 		"phase", fmt.Sprintf("%d", m.Phase), "uri", m.URI, "msg", m.Msg,
 	}
+	if m.RequestID != "" {
+		pairs = append(pairs, "request_id", m.RequestID)
+	}
 	if cfg.IncludeMatchData && m.Data != "" {
 		d := m.Data
 		if len(d) > 200 {
@@ -332,8 +335,12 @@ func (s *syslogEngine) forwardAccess(a accessRec) {
 	} else if a.Status >= 400 {
 		sev = sylWarning
 	}
-	s.emitWithConfig(cfg, sev, "ACCESS", kv("event", "access", "site", a.Site, "client", a.Client,
-		"method", a.Method, "path", a.Path, "status", fmt.Sprintf("%d", a.Status)))
+	pairs := []string{"event", "access", "site", a.Site, "client", a.Client,
+		"method", a.Method, "path", a.Path, "status", fmt.Sprintf("%d", a.Status)}
+	if a.RequestID != "" {
+		pairs = append(pairs, "request_id", a.RequestID)
+	}
+	s.emitWithConfig(cfg, sev, "ACCESS", kv(pairs...))
 }
 
 func (s *syslogEngine) forwardAudit(user, action, detail string) {

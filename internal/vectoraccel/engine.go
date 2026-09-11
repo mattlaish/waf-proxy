@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -240,9 +241,7 @@ func (p *SitePlan) analyze(r *http.Request) *Observation {
 		cand := map[int]struct{}{}
 		ok := true
 		for _, v := range vals {
-			if g.spec.Lowercase {
-				v = strings.ToLower(v)
-			}
+			v = applyExactTransforms(v, g.spec.Transforms)
 			ids, err := g.scanner.Scan([]byte(v))
 			if err != nil {
 				ok = false
@@ -289,10 +288,55 @@ func sourceValues(g GroupSpec, r *http.Request) []string {
 		return []string{r.Method}
 	case SourceRequestProtocol:
 		return []string{r.Proto}
+	case SourceRequestURIRaw:
+		// Coraza's HTTP connector passes req.URL.String() to ProcessURI, whose
+		// first action stores that exact argument in REQUEST_URI_RAW.
+		return []string{r.URL.String()}
+	case SourceRequestLine:
+		// ProcessURI formats REQUEST_LINE as method + URI argument + protocol.
+		return []string{r.Method + " " + r.URL.String() + " " + r.Proto}
+	case SourceRequestBasename:
+		path := r.URL.Path
+		offset := strings.LastIndexAny(path, "/\\")
+		if offset != -1 && len(path) > offset+1 {
+			return []string{path[offset+1:]}
+		}
+		return []string{path}
+	case SourceQueryString:
+		return []string{r.URL.RawQuery}
+	case SourceServerName:
+		return []string{r.Host}
+	case SourceRemoteAddr:
+		client, _ := corazaConnectorRemote(r.RemoteAddr)
+		return []string{client}
+	case SourceRemotePort:
+		_, port := corazaConnectorRemote(r.RemoteAddr)
+		return []string{strconv.Itoa(port)}
 	case SourceRequestHeader:
-		return append([]string(nil), r.Header.Values(g.Header)...)
+		switch {
+		case strings.EqualFold(g.Header, "Host"):
+			return []string{r.Host}
+		case strings.EqualFold(g.Header, "Transfer-Encoding"):
+			return append([]string(nil), r.TransferEncoding...)
+		default:
+			return append([]string(nil), r.Header.Values(g.Header)...)
+		}
 	}
 	return nil
+}
+
+func corazaConnectorRemote(remoteAddr string) (string, int) {
+	// Mirror github.com/corazawaf/coraza/v3/http processRequest exactly: it
+	// splits on the final colon, passes the prefix to ProcessConnection as the
+	// client address, and treats an invalid/missing port as zero. The outer
+	// clientIPResolver has already normalized trusted-proxy identity before
+	// both this prefilter and Coraza see the request.
+	idx := strings.LastIndexByte(remoteAddr, ':')
+	if idx == -1 {
+		return "", 0
+	}
+	port, _ := strconv.Atoi(remoteAddr[idx+1:])
+	return remoteAddr[:idx], port
 }
 
 func (p *SitePlan) Observe(obs *Observation, matchedRuleIDs []int) {
