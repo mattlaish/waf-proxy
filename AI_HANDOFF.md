@@ -1542,3 +1542,35 @@ Two source-control/release blockers were corrected without changing product beha
 Owner-supplied external evidence: pre-fix `go build ./...` failed only because `go mod tidy` was required; after tidy it built cleanly, and the only pre-fix `go test ./...` failure was the executable-bit test. This packaging host still cannot independently run the Go 1.25 full-repository gate.
 
 Hotfix packaging gate before final evidence freeze: complete-source artifact verifier PASS (`143 source / 151 packaged`, portable), reproducible duplicate ZIP PASS, and mode-aware patch reconstruction PASS across 152 regular workspace files. The delivery is rebuilt after this text so final artifact hashes must be taken from the delivery response/SHA256SUMS, not the pre-freeze hash.
+
+## CI and Executable-Bit Fix on 2026-09-12
+
+Branch `claude/test-e5j6pr`, off `main` at `78f75d2`. Fixes the two breakages an
+audit found shipped on `main`, and adds the CI that would have caught both.
+
+- **Executable bit restored on all release scripts.** Every root `*.sh` and
+  `benchmark/build.sh` was committed `100644`, so the repository's own
+  `TestReleaseScriptsAreLFAndBashSyntaxClean` failed and `go test ./...` was red
+  on `main`. All 14 are now committed `100755` (set via `git update-index
+  --chmod=+x`, so the mode is in the tree, not just on disk). The build-broken
+  `go.mod` drift seen earlier was already resolved on `main` before this branch;
+  `go build ./...` now succeeds as committed.
+- **Added `.github/workflows/ci.yml`.** Two jobs on push/PR: `build-test`
+  (`go build`, `go vet`, `go test`, `go test -race`, and the `realcoraza`
+  transaction truth gate, all on the portable `CGO_ENABLED=0` path that matches
+  `build.sh`'s fallback where `libhs` is absent) and `govulncheck` (installs and
+  runs `govulncheck ./...`). The govulncheck job finally executes the dependency
+  CVE scan that `release-evidence/govulncheck-status.json` still records as
+  `NOT_RUN` on this host, because GitHub runners can reach `vuln.go.dev`.
+- CI deliberately does **not** gate on `gofmt` or a strict `go.sum` tidy diff:
+  20 files use the project's compact style and `go.sum` carries harmless stale
+  hashes, so either gate would be red on arrival. CI locks in the bar the
+  project already passes and blocks regressions of the kind found here.
+- Native VectorScan (`vectorscan`+cgo) is not built in CI; runners lack `libhs`.
+  That path stays host-qualified via `qualify-release-host.sh`.
+
+Verification on this branch: `go build ./...`, `CGO_ENABLED=0 go vet ./...`,
+`CGO_ENABLED=0 go test ./...` (exec-bit test now green), `CGO_ENABLED=1 go test
+-race ./...`, and `CGO_ENABLED=1 go test -tags realcoraza -run TestRealCoraza
+./...` all pass. `govulncheck` was not run on this host (unavailable); it runs in
+CI.
