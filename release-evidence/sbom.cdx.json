@@ -14,10 +14,46 @@
       "version": "v0.3.2"
     },
     {
-      "name": "github.com/magefile/mage",
-      "purl": "pkg:golang/github.com/magefile/mage@v1.15.1-0.20241126214340-bdc92f694516",
+      "name": "github.com/goccy/go-json",
+      "purl": "pkg:golang/github.com/goccy/go-json@v0.10.5",
       "type": "library",
-      "version": "v1.15.1-0.20241126214340-bdc92f694516"
+      "version": "v0.10.5"
+    },
+    {
+      "name": "github.com/goccy/go-yaml",
+      "purl": "pkg:golang/github.com/goccy/go-yaml@v1.18.0",
+      "type": "library",
+      "version": "v1.18.0"
+    },
+    {
+      "name": "github.com/gotnospirit/makeplural",
+      "purl": "pkg:golang/github.com/gotnospirit/makeplural@v0.0.0-20180622080156-a5f48d94d976",
+      "type": "library",
+      "version": "v0.0.0-20180622080156-a5f48d94d976"
+    },
+    {
+      "name": "github.com/gotnospirit/messageformat",
+      "purl": "pkg:golang/github.com/gotnospirit/messageformat@v0.0.0-20221001023931-dfe49f1eb092",
+      "type": "library",
+      "version": "v0.0.0-20221001023931-dfe49f1eb092"
+    },
+    {
+      "name": "github.com/kaptinlin/go-i18n",
+      "purl": "pkg:golang/github.com/kaptinlin/go-i18n@v0.1.4",
+      "type": "library",
+      "version": "v0.1.4"
+    },
+    {
+      "name": "github.com/kaptinlin/jsonschema",
+      "purl": "pkg:golang/github.com/kaptinlin/jsonschema@v0.4.6",
+      "type": "library",
+      "version": "v0.4.6"
+    },
+    {
+      "name": "github.com/magefile/mage",
+      "purl": "pkg:golang/github.com/magefile/mage@v1.17.0",
+      "type": "library",
+      "version": "v1.17.0"
     },
     {
       "name": "github.com/petar-dambovaliev/aho-corasick",
@@ -62,6 +98,12 @@
       "version": "v0.20.0"
     },
     {
+      "name": "golang.org/x/text",
+      "purl": "pkg:golang/golang.org/x/text@v0.35.0",
+      "type": "library",
+      "version": "v0.35.0"
+    },
+    {
       "name": "google.golang.org/protobuf",
       "purl": "pkg:golang/google.golang.org/protobuf@v1.36.11",
       "type": "library",
@@ -84,11 +126,11 @@
         }
       ],
       "type": "application",
-      "version": "waf-proxy phase4-security-product 2026-09-11"
+      "version": "phase4-main-breakage-hotfix-2026-09-11"
     },
-    "timestamp": "2026-09-11T03:13:09Z"
+    "timestamp": "2026-09-11T07:00:00Z"
   },
-  "serialNumber": "urn:uuid:652266c2-3261-50be-901f-fa5a4722458a",
+  "serialNumber": "urn:uuid:56b8b38c-7fde-5e8f-8643-1ea98b73aeb2",
   "specVersion": "1.5",
   "version": 1
 }

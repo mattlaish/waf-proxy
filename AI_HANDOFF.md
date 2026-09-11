@@ -1534,3 +1534,11 @@ PKI URL CRLs are HTTPS-only/443, SSRF checked across all DNS answers, pinned to 
 Executed isolated security/PKI/persistence race suites PASS. Full Go 1.25 test/vet, real Coraza request-ID test, positive external CRL/deployed Linux/HA/load/govulncheck remain open. Never report the isolated Go 1.23 stdlib suites as full project qualification.
 
 Phase 4 pre-final artifact verifier: PASS with 143 source files / 151 packaged manifest-tracked files, portable flavor. The delivery artifact must be rebuilt after final evidence text, then patch-reconstructed against the Phase 3 baseline before handoff.
+
+## 2026-09-11 — Main breakage hotfix checkpoint
+
+Two source-control/release blockers were corrected without changing product behavior. The Coraza v3.7.0 bump had left `go.mod`/`go.sum` behind the actual dependency graph; they are now synchronized to the tidied v3.7.0 consumer graph. The Git patch also changes every release shell script covered by `TestReleaseScriptsAreLFAndBashSyntaxClean` from `100644` to `100755`. Preserve those Git modes in future commits; ZIP executable attributes alone are not sufficient.
+
+Owner-supplied external evidence: pre-fix `go build ./...` failed only because `go mod tidy` was required; after tidy it built cleanly, and the only pre-fix `go test ./...` failure was the executable-bit test. This packaging host still cannot independently run the Go 1.25 full-repository gate.
+
+Hotfix packaging gate before final evidence freeze: complete-source artifact verifier PASS (`143 source / 151 packaged`, portable), reproducible duplicate ZIP PASS, and mode-aware patch reconstruction PASS across 152 regular workspace files. The delivery is rebuilt after this text so final artifact hashes must be taken from the delivery response/SHA256SUMS, not the pre-freeze hash.

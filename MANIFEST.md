@@ -166,3 +166,9 @@ Still intentionally excluded: ARGS/body, chains, negation, aggregate selectors, 
 - `pki_url_phase4_test.go` — CRL URL/SSRF/LKG/dedupe/cache regressions.
 - `PHASE4_SECURITY_PRODUCT_REPORT_2026-09-11.md` — implementation and executed-evidence boundary.
 - `waf-proxy.service` / `install.sh` / `waf-doctor.sh` — `/var/lib/waf-proxy` deployment-state wiring.
+
+## 2026-09-11 release-blocker hotfix
+
+- `go.mod` / `go.sum` — synchronized Coraza v3.7.0 indirect module graph/checksums.
+- top-level `*.sh` and `benchmark/build.sh` — Git executable mode is part of the release contract and must be `100755`.
+- No production Go behavior changed in this hotfix.

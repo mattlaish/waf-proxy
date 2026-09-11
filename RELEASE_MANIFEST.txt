@@ -1,101 +1,29 @@
-Version: waf-proxy phase4-security-product 2026-09-11
+Version: phase4-main-breakage-hotfix-2026-09-11
 Flavor: portable
-Build Timestamp: 2026-09-11T11:13:09+0800
+Build Timestamp: 2026-09-11T15:00:00+0800
 Source File Count: 143
 Generated Evidence File Count: 8
 
 Tests:
-  # Testing Results and Qualification Ledger
-  
-  Handover checkpoint: 2026-09-07 (Asia/Taipei)
-  
-  This file separates **real execution**, **stub/API integration**, **ABI-only native checks**, **component benchmarks**, and **NOT_RUN release gates**. Do not promote one evidence class into another.
-  
-  ## Final packaged baseline
-  
-  - Source artifact: `waf-proxy-vectorscan-learning-coraza37-2026-09-04.zip`
-  - SHA-256: `64dc3034865d20aedaa38e10af5459da844ae6f6d92960e224223ec0ed359b22`
-  - Size: 342,234 bytes
-  - Patch artifact: `waf-proxy-vectorscan-learning-coraza37-2026-09-04.patch`
-  - SHA-256: `a24645a911caaa986c310509103093ba0cdc5e7bdcd4801251ccadd4e17a8398`
-  - Size: 77,830 bytes
-  - Patch baseline: TLS Acceleration / modern-NGINX release line
-  
-  Previous packaging verification already completed:
-  
-  - ZIP integrity test: PASS
-  - ZIP re-extract vs source: 106 files, byte-for-byte identical, file modes identical
-  - patch reconstruction from TLS/modern-NGINX baseline: byte-for-byte/file-mode identical to final source
-  - diff hygiene: 20 expected files changed for the VectorScan/Coraza phase; unrelated TLS/AI/LB files did not drift
-  
-  ## Real host evidence already obtained
-  
-  ### TLS frontend / modern NGINX
-  
-  Host evidence previously recorded:
-  
-  - NGINX 1.26.3
-  - OpenSSL 3.5.5
-  - modern syntax generated as `listen ... ssl;` + `http2 on;`
-  - `nginx -t`: PASS with no deprecated `listen ... http2` warning
-  - HTTPS -> NGINX -> private Unix socket -> WAF-side endpoint smoke: PASS
-  - curl negotiated HTTP/2: PASS
-  - forged Internet-side internal forwarding/private TLS headers were overwritten/cleared: PASS
-  - kTLS auto detection fell back to software TLS on the available host because kernel kTLS was not available
-  - QAT auto detection fell back to software TLS because `qatprovider` was unavailable
-  
-  This proves frontend/fallback behavior on that host. It does **not** prove real QAT hardware acceleration or active kTLS.
-  
-  ## Portable Coraza API-stub regression
-  
-  Purpose: validate project control flow, compile compatibility with the intended Coraza API surface, Go logic, and race behavior when the real module cannot be downloaded. It is **not** real Coraza correctness evidence.
-  
-  Final VectorScan/Coraza integration round:
-  
-  - full repository `go test`: PASS
-  - `go vet ./...`: PASS
-  - bounded `go test -race` groups: PASS
-    - root package: PASS (~14.4 s in the recorded run)
-    - `internal/vectoraccel`: PASS (~1.1 s)
-    - `internal/tlsfront`: PASS (~1.17 s)
-    - `internal/sigupdate`: PASS (~4.6 s)
-    - `cmd/wafbench`: PASS (~1.15 s)
-  
-  A single all-packages race invocation exceeded the execution runner timeout; no race detector report was produced. The bounded package runs are the recorded PASS evidence.
-  
-  ## Native libhs ABI-only gate
-  
-  Purpose: compile/link/exercise the actual CGO adapter shape without claiming real VectorScan regex behavior.
-  
-  Using a local ABI-compatible libhs test library:
-  
-  - vectorscan build-tag compile: PASS
-  - vectorscan-tag tests: PASS
-  - vectorscan-tag `go vet`: PASS
-  - vectorscan root race: PASS
-  - scan/close lifecycle paths compiled and ran
-  
-  This gate found and caused removal of an unsafe `cgo.Handle` integer -> `unsafe.Pointer` bridge. The final adapter uses C-owned context storage carrying `uintptr_t` handle data instead.
-  
-  **Evidence boundary:** this does not prove `hs_compile_multi`/`hs_scan` correctness, pattern compatibility, performance, SIMD behavior, or real libvectorscan lifecycle.
-  
-  ## Coraza transaction-truth integration
-  
-  Implemented and covered by project tests/stub API integration:
-  
-  - Learning truth source is transaction-final `tx.MatchedRules()` after `ProcessLogging()`;
-  - ErrorCallback remains available for existing match logging/AI/syslog but is not a Learning truth source;
+  Main-breakage hotfix validation (packaging host)
+  - static Coraza v3.7.0 tidied consumer graph comparison: PASS
+  - required new go.sum entries present: PASS
+  - 14 release scripts executable/LF/bash -n: PASS
+  - mode-aware Git patch reconstruction from reported 100644 main state: PASS
+  - full Go 1.25 go build ./...: NOT_RUN locally (host Go 1.23.2; toolchain acquisition blocked)
+  - full Go 1.25 go test ./...: NOT_RUN locally for the same reason
+  - owner external reproduction: after go mod tidy build clean; only pre-fix test failure was executable Git mode
 
 Files:
 2e2a0e492385ee1383fcfd59b0c4909a701708f033e0d5988d7da6b5b9860b2c  AGENTS.md
-8b91999ff9e1d3f9fe4a5b312e0ddc3c316136a0ae8aab99c879adfb26029d50  AI_HANDOFF.md
+ff829c8dbf3fb8b6c85f8bb5e4244a3820640834498ac9a0ccc85a11fb49e7ab  AI_HANDOFF.md
 85a7e76acbdad58f2eda3b72bc1fb28d692d7d045489020705bc00c49c392486  CLAUDE.md
-3b9ed504d280f818b4cec08e22c4b4e8b090b1d9fdc3f5bd372e6aa96c71de7e  DEVELOPMENT.md
+01268472176dfd7a03c9aeec6311a67bca9b71a5502a8dc8fc2811e39d2870b4  DEVELOPMENT.md
 6267ab9931cbcec17987f6312dc2fd3aaf5e738d8870cb8b3437e4b5c8b1956b  DEVELOPMENT_ROADMAP.md
 9895c7188835d97c84e8169aec12e7bfbcfbdcb9f98b9ea68f6c2841668f480f  HANDOVER_PROMPT.md
 925a333b3c2511a77fa52c144b25da11e5c46a35bafcbc352f1324fb411316d0  HANDOVER_STATUS.md
 42dcd9036beb149818cc484b57bdf23f6d37f78b370766db594d0f11887e1cef  INSTALL.md
-41d7d8456fcc46fa2c734c647f59e344ce16249da609b4cbd90496c9a29afec0  MANIFEST.md
+1c214870901d564a4d740592f9f445f2c010f4023aee1b3822b5efc382738ea1  MANIFEST.md
 a384651c3df0da11283178b0c0d7ae3669bd0da66190e4c3bb2b570b63f36c04  PHASE0_PHASE1_QUALIFICATION_REPORT_2026-09-11.md
 3ec6b420dc50111653ac053619bf931a4a228878c2f0efd72041e416897fdce0  PHASE2_VECTORSCAN_COVERAGE_REPORT_2026-09-11.md
 5c63aea82b47cc906eceb65f2b0a0bb71e044fb38638acb3b515f965cd2ec449  PHASE3_RELEASE_ENGINEERING_REPORT_2026-09-11.md
@@ -103,7 +31,7 @@ f3389b4090c0b8189dcb06ea524f84dcf3062bb745fd00e33c5473f00ffd69e8  PHASE4_SECURIT
 60bf26bd9430158e52193daf5b3a4e3dd02484aace886233c40aa99ebacd9e02  README.md
 0fd5016a68c574ce88a1418a0d0d82021ecb71178193df34ef20683c1e0b52c0  RELEASE_PROCESS.md
 50db43f0e0ea423a85149d3786bcc68bcf79ff6a6ef2a230da93ccce6b2e46ee  TESTING.md
-1e196b8b91871583a5e11738afb410157e4cb1467bc6930d3b8b7ed001430e1c  TESTING_RESULTS.md
+8aba490b62d8bb4864cf1ff9c64a253604b9fede0f6abf7dd17f5cadc58cc5b9  TESTING_RESULTS.md
 49ab8f43cdec0d616d6ba211bd3c9177c48ee193eb65b70959600a90ce5d6b18  admin.go
 1ed6532d13cbc18b6be719d0697c0d8e76446f4d811812ba91f43e2f1cc781c0  ai.go
 6a8f1b9b977f5245fccb02a08c4825799c23bce47e3c6b7ada570095205b3878  ai_test.go
@@ -140,8 +68,8 @@ c021fc346e6ec0c9ce8502e9d68a142f180f2ec5f562b27b9e0c5ebc9de8b71a  fieldpolicy_te
 18c9013683d6d5da7fdfe013ef86d289ee8fbefe1d7f6c4328a66d088d13d5e3  freebind_linux.go
 4d655dc660a83e528f2ec970c72ac77aa58c9588a8f4229081e67cf91de246e9  freebind_other.go
 71d73e1a14dcfb10cb9eb86c032fef1b0b50b28d4fc3fdad5c71c23c7a65347f  generate-release-evidence.sh
-5aef978f8f0c66df4d51f7606ddfa5f367d4e8ebc4a96579fcb13e49264d0ade  go.mod
-cce4707d40a0347bdd9044b7b97a88711450a8f726ad3422fa9e44d4ffff35f5  go.sum
+29950f92bf626789778e87f9c9df33fe5fc49504ab25a7c1b719f5bc99fbb36c  go.mod
+c3ed48273853eff709f1415d7181c334d33967ec3051861a1dd2e141f0aa175b  go.sum
 3de828e1fc17537c8f0d486a2e72b1c884f70c3e517a61fe419b855e04d596c6  ha.go
 47c768dfc972967fbce509d4c0cf32b1138d7fd6a22745f73960ec6d43526ae5  hotpath_test.go
 86d31edf86e19e76ed371cb5a4eb94ccc2028240ddb6e4fc20bbcdd1369d6ec2  hybrid_discovery_test.go
@@ -176,7 +104,7 @@ b6f1fb83ebb589e19afe23deaf11e2e23ea57b57eca23a8e667adc2288a9ddb6  metrics.go
 6282fa9bd309b19c7bda3afaa05d90eb64d673edf465133c0f0488f23c241b4d  observations.go
 177c443e50d98d8b116591b0b4306916361f53ba16bb777bd565166d67699205  observations_test.go
 9dc5c57f5722a742ec24250f19202413427559627c6ca0894addb19f05251842  p1_tuning_test.go
-ff9fd876c679b10cad575f51025bb0b30683caecdc66ab11f541e9e783dd6f80  patch.md
+74fa248e70c035f8a9a227c3b70dd7f4e2fa5b36a90bc7e60db1045dcd278693  patch.md
 febd25153bd333794da094f9b481cc2f3d2963298efb4eb847394128880846cd  phase3-release-tooling-test.sh
 5c5b50c5c974f71d3b022df2008670445a654cc10fb1e8cb8b6290558cb5613a  pki.go
 620d5e73937908db4ea8d45246d0bd668dafe79fb494ce4151889eb991d5ecf3  pki_crl_test.go
@@ -191,14 +119,14 @@ fdac41005cda5ba665ca0ab02d46b8147687ca249b179bf2c4e5ca9cdae2de96  pki_url_phase4
 39be9cef6cec29299cddb0488b2b5bfe274d4c40a7f5d7186a8c37d0af7468ae  qualification/phase1_runner.go
 a67982dca65a3f62143965a6d58ade359bfdbf4a6fb0c22644d62083cea9bc9e  qualification_diff.go
 9f783bae55922b0075919c363cb90d426e57e3c3f819413016646f11fc574750  qualify-release-host.sh
-b8339c83a2728de323a8a69ed2e9787b6a567ab76c027ac9fdcc919e9c46e479  release-evidence/SHA256SUMS.txt
+256f7e917b2502c181314850cb84decc5079d8f9d019ae830ebd86882c044278  release-evidence/SHA256SUMS.txt
 5ec5736b813da4af536cfecd691082cec932a713b25b5dc6cbefd0520b32717e  release-evidence/govulncheck-status.json
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  release-evidence/govulncheck.json
 c563c71dfbaf0b2add3347b2596dd95215415e8c897e162f5dbd18d6edf811d1  release-evidence/govulncheck.stderr
-473678fda101988f2dbfa5c924ca119f90812279d7b8530075a64a10134a239d  release-evidence/provenance.json
-0e199bd207f92b7427ff7c4191135c521bbea5145fdceade63c918d3c3924407  release-evidence/sbom.cdx.json
-557296530860d441e51fce0c4f2852877271cc7b505e6b233a643bd6063019cd  release-evidence/sbom.spdx.json
-0028453026dd951d9fc6175ff475f9c3cac01ab51e66d105e7ac69e1492958ce  release-evidence/versions.json
+6757c034b05934565128a139dddd6e5de4e0bde43e43555e2381248138fdfb95  release-evidence/provenance.json
+29950134275781bfdbc0d4ce6e6f0ef8e8553ec571bb87a27714813d74ecdcff  release-evidence/sbom.cdx.json
+07ab8444e0bb91fc9063fd4d1338214fe369c8eb1ad8454856dd0f0177f159e6  release-evidence/sbom.spdx.json
+e4c13032e3d7a102e897c90293df8b216cea6756b87011c8e87ab99513d7299a  release-evidence/versions.json
 41077daf7a3ce02ce66a78482cf283454e5d8c2dcdf2faad81629b20c2129a9f  release_scripts_test.go
 0c279ca0888658b1eba9912d9f2e679d5f8bda4909f51b5104eedd2e675ed516  request_id_coraza_phase4_test.go
 98fa5ab0314590989c5de9585368c019d312c6b01ef578941d7de42c4fbfc770  runtime_smoke_test.go

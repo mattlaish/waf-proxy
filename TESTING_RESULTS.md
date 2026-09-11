@@ -366,3 +366,13 @@ These results establish implementation-level evidence only. They do not change t
 ### Phase 4 pre-final artifact gate
 
 A controlled complete-source portable build using the Phase 3 release tooling returned `ARTIFACT_INTEGRITY_PASS source_files=143 packaged_files=151 flavor=portable`. This verifies clean staging, regenerated Phase 4 release evidence, extracted source byte/mode equality and manifest/evidence validation before the final documentation freeze. The final artifact is rebuilt from the frozen source with the same `SOURCE_DATE_EPOCH` and independently rechecked below/outside the source tree.
+
+## 2026-09-11 — Main-branch build/test blocker hotfix
+
+External main-branch reproduction supplied by the owner established two failures before this hotfix: `go build ./...` exited 1 with `updates to go.mod needed; to update it: go mod tidy`, and `go test ./...` otherwise passed except `TestReleaseScriptsAreLFAndBashSyntaxClean`, because the tested scripts were Git mode `100644`. The owner also confirmed that `go mod tidy` made the code build cleanly.
+
+This hotfix synchronizes `go.mod`/`go.sum` to the Coraza v3.7.0 indirect graph and makes all scripts covered by `TestReleaseScriptsAreLFAndBashSyntaxClean` executable in the Git-mode patch. Packaging-host checks executed here: all covered scripts are mode 0755 in the fixed source tree and `bash -n` clean. Full Go 1.25 `go build ./...` / `go test ./...` cannot be independently rerun in this packaging host because only Go 1.23.2 is available and external toolchain/module acquisition is blocked; do not relabel the owner's external execution as local release-host evidence.
+
+### Hotfix artifact gate
+
+Pre-freeze packaging verification passed with `source_files=143 packaged_files=151 flavor=portable`. Two builds using identical source, version, flavor and `SOURCE_DATE_EPOCH=1789110000` were byte-identical (pre-freeze SHA-256 `b0d90e41dbe47b2df83160c10e1aa5605176da60b900e6323c99534e724d3795`). The mode-aware Git patch reconstructed the fixed workspace from the reported main state with 152 regular files byte-for-byte and mode-for-mode identical. Final delivery is rebuilt after this evidence text is frozen.

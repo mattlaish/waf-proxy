@@ -837,3 +837,11 @@ Implemented L7 request abuse controls, expiring CIDR allow/deny, WAF-owned reque
 Executed evidence: isolated security, PKI and persistence `-race` suites PASS; JSON/shell/systemd-unit syntax checks PASS. Full repository Go 1.25 test/vet, real Coraza request-ID regression, external positive CRL/deployed Linux/HA/load/govulncheck remain BLOCKED/NOT_RUN and must not be inferred from isolated tests.
 
 Phase 4 pre-final complete-source artifact verification: PASS, 143 source files / 151 packaged manifest-tracked files, portable flavor. Final ZIP is rebuilt after evidence/documentation freeze; patch reconstruction remains a mandatory final gate.
+
+## 2026-09-11 — Main build/test blocker hotfix
+
+Baseline: Phase 4 security/product source.
+
+Changes: synchronized the Go module manifests for Coraza v3.7.0 and corrected Git executable modes for every release shell script covered by `TestReleaseScriptsAreLFAndBashSyntaxClean`. This is a release/repository metadata hotfix only; runtime behavior is unchanged. The mode-aware Git patch is intentionally generated from a simulated `main` baseline with the affected scripts at `100644`, so applying it records `100755` rather than relying on archive extraction semantics.
+
+Hotfix pre-freeze artifact evidence: complete-source verifier PASS (`143 source / 151 packaged`, portable); repeated same-input ZIP build was byte-identical; mode-aware patch reconstruction PASS across 152 regular workspace files. Final delivery is rebuilt after evidence freeze.

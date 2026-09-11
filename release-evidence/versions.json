@@ -2,7 +2,7 @@
   "coraza": "v3.7.0",
   "crs": "not-embedded",
   "flavor": "portable",
-  "generated_at": "2026-09-11T03:13:09Z",
+  "generated_at": "2026-09-11T07:00:00Z",
   "go": {
     "module_directive": "1.25.0",
     "packaging_host": "go1.23.2"
@@ -14,5 +14,5 @@
     "provenance": "portable-coraza-only",
     "version": "not-included"
   },
-  "version": "waf-proxy phase4-security-product 2026-09-11"
+  "version": "phase4-main-breakage-hotfix-2026-09-11"
 }

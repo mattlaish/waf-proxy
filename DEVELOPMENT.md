@@ -98,3 +98,9 @@ Implemented `security_state.go` as an atomic local persistence layer for AI bloc
 Extended the existing static-CRL PKI path instead of replacing it. `crl_urls` now supports SSRF-hardened HTTPS retrieval, DNS-answer validation and pinned dialing, bounded fetches, refresh scheduling/deduplication, last-known-good memory retention, restart cache, per-pool status, manual operator refresh, audit and existing hard/soft verification semantics. Full config validation intentionally performs no network I/O; outbound fetch validation happens during runtime construction before the new config is published.
 
 Executed isolated security, PKI and persistence race suites PASS on the local Go 1.23.2 toolchain. Project-wide Go 1.25 test/vet and real Coraza request-ID regression remain blocked by the packaging host. External CRL positive/deployed Linux testing remains NOT_RUN. See `PHASE4_SECURITY_PRODUCT_REPORT_2026-09-11.md`.
+
+## 2026-09-11 — Release blocker hotfix: module manifest + executable Git modes
+
+Corrected two repository-level breakages found on `main`. `go.mod` had been manually advanced to Coraza v3.7.0 without the full tidied indirect graph, so a clean `go build ./...` requested `go mod tidy`. The indirect block is now synchronized to the Coraza v3.7.0 consumer graph, including `jsonschema`, `go-i18n`, `go-json`, `go-yaml`, the message-format helpers, `x/text`, and the current Mage/Aho-Corasick revisions; `go.sum` carries the corresponding checksums.
+
+The release-script contract was also corrected at the Git metadata boundary: every top-level `*.sh` plus `benchmark/build.sh` must be committed executable (`100755`), not merely packaged with an executable ZIP mode. This directly fixes `TestReleaseScriptsAreLFAndBashSyntaxClean` on a normal Git checkout. No dataplane, policy, Coraza, VectorScan, PKI, or Phase 4 runtime behavior changed.
