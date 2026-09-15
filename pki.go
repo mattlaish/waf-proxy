@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -13,7 +12,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -32,15 +30,6 @@ type crlSnapshot struct {
 type crlStore struct {
 	current atomic.Pointer[crlSnapshot]
 	mode    string
-
-	mu          sync.Mutex
-	cfg         BackendTLSConfig
-	issuers     []*x509.Certificate
-	roots       *x509.CertPool
-	lastAttempt time.Time
-	lastSuccess time.Time
-	lastError   string
-	refreshing  bool
 }
 
 type BackendTLSConfig struct {
@@ -79,18 +68,8 @@ func validateBackendTLSDraft(scheme string, c BackendTLSConfig) error {
 	if err := validateUniquePaths("crl_files", c.CRLFiles, maxCRLFiles); err != nil {
 		return err
 	}
-	if len(c.CRLURLs) > 16 {
-		return errors.New("crl_urls supports at most 16 URLs")
-	}
-	seenURL := map[string]struct{}{}
-	for i, raw := range c.CRLURLs {
-		if err := validateCRLURLSyntax(raw); err != nil {
-			return fmt.Errorf("crl_urls[%d]: %w", i, err)
-		}
-		if _, ok := seenURL[raw]; ok {
-			return fmt.Errorf("crl_urls contains duplicate URL %q", raw)
-		}
-		seenURL[raw] = struct{}{}
+	if len(c.CRLURLs) > 0 {
+		return errors.New("crl_urls are reserved for the URL refresh implementation slice")
 	}
 	return nil
 }
@@ -102,16 +81,13 @@ func validateBackendTLS(scheme string, c BackendTLSConfig) error {
 	if scheme == "https" && !useSystemCA(c) && len(c.CAFiles) == 0 {
 		return errors.New("use_system_ca=false requires at least one ca_file")
 	}
-	if c.RevocationMode == "hard" && len(c.CRLFiles) == 0 && len(c.CRLURLs) == 0 {
-		return errors.New("hard revocation mode requires at least one crl_file or crl_url")
+	if c.RefreshSec != 0 {
+		return errors.New("refresh_sec requires the URL refresh implementation slice")
 	}
-	// Full config validation checks local trust material without performing
-	// outbound network I/O. CRL URL DNS/SSRF/TLS/fetch validation happens once
-	// during runtime construction, immediately before the config can go live.
-	local := c
-	local.CRLURLs = nil
-	local.RefreshSec = 0
-	_, err := buildBackendTLSConfig(local, scheme)
+	if c.RevocationMode == "hard" && len(c.CRLFiles) == 0 {
+		return errors.New("hard revocation mode requires at least one crl_file")
+	}
+	_, err := buildBackendTLSConfig(c, scheme)
 	return err
 }
 
@@ -320,26 +296,21 @@ func (s *crlStore) verify(cs tls.ConnectionState) error {
 }
 
 func buildBackendTLSConfig(c BackendTLSConfig, scheme string) (*tls.Config, error) {
-	cfg, _, err := buildBackendTLSConfigRuntime(context.Background(), c, scheme, false)
-	return cfg, err
-}
-
-func buildBackendTLSConfigRuntime(ctx context.Context, c BackendTLSConfig, scheme string, startRefresh bool) (*tls.Config, *crlStore, error) {
 	if scheme != "https" {
 		if c.configured() {
-			return nil, nil, errors.New("backend TLS settings require scheme https")
+			return nil, errors.New("backend TLS settings require scheme https")
 		}
-		return nil, nil, nil
+		return nil, nil
 	}
 	var roots *x509.CertPool
 	var err error
 	if useSystemCA(c) {
 		roots, err = x509.SystemCertPool()
 		if err != nil {
-			return nil, nil, fmt.Errorf("load system CA pool: %w", err)
+			return nil, fmt.Errorf("load system CA pool: %w", err)
 		}
 		if roots == nil {
-			return nil, nil, errors.New("system CA pool is unavailable")
+			return nil, errors.New("system CA pool is unavailable")
 		}
 	} else {
 		roots = x509.NewCertPool()
@@ -348,20 +319,17 @@ func buildBackendTLSConfigRuntime(ctx context.Context, c BackendTLSConfig, schem
 	for _, path := range c.CAFiles {
 		certs, err := appendCABundle(roots, path)
 		if err != nil {
-			return nil, nil, fmt.Errorf("CA file %q: %w", path, err)
+			return nil, fmt.Errorf("CA file %q: %w", path, err)
 		}
 		customIssuers = append(customIssuers, certs...)
 	}
-	store, err := prepareCRLStore(ctx, c, customIssuers, roots, time.Now())
+	store, err := loadCRLStore(c, customIssuers, time.Now())
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	config := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: c.ServerName}
-	if len(c.CRLFiles) > 0 || len(c.CRLURLs) > 0 || c.RevocationMode == "hard" {
+	if len(c.CRLFiles) > 0 || c.RevocationMode == "hard" {
 		config.VerifyConnection = store.verify
 	}
-	if startRefresh && store != nil && c.RefreshSec > 0 && (len(c.CRLURLs) > 0 || len(c.CRLFiles) > 0) {
-		store.startRefresher(ctx, time.Duration(c.RefreshSec)*time.Second)
-	}
-	return config, store, nil
+	return config, nil
 }

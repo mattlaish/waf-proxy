@@ -234,6 +234,21 @@ func (t lbTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, errors.New("load balancer pool has no members")
 	}
 
+	started := time.Now()
+	if dc, ok := debugContextFrom(r.Context()); ok {
+		if store := currentDebugEvidenceStore(); store != nil {
+			store.Merge(dc.Tenant, dc.TransactionID, func(b *DebugBundle) {
+				b.Proxy = map[string]any{
+					"pool":            t.pool.name,
+					"lb_method":       t.pool.method,
+					"member_node":     m.node,
+					"upstream_scheme": m.target.Scheme,
+					"upstream_host":   m.target.Host,
+				}
+			})
+		}
+	}
+
 	// ReverseProxy owns this outbound request. Select the backend here so the
 	// chosen member remains a local pointer for accounting, avoiding the former
 	// request-context value and its per-request allocation. Pool member targets
@@ -246,6 +261,21 @@ func (t lbTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 	atomic.AddInt64(&m.active, 1)
 	resp, err := t.base.RoundTrip(r)
+	if dc, ok := debugContextFrom(r.Context()); ok {
+		if store := currentDebugEvidenceStore(); store != nil {
+			store.Merge(dc.Tenant, dc.TransactionID, func(b *DebugBundle) {
+				if b.Proxy == nil {
+					b.Proxy = map[string]any{}
+				}
+				b.Proxy["round_trip_ms"] = float64(time.Since(started).Microseconds()) / 1000.0
+				if err != nil {
+					b.Proxy["error"] = truncateDebugString(err.Error(), 512)
+				} else if resp != nil {
+					b.Proxy["upstream_status"] = resp.StatusCode
+				}
+			})
+		}
+	}
 	if err != nil {
 		atomic.AddInt64(&m.active, -1)
 		return resp, err

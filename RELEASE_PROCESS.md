@@ -97,43 +97,62 @@ Passing this gate proves that the delivered ZIP contains the validated source by
 
 No ZIP, installer, package, or deployment bundle is complete merely because its source tests passed. Delivery artifacts are part of the production surface and must be independently verified after creation.
 
+## Supportability evidence in releases
 
-## 2026-09-11 Supportability Slice
+The installed release now includes `/usr/local/bin/wafctl`. A release-host operational smoke should run `wafctl doctor`; incident investigations may enable a short site-scoped capture with `wafctl debug capture`, export one transaction with `wafctl debug export`, and generate a sanitized support ZIP with `wafctl support bundle`.
 
-Added wafctl debug export/doctor/support bundle foundation and Phase 1 differential qualification helper. Real Coraza/libvectorscan execution remains NOT_RUN.
+Support/debug ZIPs are diagnostic artifacts, not raw traffic dumps. They must remain bounded, tenant scoped and secret-sanitized. Their manifest/checksum validation is separate from the source-ZIP Artifact Packaging Integrity Gate.
+
+For VectorScan production enablement, run `./run-phase1-qualification.sh --rules <production-or-representative-rules>` only after Phase 0 passes on the same class of host. Archive the generated JSON report with release evidence. A report is acceptable only when it says PASS, has zero false negatives, and contains the required minimum eligible Coraza match events; BLOCKED is not a release PASS.
 
 
-## Stage 2 Supportability Implementation
-- Added wafctl supportability command foundation.
-- Added qualification phase1 differential runner foundation.
-- Real Go 1.25/Coraza/libvectorscan qualification remains NOT_RUN.
+## Phase 2 implementation update (2026-09-13)
 
-## Phase 3 supply-chain release flow
+Implemented qualification corpus schema foundation and differential false-negative gate helpers. Full runtime qualification remains deferred until real Go 1.25, Coraza v3.7.0 execution and libvectorscan are available.
 
-Use an explicit release flavor:
+
+## Phase 2 Slice B continuation
+
+Implemented evidence operations, retention policy foundation, support provenance/SBOM evidence models, and VectorScan audit store. Full regression and real qualification remain deferred.
+
+## Phase 3 release engineering and supply-chain hardening
+
+Formal release candidates should use a fixed `SOURCE_DATE_EPOCH` and an explicit release variant. The complete-source package can be produced reproducibly with:
 
 ```bash
-SOURCE_DATE_EPOCH=<unix-epoch> ./build-release-artifact.sh /tmp/waf-source.zip \
-  --version '<release-label>' --flavor portable \
+SOURCE_DATE_EPOCH=<approved-epoch> \
+  ./build-release-artifact.sh /outside/tree/waf-source.zip \
+  --version '<release-label>' --variant source --require-reproducible \
   --test-summary TESTING_RESULTS.md
 ```
 
-Use `--flavor native` only on a host with verified real `pkg-config libhs`; the generator exits 3 otherwise. Production release runs should also use `--require-govulncheck`. The artifact contains a generated `release-evidence/` directory with SPDX/CycloneDX SBOMs, version/provenance information, govulncheck truth status, and its own checksum file. `verify-release-artifact.sh` validates these independently after clean extraction.
+The artifact contains `release-evidence/RELEASE_EVIDENCE.json`, `SOURCE_MANIFEST.sha256`, `sbom.spdx.json`, and `sbom.cyclonedx.json`. The evidence records the local Go runtime/directive, Coraza pin, VectorScan/libhs discovery, NGINX/OpenSSL discovery and optional CRS tree digest. These are provenance records, not runtime qualification.
 
-For reproducibility, the exact same source tree, version, flavor and `SOURCE_DATE_EPOCH` must produce a byte-identical source ZIP. Any differing release input is expected to change the hash.
+`release-security-scan.sh` is the canonical govulncheck evidence runner. Use `--mode required` for a release gate. Missing Go >=1.25, missing govulncheck, unavailable network/module data, or other prerequisites must remain BLOCKED/NOT_RUN rather than PASS.
 
-Optional organizational signing is external-key only:
+`build-release-artifact.sh` is a **source-archive** builder and may only emit `SOURCE_ARCHIVE` identity. When binaries are produced, `build.sh` separately records whether the actual WAF binary is `PORTABLE_BINARY` / `portable-coraza` or `NATIVE_BINARY` / `native-vectorscan` and writes `BUILD_PROVENANCE.json` plus `BUILD_SHA256SUMS.txt`. Native VectorScan provenance explicitly records that compatible runtime libhs is required. Never relabel a source archive as a binary artifact or one binary variant as the other.
+
+Run both supply-chain post-package gates:
 
 ```bash
-WAF_RELEASE_SIGNING_KEY=/secure/path/release-key.pem \
-  ./sign-release-artifact.sh /tmp/waf-source.zip
-./verify-release-signature.sh /tmp/waf-source.zip /tmp/waf-source.zip.sig release-public-key.pem
+./release-artifact-negative-tests.sh /outside/tree/waf-source.zip .
+./verify-reproducible-source-release.sh \
+  --version '<release-label>' --source-date-epoch <approved-epoch> --variant source
 ```
 
-Never add the private key to the repository or release ZIP. If no organizational signing key/process exists, record signing as `NOT_RUN`; do not generate an ad-hoc key merely to turn the gate green.
+Optional artifact signing uses detached minisign signatures only when an organizational signing secret is supplied externally:
 
-## Phase 4 deployment-state release checks
+```bash
+./build-release-artifact.sh /outside/tree/waf-source.zip \
+  --version '<release-label>' --variant source \
+  --source-date-epoch <approved-epoch> --require-reproducible \
+  --minisign-key /secure/offline/path/release.key --require-signature
+```
 
-A Phase 4 release additionally treats local state paths as production surface. The shipped systemd unit must keep `ProtectSystem=strict` while declaring `StateDirectory=waf-proxy`; extracted artifacts must retain that directive. Deploy/upgrade tests must verify `/var/lib/waf-proxy` ownership/permissions and that `security-state.json` and CRL cache files are service-writable but not world-readable.
+No release signing secret belongs in the repository, installation tree, support bundle, or source artifact. If no approved key/process exists, signing status remains `NOT_CONFIGURED`.
 
-Do not package runtime security-state or CRL-cache contents into a source/release artifact. They are mutable deployment state. Release qualification must separately exercise restart persistence, corrupt/expired cache handling, CRL refresh failure with last-known-good retention, and absence of raw session bearer tokens in persisted state.
+## Phase 3 Truth-Boundary Repair — 2026-09-14
+
+Release evidence is now source-bound and internally cross-digested. `SOURCE_MANIFEST.sha256` must exactly cover the packaged source set; `RELEASE_MANIFEST.txt` must exactly cover every packaged file except itself. `RELEASE_EVIDENCE.json` schema v2 must identify this builder's output as `SOURCE_ARCHIVE`, bind to the source-manifest digest, carry a structured native-VectorScan requirement state, and embed source-bound govulncheck evidence. `PROVENANCE.json` binds the source manifest, release evidence, and both SBOMs. The verifier also checks SPDX/CycloneDX dependency sets against `go.mod`.
+
+This is an **integrity** boundary, not a cryptographic producer-authentication boundary. Anyone able to rewrite an unsigned archive can recompute unsigned hashes. Producer authenticity exists only after a detached minisign signature is verified with an independently trusted public key via `verify-release-signature.sh` or `wafctl release verify-signature`. `--require-signature` therefore requires both signing and public verification inputs.

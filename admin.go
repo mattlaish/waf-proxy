@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -35,16 +34,15 @@ var adminThemeCSS []byte
 // ── rule-match ring buffer ──────────────────────────────────────────────
 
 type matchRec struct {
-	Time      string `json:"time"`
-	Site      string `json:"site"`
-	RuleID    int    `json:"rule_id"`
-	Severity  string `json:"severity"`
-	Phase     int    `json:"phase"`
-	Client    string `json:"client"`
-	URI       string `json:"uri"`
-	Msg       string `json:"msg"`
-	Data      string `json:"data"`
-	RequestID string `json:"request_id,omitempty"`
+	Time     string `json:"time"`
+	Site     string `json:"site"`
+	RuleID   int    `json:"rule_id"`
+	Severity string `json:"severity"`
+	Phase    int    `json:"phase"`
+	Client   string `json:"client"`
+	URI      string `json:"uri"`
+	Msg      string `json:"msg"`
+	Data     string `json:"data"`
 }
 
 type matchRing struct {
@@ -98,28 +96,26 @@ func (r *matchRing) count() int {
 
 // accessRec is one line of the request/access log.
 type accessRec struct {
-	At        time.Time `json:"-"`
-	Site      string    `json:"site"`
-	Client    string    `json:"client"`
-	Method    string    `json:"method"`
-	Path      string    `json:"path"`
-	Status    int       `json:"status"`
-	RequestID string    `json:"request_id,omitempty"`
+	At     time.Time `json:"-"`
+	Site   string    `json:"site"`
+	Client string    `json:"client"`
+	Method string    `json:"method"`
+	Path   string    `json:"path"`
+	Status int       `json:"status"`
 }
 
 func (a accessRec) MarshalJSON() ([]byte, error) {
 	type accessWire struct {
-		Time      string `json:"time"`
-		Site      string `json:"site"`
-		Client    string `json:"client"`
-		Method    string `json:"method"`
-		Path      string `json:"path"`
-		Status    int    `json:"status"`
-		RequestID string `json:"request_id,omitempty"`
+		Time   string `json:"time"`
+		Site   string `json:"site"`
+		Client string `json:"client"`
+		Method string `json:"method"`
+		Path   string `json:"path"`
+		Status int    `json:"status"`
 	}
 	return json.Marshal(accessWire{
 		Time: a.At.Format("15:04:05"), Site: a.Site, Client: a.Client,
-		Method: a.Method, Path: a.Path, Status: a.Status, RequestID: a.RequestID,
+		Method: a.Method, Path: a.Path, Status: a.Status,
 	})
 }
 
@@ -307,12 +303,11 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("GET /api/vector-acceleration", a.auth(a.handleVectorAcceleration))
 	mux.HandleFunc("POST /api/vector-acceleration/reset", a.authRole(roleReviewer, a.handleVectorAccelerationReset))
 	mux.HandleFunc("GET /api/tls-acceleration", a.auth(a.handleTLSAcceleration))
-	mux.HandleFunc("GET /api/security", a.auth(a.handleSecurityStatus))
-	mux.HandleFunc("GET /api/security/cidrs", a.auth(a.handleSecurityCIDRs))
-	mux.HandleFunc("POST /api/security/cidrs/upsert", a.authRole(roleOperator, a.handleSecurityCIDRUpsert))
-	mux.HandleFunc("POST /api/security/cidrs/delete", a.authRole(roleOperator, a.handleSecurityCIDRDelete))
-	mux.HandleFunc("GET /api/pki/crl", a.auth(a.handlePKICRLStatus))
-	mux.HandleFunc("POST /api/pki/crl/refresh", a.authRole(roleOperator, a.handlePKICRLRefresh))
+	mux.HandleFunc("GET /api/doctor", a.auth(a.handleDoctor))
+	mux.HandleFunc("GET /api/debug/status", a.auth(a.handleDebugStatus))
+	mux.HandleFunc("POST /api/debug/capture", a.authRole(roleOperator, a.handleDebugCapture))
+	mux.HandleFunc("GET /api/debug/evidence", a.authRole(roleReviewer, a.handleDebugEvidence))
+	mux.HandleFunc("GET /api/debug/export", a.authRole(roleReviewer, a.handleDebugExport))
 	a.registerUpdateRoutes(mux) // signed self-update (localhost + admin, 404 when no key)
 	return mux
 }
@@ -1513,198 +1508,4 @@ func (a *adminServer) handleSitemapClear(w http.ResponseWriter, r *http.Request)
 	a.srv.signals.clear(site)
 	a.srv.learn.clear(site)
 	writeJSON(w, map[string]any{"ok": true})
-}
-
-func canonicalCIDR(raw string) (string, error) {
-	_, network, err := net.ParseCIDR(strings.TrimSpace(raw))
-	if err != nil {
-		return "", err
-	}
-	return network.String(), nil
-}
-
-func (a *adminServer) handleSecurityCIDRs(w http.ResponseWriter, _ *http.Request) {
-	rt := a.srv.rt.Load()
-	if rt == nil {
-		http.Error(w, "runtime unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	writeJSON(w, map[string]any{"allow": rt.cfg.Security.AllowCIDRs, "deny": rt.cfg.Security.DenyCIDRs})
-}
-
-func upsertCIDRRule(in []CIDRAccessRule, rule CIDRAccessRule) []CIDRAccessRule {
-	out := make([]CIDRAccessRule, 0, len(in)+1)
-	for _, existing := range in {
-		if existing.CIDR != rule.CIDR {
-			out = append(out, existing)
-		}
-	}
-	return append(out, rule)
-}
-
-func deleteCIDRRule(in []CIDRAccessRule, cidr string) []CIDRAccessRule {
-	out := make([]CIDRAccessRule, 0, len(in))
-	for _, existing := range in {
-		if existing.CIDR != cidr {
-			out = append(out, existing)
-		}
-	}
-	return out
-}
-
-func (a *adminServer) persistAppliedConfig(c Config) error {
-	if err := a.srv.apply(c); err != nil {
-		return err
-	}
-	if err := saveConfig(a.srv.configPath, c); err != nil {
-		return fmt.Errorf("applied but not persisted: %w", err)
-	}
-	return nil
-}
-
-func (a *adminServer) handleSecurityCIDRUpsert(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		List       string `json:"list"`
-		CIDR       string `json:"cidr"`
-		TTLSeconds int    `json:"ttl_sec,omitempty"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
-		return
-	}
-	if req.List != "allow" && req.List != "deny" {
-		http.Error(w, "list must be allow or deny", http.StatusBadRequest)
-		return
-	}
-	if req.TTLSeconds < 0 || req.TTLSeconds > 365*24*3600 {
-		http.Error(w, "ttl_sec must be 0..31536000", http.StatusBadRequest)
-		return
-	}
-	cidr, err := canonicalCIDR(req.CIDR)
-	if err != nil {
-		http.Error(w, "invalid CIDR", http.StatusBadRequest)
-		return
-	}
-	rule := CIDRAccessRule{CIDR: cidr}
-	if req.TTLSeconds > 0 {
-		rule.ExpiresAt = time.Now().Add(time.Duration(req.TTLSeconds) * time.Second).UTC().Format(time.RFC3339)
-	}
-	cur := a.srv.rt.Load()
-	if cur == nil {
-		http.Error(w, "runtime unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	cfg := cur.cfg
-	if req.List == "allow" {
-		cfg.Security.AllowCIDRs = upsertCIDRRule(cfg.Security.AllowCIDRs, rule)
-	} else {
-		cfg.Security.DenyCIDRs = upsertCIDRRule(cfg.Security.DenyCIDRs, rule)
-	}
-	if err := a.persistAppliedConfig(cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-		return
-	}
-	a.audit.add(who(r).user, "security.cidr_upsert", req.List+":"+cidr)
-	writeJSON(w, map[string]any{"ok": true, "rule": rule})
-}
-
-func (a *adminServer) handleSecurityCIDRDelete(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		List string `json:"list"`
-		CIDR string `json:"cidr"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
-		return
-	}
-	if req.List != "allow" && req.List != "deny" {
-		http.Error(w, "list must be allow or deny", http.StatusBadRequest)
-		return
-	}
-	cidr, err := canonicalCIDR(req.CIDR)
-	if err != nil {
-		http.Error(w, "invalid CIDR", http.StatusBadRequest)
-		return
-	}
-	cur := a.srv.rt.Load()
-	if cur == nil {
-		http.Error(w, "runtime unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	cfg := cur.cfg
-	if req.List == "allow" {
-		cfg.Security.AllowCIDRs = deleteCIDRRule(cfg.Security.AllowCIDRs, cidr)
-	} else {
-		cfg.Security.DenyCIDRs = deleteCIDRRule(cfg.Security.DenyCIDRs, cidr)
-	}
-	if err := a.persistAppliedConfig(cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-		return
-	}
-	a.audit.add(who(r).user, "security.cidr_delete", req.List+":"+cidr)
-	writeJSON(w, map[string]any{"ok": true})
-}
-
-func (a *adminServer) handleSecurityStatus(w http.ResponseWriter, _ *http.Request) {
-	rt := a.srv.rt.Load()
-	if rt == nil {
-		http.Error(w, "runtime unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	out := map[string]any{"config": rt.cfg.Security}
-	if a.srv.security != nil {
-		out["counters"] = a.srv.security.counters()
-	}
-	writeJSON(w, out)
-}
-
-func (a *adminServer) handlePKICRLStatus(w http.ResponseWriter, _ *http.Request) {
-	rt := a.srv.rt.Load()
-	if rt == nil {
-		http.Error(w, "runtime unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	out := map[string]crlStatus{}
-	for pool, store := range rt.crlStores {
-		out[pool] = store.status()
-	}
-	writeJSON(w, out)
-}
-
-func (a *adminServer) handlePKICRLRefresh(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Pool string `json:"pool,omitempty"`
-	}
-	if r.Body != nil {
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-		if err := dec.Decode(&req); err != nil && err != io.EOF {
-			http.Error(w, "invalid JSON", http.StatusBadRequest)
-			return
-		}
-	}
-	rt := a.srv.rt.Load()
-	if rt == nil {
-		http.Error(w, "runtime unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	results := map[string]any{}
-	matched := false
-	for pool, store := range rt.crlStores {
-		if req.Pool != "" && req.Pool != pool {
-			continue
-		}
-		matched = true
-		err := store.refresh(r.Context())
-		if err != nil {
-			results[pool] = map[string]any{"ok": false, "error": err.Error(), "status": store.status()}
-		} else {
-			results[pool] = map[string]any{"ok": true, "status": store.status()}
-		}
-	}
-	if req.Pool != "" && !matched {
-		http.Error(w, "unknown pool or pool has no CRL configuration", http.StatusNotFound)
-		return
-	}
-	a.audit.add(who(r).user, "pki.crl_refresh", req.Pool)
-	writeJSON(w, map[string]any{"results": results})
 }

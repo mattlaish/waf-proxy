@@ -43,8 +43,8 @@ if [ "$VECTOR_MODE" != "off" ]; then
   fi
 fi
 
-echo "==> go mod tidy (Coraza v3.7.0; needs network/module cache)"
-go mod tidy
+echo "==> go mod tidy -diff (dependency files must already be canonical)"
+go mod tidy -diff
 
 echo "==> go vet"
 if [ -n "$VECTOR_TAGS" ]; then
@@ -67,7 +67,15 @@ fi
 echo "==> real Coraza transaction truth gate"
 CGO_ENABLED=1 go test -tags realcoraza -run 'TestRealCoraza' ./...
 
-echo "==> building waf-proxy ${VERSION}"
+if [ -n "$VECTOR_TAGS" ]; then
+  BUILD_VARIANT="native-vectorscan"
+  VECTORSCAN_VERSION="$(pkg-config --modversion libhs 2>/dev/null || echo unknown)"
+else
+  BUILD_VARIANT="portable-coraza"
+  VECTORSCAN_VERSION="not-linked"
+fi
+
+echo "==> building waf-proxy ${VERSION} (${BUILD_VARIANT})"
 BUILD_ARGS=(-trimpath -ldflags "-s -w -X main.buildVersion=${VERSION} -X main.buildCommit=${COMMIT}" -o waf-proxy)
 if [ -n "$VECTOR_TAGS" ]; then
   CGO_ENABLED="$VECTOR_CGO" go build -tags "$VECTOR_TAGS" "${BUILD_ARGS[@]}" .
@@ -80,7 +88,26 @@ CGO_ENABLED=0 go build -trimpath \
   -ldflags "-s -w -X main.buildVersion=${VERSION} -X main.buildCommit=${COMMIT}" \
   -o waf-tlsfront ./cmd/waf-tlsfront
 
+echo "==> building wafctl ${VERSION}"
+CGO_ENABLED=0 go build -trimpath \
+  -ldflags "-s -w -X main.version=${VERSION}" \
+  -o wafctl ./cmd/wafctl
+
 echo
 printf 'built:\n'
-ls -lh waf-proxy waf-tlsfront
+ls -lh waf-proxy waf-tlsfront wafctl
+python3 - "$VERSION" "$COMMIT" "$BUILD_VARIANT" "$GO_VERSION" "$VECTORSCAN_VERSION" <<'PY2'
+import hashlib,json,pathlib,sys
+version,commit,variant,gov,vs=sys.argv[1:]
+files=[]
+for name in ("waf-proxy","waf-tlsfront","wafctl"):
+ p=pathlib.Path(name); h=hashlib.sha256(p.read_bytes()).hexdigest(); files.append({"name":name,"sha256":h,"size":p.stat().st_size})
+artifact_type="NATIVE_BINARY" if variant=="native-vectorscan" else "PORTABLE_BINARY"
+linkage="DYNAMIC_LIBHS_REQUIRED_AT_RUNTIME" if variant=="native-vectorscan" else "NO_LIBHS_LINK"
+obj={"schema_version":2,"version":version,"commit":commit,"artifact_type":artifact_type,"build_variant":variant,"go_version":gov,"coraza_version":"v3.7.0","vectorscan_version":vs,"linkage_expectation":linkage,"binaries":files}
+pathlib.Path("BUILD_PROVENANCE.json").write_text(json.dumps(obj,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+pathlib.Path("BUILD_SHA256SUMS.txt").write_text("".join(f"{x['sha256']}  {x['name']}\n" for x in files),encoding="utf-8")
+PY2
+printf '\nbuild variant: %s\n' "$BUILD_VARIANT"
+printf 'provenance: BUILD_PROVENANCE.json, BUILD_SHA256SUMS.txt\n'
 printf '\nNext: sudo ./install.sh\n'

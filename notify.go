@@ -8,8 +8,8 @@ package main
 // (Slack/Teams/generic JSON). Some carry an "apply" action payload so the
 // operator can act on them with one click — nothing is ever auto-applied.
 //
-// Phase 4 persists the bounded queue in the security-state snapshot so operator
-// notifications survive restart without introducing another state database.
+// State is in-memory and resets on restart (a clean seam exists to back it
+// with a JSON snapshot later).
 
 import (
 	"bytes"

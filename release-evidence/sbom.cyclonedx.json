@@ -1,0 +1,146 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:golang/github.com/corazawaf/coraza/v3@v3.7.0",
+      "name": "github.com/corazawaf/coraza/v3",
+      "purl": "pkg:golang/github.com/corazawaf/coraza/v3@v3.7.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v3.7.0"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/corazawaf/libinjection-go@v0.3.2",
+      "name": "github.com/corazawaf/libinjection-go",
+      "purl": "pkg:golang/github.com/corazawaf/libinjection-go@v0.3.2",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.3.2"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/magefile/mage@v1.15.1-0.20241126214340-bdc92f694516",
+      "name": "github.com/magefile/mage",
+      "purl": "pkg:golang/github.com/magefile/mage@v1.15.1-0.20241126214340-bdc92f694516",
+      "scope": "required",
+      "type": "library",
+      "version": "v1.15.1-0.20241126214340-bdc92f694516"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/petar-dambovaliev/aho-corasick@v0.0.0-20250424160509-463d218d4745",
+      "name": "github.com/petar-dambovaliev/aho-corasick",
+      "purl": "pkg:golang/github.com/petar-dambovaliev/aho-corasick@v0.0.0-20250424160509-463d218d4745",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.0.0-20250424160509-463d218d4745"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/tidwall/gjson@v1.18.0",
+      "name": "github.com/tidwall/gjson",
+      "purl": "pkg:golang/github.com/tidwall/gjson@v1.18.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v1.18.0"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/tidwall/match@v1.1.1",
+      "name": "github.com/tidwall/match",
+      "purl": "pkg:golang/github.com/tidwall/match@v1.1.1",
+      "scope": "required",
+      "type": "library",
+      "version": "v1.1.1"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/tidwall/pretty@v1.2.1",
+      "name": "github.com/tidwall/pretty",
+      "purl": "pkg:golang/github.com/tidwall/pretty@v1.2.1",
+      "scope": "required",
+      "type": "library",
+      "version": "v1.2.1"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/valllabh/ocsf-schema-golang@v1.0.3",
+      "name": "github.com/valllabh/ocsf-schema-golang",
+      "purl": "pkg:golang/github.com/valllabh/ocsf-schema-golang@v1.0.3",
+      "scope": "required",
+      "type": "library",
+      "version": "v1.0.3"
+    },
+    {
+      "bom-ref": "pkg:golang/golang.org/x/net@v0.52.0",
+      "name": "golang.org/x/net",
+      "purl": "pkg:golang/golang.org/x/net@v0.52.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.52.0"
+    },
+    {
+      "bom-ref": "pkg:golang/golang.org/x/sync@v0.20.0",
+      "name": "golang.org/x/sync",
+      "purl": "pkg:golang/golang.org/x/sync@v0.20.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.20.0"
+    },
+    {
+      "bom-ref": "pkg:golang/google.golang.org/protobuf@v1.36.11",
+      "name": "google.golang.org/protobuf",
+      "purl": "pkg:golang/google.golang.org/protobuf@v1.36.11",
+      "scope": "required",
+      "type": "library",
+      "version": "v1.36.11"
+    },
+    {
+      "bom-ref": "pkg:golang/rsc.io/binaryregexp@v0.2.0",
+      "name": "rsc.io/binaryregexp",
+      "purl": "pkg:golang/rsc.io/binaryregexp@v0.2.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.2.0"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "pkg:golang/github.com/corazawaf/coraza/v3@v3.7.0",
+        "pkg:golang/github.com/corazawaf/libinjection-go@v0.3.2",
+        "pkg:golang/github.com/magefile/mage@v1.15.1-0.20241126214340-bdc92f694516",
+        "pkg:golang/github.com/petar-dambovaliev/aho-corasick@v0.0.0-20250424160509-463d218d4745",
+        "pkg:golang/github.com/tidwall/gjson@v1.18.0",
+        "pkg:golang/github.com/tidwall/match@v1.1.1",
+        "pkg:golang/github.com/tidwall/pretty@v1.2.1",
+        "pkg:golang/github.com/valllabh/ocsf-schema-golang@v1.0.3",
+        "pkg:golang/golang.org/x/net@v0.52.0",
+        "pkg:golang/golang.org/x/sync@v0.20.0",
+        "pkg:golang/google.golang.org/protobuf@v1.36.11",
+        "pkg:golang/rsc.io/binaryregexp@v0.2.0"
+      ],
+      "ref": "pkg:waf-proxy"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "pkg:waf-proxy",
+      "name": "waf-proxy",
+      "properties": [
+        {
+          "name": "waf.build.variant",
+          "value": "source"
+        }
+      ],
+      "type": "application",
+      "version": "phase3-truth-boundary-repair-2026-09-14"
+    },
+    "tools": {
+      "components": [
+        {
+          "name": "waf-proxy release_evidence.py",
+          "type": "application",
+          "version": "2"
+        }
+      ]
+    }
+  },
+  "serialNumber": "urn:uuid:8378bb20-7bc8-5859-bad6-75b084b31216",
+  "specVersion": "1.5",
+  "version": 1
+}

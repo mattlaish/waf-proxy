@@ -18,6 +18,15 @@ const (
 // peer is trusted, then walked from right to left until the first untrusted
 // hop. This prevents an external client from choosing its own identity by
 // prepending an address to X-Forwarded-For.
+type ClientIdentityDecision struct {
+	RemoteAddr       string `json:"remote_addr"`
+	ResolvedClientIP string `json:"resolved_client_ip"`
+	Source           string `json:"source"`
+	TrustedProxy     bool   `json:"trusted_proxy"`
+	Decision         string `json:"decision"`
+	RejectionReason  string `json:"rejection_reason,omitempty"`
+}
+
 type clientIPResolver struct {
 	trusted []*net.IPNet
 }
@@ -76,6 +85,28 @@ func (r *clientIPResolver) isTrusted(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+func (r *clientIPResolver) ResolveDecision(req *http.Request) ClientIdentityDecision {
+	d := ClientIdentityDecision{RemoteAddr: clientIP(req), ResolvedClientIP: clientIP(req), Source: "REMOTE_ADDR", Decision: "ACCEPTED"}
+	peer := net.ParseIP(d.RemoteAddr)
+	if peer == nil || !r.isTrusted(peer) {
+		if req.Header.Get("X-Forwarded-For") != "" || req.Header.Get("Forwarded") != "" || req.Header.Get("X-Real-IP") != "" {
+			d.Decision = "REJECTED"
+			d.RejectionReason = "UNTRUSTED_PROXY"
+		}
+		return d
+	}
+	d.TrustedProxy = true
+	if v := strings.TrimSpace(req.Header.Get("X-Real-IP")); v != "" && req.Header.Get("X-Forwarded-For") != "" {
+		d.Decision = "REJECTED"
+		d.RejectionReason = "CONFLICTING_IDENTITY_HEADERS"
+		return d
+	}
+	resolved := r.resolve(req)
+	d.ResolvedClientIP = resolved
+	d.Source = "X_FORWARDED_FOR"
+	return d
 }
 
 func (r *clientIPResolver) resolve(req *http.Request) string {

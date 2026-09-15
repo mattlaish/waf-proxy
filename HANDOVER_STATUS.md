@@ -46,6 +46,12 @@ Previous implementation patch:
 
 The 2026-09-07 continuation slice adds release-host qualification automation/tests and deterministic build preflight only; it does not alter Coraza/VectorScan authority, eligibility, Learning/FAILSAFE semantics, request processing, or TLS architecture.
 
-## 2026-09-11 Phase 4 checkpoint
+## 2026-09-13 update
 
-Phase 4 security/product backlog is implemented in source and remains `IMPLEMENTED_TESTING_DEFERRED / DEPLOYMENT_QUALIFICATION_REQUIRED`. L7/CIDR/request-ID/custom-block/persistent-state/PKI URL CRL features are present. Isolated security/PKI/persistence race suites pass; full Go 1.25 + real Coraza/deployed external qualification remains open. See `PHASE4_SECURITY_PRODUCT_REPORT_2026-09-11.md`.
+The source line now includes complete operator-side debug/supportability tooling (`wafctl` doctor/debug/support), transaction-correlated Debug Evidence wiring, and a real Phase 1 native VectorScan-vs-Coraza differential corpus runner with a hard zero-FN gate. Real qualification is still blocked on this packaging host by Go 1.23.2 and missing real libhs. The next live gate is Phase 0 on Go >=1.25 + verified libvectorscan, then the Phase 1 runner with representative CRS/corpus.
+
+## 2026-09-14 Phase 3 Truth-Boundary Repair update
+
+Current development baseline supersedes the older artifact list above. Coverage analysis and live VectorScan parsing now share `internal/capability` as the single eligibility classifier, and runtime Include/IncludeOptional handling is aligned with coverage ingestion. Release source archives identify only as `SOURCE_ARCHIVE`; actual portable/native binary identity is emitted only by successful binary builds. Schema-v2 release evidence binds govulncheck evidence to the canonical source manifest, adds provenance cross-digests, exact manifest completeness checks, SBOM↔go.mod dependency parity, and explicit unauthenticated-until-detached-signature-verified semantics.
+
+The packaging host still has Go 1.23.2, no real libhs, no govulncheck, and no minisign. Canonical Go 1.25/Coraza/libvectorscan qualification remains BLOCKED/NOT_RUN. Artifact/source integrity gates may PASS without changing that runtime qualification status.

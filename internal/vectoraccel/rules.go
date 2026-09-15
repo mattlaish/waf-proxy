@@ -11,10 +11,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	shared "waf-proxy/internal/capability"
 )
 
 const maxRuleSourceBytes = 64 << 20
-const semanticAdapterVersion = "vectorscan-learning-v4-phase2-request-metadata-encodings"
+const semanticAdapterVersion = "vectorscan-learning-v2-coraza37-context-truth"
 
 type SourceKind string
 
@@ -23,33 +25,26 @@ const (
 	SourceRequestFilename SourceKind = "REQUEST_FILENAME"
 	SourceRequestMethod   SourceKind = "REQUEST_METHOD"
 	SourceRequestProtocol SourceKind = "REQUEST_PROTOCOL"
-	SourceRequestURIRaw   SourceKind = "REQUEST_URI_RAW"
-	SourceRequestLine     SourceKind = "REQUEST_LINE"
-	SourceRequestBasename SourceKind = "REQUEST_BASENAME"
-	SourceQueryString     SourceKind = "QUERY_STRING"
-	SourceServerName      SourceKind = "SERVER_NAME"
-	SourceRemoteAddr      SourceKind = "REMOTE_ADDR"
-	SourceRemotePort      SourceKind = "REMOTE_PORT"
 	SourceRequestHeader   SourceKind = "REQUEST_HEADERS"
 )
 
 type RuleSpec struct {
-	ID         int             `json:"id"`
-	Phase      int             `json:"phase"`
-	Source     SourceKind      `json:"source"`
-	Header     string          `json:"header,omitempty"`
-	Transforms []TransformKind `json:"transforms,omitempty"`
-	Pattern    string          `json:"pattern"`
+	ID        int        `json:"id"`
+	Phase     int        `json:"phase"`
+	Source    SourceKind `json:"source"`
+	Header    string     `json:"header,omitempty"`
+	Lowercase bool       `json:"lowercase,omitempty"`
+	Pattern   string     `json:"pattern"`
 }
 
 type GroupSpec struct {
-	Key         string          `json:"key"`
-	Source      SourceKind      `json:"source"`
-	Header      string          `json:"header,omitempty"`
-	Transforms  []TransformKind `json:"transforms,omitempty"`
-	Phase       int             `json:"phase"`
-	Rules       []RuleSpec      `json:"rules"`
-	Fingerprint string          `json:"fingerprint"`
+	Key         string     `json:"key"`
+	Source      SourceKind `json:"source"`
+	Header      string     `json:"header,omitempty"`
+	Lowercase   bool       `json:"lowercase,omitempty"`
+	Phase       int        `json:"phase"`
+	Rules       []RuleSpec `json:"rules"`
+	Fingerprint string     `json:"fingerprint"`
 }
 
 var (
@@ -96,10 +91,10 @@ func ParseRules(path string) ([]GroupSpec, map[int]struct{}, error) {
 		if !ok {
 			continue
 		}
-		key := fmt.Sprintf("p%d|%s|%s|t=%s", spec.Phase, spec.Source, strings.ToLower(spec.Header), transformKey(spec.Transforms))
+		key := fmt.Sprintf("p%d|%s|%s|lc=%t", spec.Phase, spec.Source, strings.ToLower(spec.Header), spec.Lowercase)
 		g := groups[key]
 		if g == nil {
-			g = &GroupSpec{Key: key, Source: spec.Source, Header: spec.Header, Transforms: append([]TransformKind(nil), spec.Transforms...), Phase: spec.Phase}
+			g = &GroupSpec{Key: key, Source: spec.Source, Header: spec.Header, Lowercase: spec.Lowercase, Phase: spec.Phase}
 			groups[key] = g
 		}
 		g.Rules = append(g.Rules, spec)
@@ -120,87 +115,87 @@ func ParseRules(path string) ([]GroupSpec, map[int]struct{}, error) {
 }
 
 func classifyRule(id int, vars, op, actions string) (RuleSpec, bool) {
-	if strings.Contains(vars, "|") || strings.Contains(vars, "!") || strings.Contains(vars, "&") {
-		return RuleSpec{}, false
+	operator := strings.TrimSpace(op)
+	negated := strings.HasPrefix(operator, "!")
+	if negated {
+		operator = strings.TrimSpace(strings.TrimPrefix(operator, "!"))
 	}
-	if strings.Contains(strings.ToLower(actions), "chain") {
-		return RuleSpec{}, false
+	operatorName := ""
+	pattern := ""
+	if strings.HasPrefix(operator, "@") {
+		name := strings.TrimPrefix(operator, "@")
+		if i := strings.IndexAny(name, " \t"); i >= 0 {
+			operatorName = strings.ToLower(strings.TrimSpace(name[:i]))
+			pattern = strings.TrimSpace(name[i+1:])
+		} else {
+			operatorName = strings.ToLower(strings.TrimSpace(name))
+		}
 	}
-	if !strings.HasPrefix(op, "@rx ") || strings.HasPrefix(op, "!@") {
-		return RuleSpec{}, false
-	}
-	pattern := strings.TrimSpace(strings.TrimPrefix(op, "@rx "))
-	if pattern == "" {
-		return RuleSpec{}, false
-	}
-	pm := phaseRE.FindStringSubmatch(actions)
-	phase := 2
-	if len(pm) == 2 {
+
+	phase := 0
+	if pm := phaseRE.FindStringSubmatch(actions); len(pm) == 2 {
 		phase, _ = strconv.Atoi(pm[1])
 	}
-	if phase != 1 && phase != 2 {
-		return RuleSpec{}, false
-	}
-	// Require explicit t:none so inherited SecDefaultAction transformations
-	// cannot make our reconstructed input differ from Coraza's input.
-	lowerActions := strings.ToLower(actions)
-	if !strings.Contains(lowerActions, "t:none") {
-		return RuleSpec{}, false
-	}
 	transforms := []string{}
-	for _, a := range splitActions(actions) {
-		a = strings.TrimSpace(strings.ToLower(a))
-		if strings.HasPrefix(a, "t:") {
-			transforms = append(transforms, strings.TrimPrefix(a, "t:"))
+	hasChain := false
+	for _, raw := range splitActions(actions) {
+		a := strings.TrimSpace(raw)
+		name, value := splitActionForCapability(a)
+		switch strings.ToLower(name) {
+		case "t":
+			if v := strings.ToLower(trimQuotedActionValue(value)); v != "" {
+				transforms = append(transforms, v)
+			}
+		case "chain":
+			hasChain = true
 		}
 	}
-	if len(transforms) == 0 || transforms[0] != "none" {
+
+	selectors := []string{}
+	for _, v := range strings.Split(vars, "|") {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			selectors = append(selectors, v)
+		}
+	}
+	result := shared.Classify(shared.Input{
+		RuleID:     strconv.Itoa(id),
+		Phase:      phase,
+		Operator:   operatorName,
+		Pattern:    pattern,
+		Variables:  selectors,
+		Transforms: transforms,
+		HasChain:   hasChain,
+		Negated:    negated,
+	})
+	if !result.Eligible {
 		return RuleSpec{}, false
 	}
-	pipeline := make([]TransformKind, 0, len(transforms)-1)
-	for _, t := range transforms[1:] {
-		tk, ok := parseExactTransform(t)
-		if !ok {
-			return RuleSpec{}, false
-		}
-		pipeline = append(pipeline, tk)
-	}
-	v := strings.TrimSpace(vars)
-	spec := RuleSpec{ID: id, Phase: phase, Transforms: pipeline, Pattern: pattern}
-	switch {
-	case v == "REQUEST_URI":
-		spec.Source = SourceRequestURI
-	case v == "REQUEST_FILENAME":
-		spec.Source = SourceRequestFilename
-	case v == "REQUEST_METHOD":
-		spec.Source = SourceRequestMethod
-	case v == "REQUEST_PROTOCOL":
-		spec.Source = SourceRequestProtocol
-	case v == "REQUEST_URI_RAW":
-		spec.Source = SourceRequestURIRaw
-	case v == "REQUEST_LINE":
-		spec.Source = SourceRequestLine
-	case v == "REQUEST_BASENAME":
-		spec.Source = SourceRequestBasename
-	case v == "QUERY_STRING":
-		spec.Source = SourceQueryString
-	case v == "SERVER_NAME":
-		spec.Source = SourceServerName
-	case v == "REMOTE_ADDR":
-		spec.Source = SourceRemoteAddr
-	case v == "REMOTE_PORT":
-		spec.Source = SourceRemotePort
-	case strings.HasPrefix(v, "REQUEST_HEADERS:"):
-		h := strings.TrimSpace(strings.TrimPrefix(v, "REQUEST_HEADERS:"))
-		if h == "" || strings.ContainsAny(h, " /\\\"'|!&") {
-			return RuleSpec{}, false
-		}
-		spec.Source = SourceRequestHeader
-		spec.Header = h
-	default:
-		return RuleSpec{}, false
+
+	spec := RuleSpec{
+		ID:        id,
+		Phase:     result.Phase,
+		Source:    SourceKind(result.Source),
+		Header:    result.Header,
+		Lowercase: result.Lowercase,
+		Pattern:   pattern,
 	}
 	return spec, true
+}
+
+func splitActionForCapability(s string) (string, string) {
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
+	}
+	return strings.TrimSpace(s), ""
+}
+
+func trimQuotedActionValue(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && ((s[0] == '\'' && s[len(s)-1] == '\'') || (s[0] == '"' && s[len(s)-1] == '"')) {
+		s = s[1 : len(s)-1]
+	}
+	return strings.TrimSpace(s)
 }
 
 func splitActions(s string) []string {
@@ -328,9 +323,21 @@ func loadStatements(path string) ([]string, error) {
 			if st == "" || strings.HasPrefix(st, "#") {
 				return nil
 			}
-			if strings.HasPrefix(strings.ToLower(st), "include ") {
-				arg := strings.TrimSpace(st[len("Include "):])
+			lower := strings.ToLower(st)
+			if strings.HasPrefix(lower, "include ") || strings.HasPrefix(lower, "includeoptional ") {
+				optional := strings.HasPrefix(lower, "includeoptional ")
+				prefix := "Include "
+				if optional {
+					prefix = "IncludeOptional "
+				}
+				arg := strings.TrimSpace(st[len(prefix):])
 				arg = strings.Trim(arg, "\"'")
+				if strings.Contains(arg, "%{") {
+					if optional {
+						return nil
+					}
+					return fmt.Errorf("dynamic Include expression unsupported for VectorScan: %s", arg)
+				}
 				if !filepath.IsAbs(arg) {
 					arg = filepath.Join(filepath.Dir(abs), arg)
 				}
@@ -338,8 +345,8 @@ func loadStatements(path string) ([]string, error) {
 				if err != nil {
 					return err
 				}
-				if len(ms) == 0 {
-					return nil
+				if len(ms) == 0 && !optional {
+					return fmt.Errorf("mandatory Include matched no files: %s", arg)
 				}
 				sort.Strings(ms)
 				for _, m := range ms {

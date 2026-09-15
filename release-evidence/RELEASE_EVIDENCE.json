@@ -1,0 +1,62 @@
+{
+  "artifact_type": "SOURCE_ARCHIVE",
+  "authenticity": "UNAUTHENTICATED_UNLESS_DETACHED_SIGNATURE_VERIFIED",
+  "build_variant": "source",
+  "generated_from_source_date_epoch": "2026-09-14T00:00:00Z",
+  "govulncheck": {
+    "evidence_type": "govulncheck",
+    "executed_at": "2026-09-14T11:06:41Z",
+    "output": "",
+    "reason": "govulncheck executable unavailable",
+    "result_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "schema_version": 1,
+    "source_manifest_sha256": "66eb35cb7f8b5d096e7ac233a179625b64a25de27a707bbb8d9641d3bea66ad2",
+    "status": "NOT_RUN",
+    "tool": "govulncheck",
+    "tool_version": "NOT_AVAILABLE"
+  },
+  "module": "waf-proxy",
+  "native_vectorscan_provenance": {
+    "required": false,
+    "status": "NOT_REQUIRED_FOR_ARTIFACT_TYPE"
+  },
+  "release": "phase3-truth-boundary-repair-2026-09-14",
+  "reproducible_metadata": true,
+  "schema_version": 2,
+  "source_date_epoch": 1789344000,
+  "source_file_count": 161,
+  "source_manifest_sha256": "66eb35cb7f8b5d096e7ac233a179625b64a25de27a707bbb8d9641d3bea66ad2",
+  "truth_boundary": "Integrity-bound metadata does not authenticate its producer and does not qualify Coraza, VectorScan, CRS, kTLS, QAT, or target-host runtime behavior.",
+  "versions": {
+    "coraza": {
+      "status": "PINNED",
+      "version": "v3.7.0"
+    },
+    "crs": {
+      "status": "NOT_PROVIDED"
+    },
+    "go_directive": "1.25.0",
+    "go_runtime": {
+      "command": "/usr/local/go/bin/go",
+      "exit_code": 0,
+      "status": "DETECTED",
+      "version": "go version go1.23.2 linux/amd64"
+    },
+    "nginx": {
+      "command": "/usr/sbin/nginx",
+      "exit_code": 0,
+      "status": "DETECTED",
+      "version": "nginx version: nginx/1.26.3"
+    },
+    "openssl": {
+      "command": "/usr/bin/openssl",
+      "exit_code": 0,
+      "status": "DETECTED",
+      "version": "OpenSSL 3.5.5 27 Jan 2026 (Library: OpenSSL 3.5.5 27 Jan 2026)"
+    },
+    "vectorscan": {
+      "component": "libhs",
+      "status": "NOT_AVAILABLE"
+    }
+  }
+}

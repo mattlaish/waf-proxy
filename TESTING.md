@@ -20,45 +20,85 @@ Every generated release artifact must be tested after packaging from a clean ext
 
 Artifact-integrity PASS must never be promoted into real Coraza, real VectorScan, CRS Learning, QAT, kTLS, or production-host evidence. Any unexecuted live gate remains `NOT_RUN`.
 
+## Debug / supportability / Phase 1 gates
 
-## 2026-09-11 Supportability Slice
+Future release validation must include these additional checks:
 
-Added wafctl debug export/doctor/support bundle foundation and Phase 1 differential qualification helper. Real Coraza/libvectorscan execution remains NOT_RUN.
+- debug disabled path adds no request ID/evidence and does not alter WAF decisions;
+- enabled debug evidence remains exact-site/tenant scoped and bounded by TTL/count;
+- incident/support bundles contain no Authorization/Cookie/password/API-token/private-key material and include independently verifiable manifests/checksums;
+- Coraza debug truth is transaction-final `MatchedRules()` after `ProcessLogging()` regardless of whether VectorScan produced an observation;
+- VectorScan differential qualification compares only the implementation's conservative eligible rule set and requires `candidates ⊇ eligible Coraza matches` for every observed sample;
+- Phase 1 PASS requires observed false negatives = 0 and at least the configured minimum eligible-match evidence; missing prerequisites/evidence is BLOCKED/NOT_RUN, never PASS;
+- operator smoke must exercise `wafctl doctor`, temporary debug capture, incident export and support-bundle generation against an installed instance.
+
+`run-phase1-qualification.sh` is the canonical real Phase 1 runner. Its PASS is valid only on a release/target host satisfying Phase 0 provenance/toolchain requirements and using production or representative CRS/corpus inputs.
 
 
-## Stage 2 Supportability Implementation
-- Added wafctl supportability command foundation.
-- Added qualification phase1 differential runner foundation.
-- Real Go 1.25/Coraza/libvectorscan qualification remains NOT_RUN.
+## Phase 2 implementation update (2026-09-13)
+
+Implemented qualification corpus schema foundation and differential false-negative gate helpers. Full runtime qualification remains deferred until real Go 1.25, Coraza v3.7.0 execution and libvectorscan are available.
 
 
-## Phase 2 VectorScan coverage test matrix
+## Phase 2 Slice B continuation
 
-For every newly allow-listed transform/source, testing must preserve the rule that VectorScan candidates are only a superset prefilter and Coraza remains authoritative.
+Implemented evidence operations, retention policy foundation, support provenance/SBOM evidence models, and VectorScan audit store. Full regression and real qualification remain deferred.
 
-Required tests:
 
-- ordered transform-pipeline unit tests, including Unicode case conversion, ASCII trim cutset, NUL handling, Latin-1 whitespace compression, Unicode whitespace removal, byte-length semantics, standard Base64 encoding, and lowercase hexadecimal byte encoding;
-- classifier tests proving non-allow-listed transforms, ARGS/body, chains, negation and multi-variable selectors remain ineligible;
-- Decode transforms (`base64Decode` / `hexDecode`), hashes and parser/normalization-dependent transforms remain negative eligibility cases until separately qualified;
-- source reconstruction tests for `QUERY_STRING`, `SERVER_NAME`, `REQUEST_URI_RAW`, `REQUEST_LINE`, `REQUEST_BASENAME`, `REMOTE_ADDR`, `REMOTE_PORT`, ordinary fixed headers, `Host`, and `Transfer-Encoding`;
-- fingerprint separation tests for different transform pipelines;
-- `realcoraza` parity tests against Coraza v3.7.0 for every allow-listed transform/source before production qualification;
-- real libvectorscan + representative CRS differential replay with observed false negatives = 0 before promotion;
-- stale persisted state must invalidate after semantic adapter/fingerprint changes.
+## Phase 2 Coverage Expansion Slice A
 
-A portable or isolated test PASS never substitutes for the `realcoraza`/real-libvectorscan/CRS gates.
+Implemented source slice:
+- conservative VectorScan coverage capability matrix
+- rule eligibility evaluation
+- transform capability registry
+- coverage report model
+- unsupported scopes remain Coraza-only
 
-## Phase 3 release evidence gates
+Status: IMPLEMENTED_TESTING_DEFERRED
 
-Every candidate release must distinguish `portable` from `native`. The artifact must contain `release-evidence/versions.json`, `provenance.json`, `sbom.spdx.json`, `sbom.cdx.json`, `govulncheck-status.json`, and `SHA256SUMS.txt`. The verifier must independently validate those checksums and the declared SPDX/CycloneDX formats.
+## Phase 2 Coverage Expansion Slice C deferred validation matrix
 
-For a production release, run `--require-govulncheck` on a suitable Go 1.25 host. A native release additionally requires real `pkg-config libhs` and must never derive native provenance from the ABI-only shim. Reproducibility is tested by running two builds from identical source/version/flavor with the same `SOURCE_DATE_EPOCH` and requiring byte-identical ZIPs. Detached signing is required only when an organizational key/process is explicitly configured; absence of a key is `NOT_RUN`, never PASS.
+Source implementation is complete; broad execution is intentionally deferred to the final concentrated validation stage.
 
-## Phase 4 security/product qualification gates
+Required tests before production use:
 
-Phase 4 must be evaluated in layers; isolated stdlib tests are useful implementation evidence but are not a substitute for the project-wide Go 1.25 and deployed-host gates.
+- parser tests for multiline SecRule metadata, fixed-header selectors, transforms, tags, severity, chain and negation;
+- ruleset loader tests for Include/IncludeOptional, glob ordering, include loops, mandatory missing includes, byte/statement limits and directory ingestion;
+- duplicate rule-ID inventory and report behavior;
+- analyzer/runtime-classifier parity for every eligible selector/transform combination;
+- real representative OWASP CRS ingestion and inventory sanity review;
+- `wafctl coverage analyze` report/inventory file smoke;
+- full Go 1.25 repository regression, vet and bounded race;
+- Phase 0 real Coraza/libvectorscan core gate;
+- Phase 1 real differential corpus and zero-FN gate;
+- final Artifact Packaging Integrity Gate and patch reconstruction.
 
-Required implementation tests include: HTTP CIDR allow-over-deny and expiry; request-ID replacement and correlation; rate/in-flight/connection/TLS limits including bounded identity-state behavior; custom block-page rendering; persistent-state round trip without raw bearer-token storage; static CRL regression; CRL URL syntax/SSRF rejection; refresh deduplication; last-known-good retention/cache; admin RBAC/audit routes; and configuration validation.
+Until those execute, Slice C is `IMPLEMENTED_TESTING_DEFERRED`; coverage percentages are descriptive analyzer output, not production acceleration qualification.
 
-Release-host/deployed validation still required: `go test ./...`, `go vet ./...`, bounded race on the production module, real Coraza request-ID transaction correlation, external HTTPS CRL success/rotation/failure recovery, service restart state persistence under `ProtectSystem=strict`, concurrent abuse/load behavior, and HA/failover behavior where applicable. A packaging host lacking Go 1.25 or network access must record those as `BLOCKED/NOT_RUN` rather than infer PASS from isolated tests.
+## Phase 3 Release Hardening Gates
+
+For a formal release candidate, run the following in addition to the existing Artifact Packaging Integrity Gate:
+
+1. `./release-security-scan.sh --output <evidence>/govulncheck.json --mode required` on a network-enabled Go >=1.25 release host. `BLOCKED`/`NOT_RUN` is not PASS.
+2. Build portable and native variants separately when both are shipped; their provenance must say `portable-coraza` and `native-vectorscan` respectively. Native evidence must show real `libhs` provenance.
+3. Generate release evidence/SBOMs and verify SPDX 2.3 / CycloneDX 1.5 JSON parse and release component/dependency inventory.
+4. Provide representative CRS path to release evidence when CRS is part of qualification and retain its tree SHA-256/file count.
+5. Use a fixed `SOURCE_DATE_EPOCH` and run `verify-reproducible-source-release.sh`; both ZIPs must be byte-identical.
+6. Run `release-artifact-negative-tests.sh` and require rejection of traversal, secret-like file, symlink, duplicate-entry, executable-mode-loss and installer-replacement mutations.
+7. If organizational signing is mandatory, use an approved external minisign key plus `--require-signature`; absence/failure is a release blocker. Never store the secret key in source or the ZIP.
+8. Keep real Coraza/VectorScan/CRS/kTLS/QAT/install/upgrade gates separate; release-hardening PASS cannot substitute for runtime qualification.
+
+## Phase 3 Truth-Boundary Repair Gates
+
+Before a source release can be accepted, additionally require:
+
+- coverage analyzer and runtime VectorScan classifier parity over boundary cases;
+- `Include` / `IncludeOptional` ingestion parity;
+- source-bound govulncheck evidence schema and digest validation;
+- `SOURCE_MANIFEST.sha256` exact file-set completeness;
+- `RELEASE_MANIFEST.txt` exact packaged-file completeness;
+- `RELEASE_EVIDENCE.json` must identify source ZIPs only as `SOURCE_ARCHIVE`;
+- provenance cross-digest validation for release evidence and both SBOMs;
+- SPDX and CycloneDX dependency sets must match `go.mod`;
+- negative mutation rejection for forged evidence, artifact-type drift, manifest omission, and provenance/source mismatch;
+- detached signature verification when a release claims authenticated producer identity. Without successful public-key verification, provenance is integrity-only.

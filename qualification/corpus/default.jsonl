@@ -1,0 +1,7 @@
+{"name":"clean-root","method":"GET","uri":"/","headers":{"User-Agent":"waf-qualification/1"}}
+{"name":"clean-api","method":"GET","uri":"/api/items?id=42","headers":{"User-Agent":"waf-qualification/1","Accept":"application/json"}}
+{"name":"sqli-query","method":"GET","uri":"/search?q=%27%20OR%201%3D1--","headers":{"User-Agent":"waf-qualification/1"}}
+{"name":"xss-query","method":"GET","uri":"/search?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E","headers":{"User-Agent":"waf-qualification/1"}}
+{"name":"traversal-uri","method":"GET","uri":"/download/..%2f..%2fetc%2fpasswd","headers":{"User-Agent":"waf-qualification/1"}}
+{"name":"scanner-header","method":"GET","uri":"/","headers":{"User-Agent":"() { :;}; /bin/bash -c id"}}
+{"name":"sqli-body-unsupported-scope-control","method":"POST","uri":"/login","content_type":"application/x-www-form-urlencoded","body":"username=admin%27+OR+1%3D1--&password=x","headers":{"User-Agent":"waf-qualification/1"}}

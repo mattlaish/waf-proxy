@@ -9,6 +9,8 @@ BIN_SRC="$(dirname "$0")/waf-proxy"
 BIN_DST=/usr/local/bin/waf-proxy
 TLS_BIN_SRC="$(dirname "$0")/waf-tlsfront"
 TLS_BIN_DST=/usr/local/bin/waf-tlsfront
+CTL_BIN_SRC="$(dirname "$0")/wafctl"
+CTL_BIN_DST=/usr/local/bin/wafctl
 ETC=/etc/waf
 UNIT=/etc/systemd/system/waf-proxy.service
 TLS_UNIT=/etc/systemd/system/waf-tls-frontend.service
@@ -16,8 +18,8 @@ SRC="$(cd "$(dirname "$0")" && pwd)"
 
 [[ $EUID -eq 0 ]] || { echo "run as root: sudo $0" >&2; exit 1; }
 
-if [[ ! -x "$BIN_SRC" || ! -x "$TLS_BIN_SRC" ]]; then
-  echo "!! ./waf-proxy or ./waf-tlsfront not found — run ./build.sh first" >&2
+if [[ ! -x "$BIN_SRC" || ! -x "$TLS_BIN_SRC" || ! -x "$CTL_BIN_SRC" ]]; then
+  echo "!! ./waf-proxy, ./waf-tlsfront, or ./wafctl not found — run ./build.sh first" >&2
   exit 1
 fi
 
@@ -35,7 +37,6 @@ echo "==> creating audit log dir /var/log/waf"
 # systemd's LogsDirectory=waf also creates this, but make it now so running the
 # binary directly (outside systemd) can write its audit log too.
 install -d -o waf -g waf -m 0750 /var/log/waf
-install -d -o waf -g waf -m 0750 /var/lib/waf-proxy
 # Pre-create the log file waf-owned so a stray foreground/root run can't seed it
 # root-owned (which would then block the waf service with EACCES).
 [[ -e /var/log/waf/audit.log ]] || install -o waf -g waf -m 0640 /dev/null /var/log/waf/audit.log
@@ -43,6 +44,7 @@ install -d -o waf -g waf -m 0750 /var/lib/waf-proxy
 echo "==> installing binaries"
 install -o root -g root -m 0755 "$BIN_SRC" "$BIN_DST"
 install -o root -g root -m 0755 "$TLS_BIN_SRC" "$TLS_BIN_DST"
+install -o root -g root -m 0755 "$CTL_BIN_SRC" "$CTL_BIN_DST"
 
 echo "==> installing rules"
 if [[ ! -f "$ETC/coraza.conf" ]]; then

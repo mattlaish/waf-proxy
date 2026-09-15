@@ -12,7 +12,7 @@ systemctl disable --now waf-tls-frontend waf-proxy 2>/dev/null || true
 echo "==> removing unit + binary"
 rm -f /etc/systemd/system/waf-proxy.service /etc/systemd/system/waf-tls-frontend.service
 systemctl daemon-reload
-rm -f /usr/local/bin/waf-proxy /usr/local/bin/waf-tlsfront
+rm -f /usr/local/bin/waf-proxy /usr/local/bin/waf-tlsfront /usr/local/bin/wafctl
 rm -rf /opt/waf-proxy
 
 if [[ $PURGE -eq 1 ]]; then

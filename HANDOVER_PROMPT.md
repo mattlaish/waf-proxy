@@ -70,3 +70,7 @@ The corresponding patch was:
 Start by summarizing the current state and the exact next gate you can execute in your environment, then continue the work directly without asking me to restate information already present in the package.
 
 ---
+
+### 2026-09-13 continuation note
+
+The current implementation now includes `wafctl` doctor/debug/support commands, correlated bounded Debug Evidence, and `run-phase1-qualification.sh`/`cmd/wafqualify`. Do not reimplement these. On a suitable release host, execute Phase 0 core first, then Phase 1 differential replay. Keep BLOCKED/NOT_RUN distinct from PASS and retain zero observed false negatives as the production promotion requirement.

@@ -13,6 +13,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 BIN_DST=/usr/local/bin/waf-proxy
 TLS_BIN_DST=/usr/local/bin/waf-tlsfront
+CTL_BIN_DST=/usr/local/bin/wafctl
 UNIT=/etc/systemd/system/waf-proxy.service
 TLS_UNIT=/etc/systemd/system/waf-tls-frontend.service
 CORAZA=/etc/waf/coraza.conf
@@ -24,7 +25,7 @@ if [[ ! -x "$SRC/waf-proxy" ]]; then
   echo "==> building (no ./waf-proxy present)"
   ( cd "$SRC" && ./build.sh )
 fi
-[[ -x "$SRC/waf-proxy" && -x "$SRC/waf-tlsfront" ]] || { echo "!! build did not produce ./waf-proxy and ./waf-tlsfront" >&2; exit 1; }
+[[ -x "$SRC/waf-proxy" && -x "$SRC/waf-tlsfront" && -x "$SRC/wafctl" ]] || { echo "!! build did not produce ./waf-proxy, ./waf-tlsfront and ./wafctl" >&2; exit 1; }
 
 echo "==> stopping services"
 systemctl stop waf-tls-frontend waf-proxy || true
@@ -32,6 +33,7 @@ systemctl stop waf-tls-frontend waf-proxy || true
 echo "==> installing binaries"
 install -o root -g root -m 0755 "$SRC/waf-proxy" "$BIN_DST"
 install -o root -g root -m 0755 "$SRC/waf-tlsfront" "$TLS_BIN_DST"
+install -o root -g root -m 0755 "$SRC/wafctl" "$CTL_BIN_DST"
 
 # 2. unit: reinstall only if changed
 UNIT_CHANGED=0

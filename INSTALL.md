@@ -2,7 +2,7 @@
 
 Coraza-based reverse-proxy WAF with an embedded admin console. The console is compiled in (`go:embed`) with no CDN dependency. The portable Coraza-only build is pure Go; optional VectorScan acceleration uses CGO/libhs.
 
-> **Status — read this first.** The source is pinned to Coraza v3.7.0, which requires Go 1.25.0. Portable Coraza-API-stub regression/vet/race and native libhs ABI compile/vet/race gates pass, and release shell scripts are LF-normalized and `bash -n` clean. The isolated packaging environment cannot execute a real Go 1.25 + Coraza v3.7.0 + real libvectorscan gate, so those remain **NOT_RUN release gates**. Do not treat the stub or ABI-only library as WAF correctness/performance evidence. Start first deployment in **DetectionOnly** and run `./build.sh` on the actual release host.
+> **Status — read this first.** The source is pinned to Coraza v3.7.0, which requires Go 1.25.0. Historical earlier-baseline portable Coraza-API-stub regression/vet/race and native libhs ABI compile/vet/race gates passed. The exact current baseline has not rerun the canonical Go suite on this packaging host because it has Go 1.23.2; release shell syntax is separately verified. The isolated packaging environment cannot execute a real Go 1.25 + Coraza v3.7.0 + real libvectorscan gate, so those remain **NOT_RUN release gates**. Do not treat the stub or ABI-only library as WAF correctness/performance evidence. Start first deployment in **DetectionOnly** and run `./build.sh` on the actual release host.
 
 ---
 
@@ -14,14 +14,13 @@ Coraza-based reverse-proxy WAF with an embedded admin console. The console is co
 - `openssl` (token generation) and `curl`/`tar` (CRS fetch)
 - Root for the install step
 
-Air-gapped? Build on a connected machine and copy `waf-proxy` + this directory
-to the target; `install.sh` needs no network.
+Air-gapped? Build on a connected machine and copy the required binaries plus deployment files to the target. A native VectorScan build links through CGO/libhs and therefore requires compatible libhs runtime libraries on the target; do not treat it as a self-contained static binary. `install.sh` itself needs no network.
 
 ## 2. Build
 
 ```bash
 cd go-waf
-./build.sh            # go mod tidy → go vet → static binary
+./build.sh            # go mod tidy -diff → go vet/test/race → binaries
 ```
 
 Produces `./waf-proxy` and `./waf-tlsfront`. Set `VERSION=` / `COMMIT=` to stamp a build. `WAF_VECTORSCAN=auto` is the default; use `off` for portable Coraza-only, or install `pkg-config` + `libvectorscan-dev` and use `required` to fail closed unless native libhs is present.
@@ -462,13 +461,25 @@ For QAT, install the vendor driver/provider separately and set
 outside OpenSSL's default module path. waf-proxy does not store or load QAT
 private material and does not use CGO for TLS acceleration.
 
-## Phase 4 runtime state
+## Operator support CLI
 
-The service uses `/var/lib/waf-proxy` for mutable security state. `install.sh` creates the directory and the systemd unit declares `StateDirectory=waf-proxy`, which is required because the service otherwise runs with `ProtectSystem=strict`.
+`build.sh` now produces `waf-proxy`, `waf-tlsfront`, and `wafctl`; `install.sh`/`upgrade.sh` install `wafctl` as `/usr/local/bin/wafctl`, and `waf-doctor.sh` verifies that binary.
 
-Default files/directories:
+After installation, set `WAF_ADMIN_TOKEN` (or use the protected token file) and run:
 
-- `/var/lib/waf-proxy/security-state.json` — atomic security/session/audit/learner snapshot, mode 0600;
-- `/var/lib/waf-proxy/crl-cache/` — last-known-good URL CRL cache, directory mode 0700 and files mode 0600.
+```bash
+sudo wafctl doctor
+```
 
-Do not copy these files into release/source archives. Back them up only as protected mutable runtime state. CRL URL sources must use HTTPS on port 443 and must resolve exclusively to public/global-unicast addresses; redirects and proxy traversal are intentionally disabled.
+For a bounded incident capture, use the exact configured site name:
+
+```bash
+sudo wafctl debug capture --tenant SITE --duration 5m
+# reproduce the request and read X-WAF-Request-ID or list captures
+sudo wafctl debug list --tenant SITE
+sudo wafctl debug export --tenant SITE --transaction-id ID --output incident.zip
+sudo wafctl debug stop --tenant SITE
+sudo wafctl support bundle --output waf-support.zip
+```
+
+Do not leave debug capture enabled unnecessarily. The server enforces a one-hour maximum capture window and bounded retention; diagnostic artifacts should still be handled as sensitive operational data.

@@ -202,7 +202,6 @@ type Config struct {
 	Syslog             SyslogConfig                `json:"syslog"`
 	TLSAcceleration    tlsfront.AccelerationConfig `json:"tls_acceleration,omitempty"`
 	VectorAcceleration vectoraccel.Config          `json:"vector_acceleration,omitempty"`
-	Security           SecurityConfig              `json:"security,omitempty"`
 
 	// Legacy v2 fields, migrated on load.
 	LegacyListen string `json:"listen,omitempty"`
@@ -268,7 +267,6 @@ func defaultConfig() Config {
 		Syslog:             defaultSyslogConfig(),
 		TLSAcceleration:    tlsfront.AccelerationConfig{Mode: tlsfront.ModeGo, KTLS: tlsfront.AccelOff, QAT: tlsfront.AccelOff},
 		VectorAcceleration: vectoraccel.Defaults(),
-		Security:           defaultSecurityConfig(),
 	}
 }
 
@@ -402,9 +400,6 @@ func (c Config) validateDraft() error {
 	if err := vectoraccel.Validate(c.VectorAcceleration); err != nil {
 		return err
 	}
-	if err := validateSecurityConfig(c.Security); err != nil {
-		return err
-	}
 	seen := func(kind string) func(string) error {
 		m := map[string]bool{}
 		return func(name string) error {
@@ -486,9 +481,6 @@ func (c Config) validate() error {
 		return err
 	}
 	if err := vectoraccel.Validate(c.VectorAcceleration); err != nil {
-		return err
-	}
-	if err := validateSecurityConfig(c.Security); err != nil {
 		return err
 	}
 	if c.ReadTimeoutSec < 1 || c.IdleTimeoutSec < 1 || c.BackendTimeoutSec < 1 {
@@ -911,7 +903,6 @@ type runtimeState struct {
 	builtAt   time.Time
 	cancel    context.CancelFunc // stops this runtime's health monitors
 	vector    *vectoraccel.Manager
-	crlStores map[string]*crlStore
 }
 
 func (rt *runtimeState) close() {
@@ -946,7 +937,7 @@ type server struct {
 	observations  *observationPlane
 	matchLogs     *matchLogPlane
 	metrics       *metrics
-	security      *securityManager
+	debug         *DebugEvidenceStore
 	ipmgr         *ipManager
 	listenMgr     *listenerManager
 	draining      atomic.Bool
@@ -1001,12 +992,6 @@ func (s *server) applyEx(cfg Config, fromSync bool) error {
 			return fmt.Errorf("publish TLS frontend config: %w", err)
 		}
 	}
-	if s.security != nil {
-		if err := s.security.configure(cfg.Security); err != nil {
-			rt.close()
-			return fmt.Errorf("security controls: %w", err)
-		}
-	}
 	old := s.rt.Swap(rt)
 	old.close() // stop previous monitors and release idle backend connections
 	s.ai.configure(cfg.AI)
@@ -1041,7 +1026,6 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 		builtAt:   time.Now(),
 		cancel:    cancel,
 		vector:    vectorMgr,
-		crlStores: map[string]*crlStore{},
 	}
 
 	nodeHost := map[string]string{}
@@ -1051,15 +1035,12 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 
 	// Build pools and start their monitors.
 	for _, pc := range cfg.Pools {
-		backendTLS, crlStore, err := buildBackendTLSConfigRuntime(ctx, pc.BackendTLS, pc.Scheme, true)
+		backendTLS, err := buildBackendTLSConfig(pc.BackendTLS, pc.Scheme)
 		if err != nil {
 			rt.close()
 			return nil, fmt.Errorf("pool %q: backend TLS: %w", pc.Name, err)
 		}
 		pr := &poolRuntime{name: pc.Name, method: pc.LBMethod, monitor: pc.Monitor, transport: effectiveBackendTransport(pc.Transport), backendTLS: backendTLS}
-		if crlStore != nil && (len(pc.BackendTLS.CRLFiles) > 0 || len(pc.BackendTLS.CRLURLs) > 0 || pc.BackendTLS.RevocationMode == "hard") {
-			rt.crlStores[pc.Name] = crlStore
-		}
 		pr.httpTransport = buildBackendTransport(pr, cfg)
 		for _, mc := range pc.Members {
 			w := mc.Weight
@@ -1113,9 +1094,7 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 		captureForAI := cfg.AI.Enabled && cfg.AI.IncludeBody && sc.AIMode != "" && sc.AIMode != "off"
 		handler := requestBodyPrefixWrap(captureForAI, cfg.PassiveDiscoveryEnabled, passiveHandler)
 		handler = vectoraccel.SanitizeIngress(handler)
-		if s.security != nil {
-			handler = s.security.wrap(sc.Name, handler)
-		}
+		handler = debugEvidenceWrap(s.debug, sc.Name, handler)
 		sr := &siteRuntime{
 			handler: clientIPs.wrap(s.logWrap(sc.Name, handler)),
 			cfg:     sc,
@@ -1216,6 +1195,24 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+func debugEvidenceMaxFromEnv() int {
+	if v := strings.TrimSpace(os.Getenv("WAF_DEBUG_MAX_ENTRIES")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 10 && n <= 100000 {
+			return n
+		}
+	}
+	return 1000
+}
+
+func debugEvidenceTTLFromEnv() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("WAF_DEBUG_TTL")); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d >= time.Minute && d <= 7*24*time.Hour {
+			return d
+		}
+	}
+	return 24 * time.Hour
+}
+
 // adminExposed reports whether the admin bind address is reachable off-loopback,
 // so startup can warn about network exposure.
 func adminExposed(addr string) bool {
@@ -1286,8 +1283,6 @@ func (s *server) observeMatch(site, path string, ruleID int, client, severity st
 
 func (s *server) logWrap(siteName string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r, requestID := withRequestID(r)
-		w.Header().Set(requestIDHeader, requestID)
 		sw := &statusRecorder{ResponseWriter: w, code: 200}
 		next.ServeHTTP(sw, r)
 		// metrics: count the request, approximate in/out bytes
@@ -1298,13 +1293,12 @@ func (s *server) logWrap(siteName string, next http.Handler) http.Handler {
 		s.metrics.addOut(sw.nbytes)
 		client := clientIP(r)
 		rec := accessRec{
-			At:        time.Now(),
-			Site:      siteName,
-			Client:    client,
-			Method:    r.Method,
-			Path:      r.URL.Path,
-			Status:    sw.code,
-			RequestID: requestID,
+			At:     time.Now(),
+			Site:   siteName,
+			Client: client,
+			Method: r.Method,
+			Path:   r.URL.Path,
+			Status: sw.code,
 		}
 		s.access.add(rec)
 		s.syslog.forwardAccess(rec)
@@ -1322,16 +1316,15 @@ func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode,
 		WithDirectivesFromFile(policy.RulesPath).
 		WithErrorCallback(func(rule types.MatchedRule) {
 			rec := matchRec{
-				Time:      time.Now().Format("15:04:05"),
-				Site:      siteName,
-				RuleID:    rule.Rule().ID(),
-				Severity:  rule.Rule().Severity().String(),
-				Phase:     int(rule.Rule().Phase()),
-				Client:    rule.ClientIPAddress(),
-				URI:       rule.URI(),
-				Msg:       rule.Message(),
-				Data:      rule.Data(),
-				RequestID: rule.TransactionID(),
+				Time:     time.Now().Format("15:04:05"),
+				Site:     siteName,
+				RuleID:   rule.Rule().ID(),
+				Severity: rule.Rule().Severity().String(),
+				Phase:    int(rule.Rule().Phase()),
+				Client:   rule.ClientIPAddress(),
+				URI:      rule.URI(),
+				Msg:      rule.Message(),
+				Data:     rule.Data(),
 			}
 			s.matches.add(rec)
 			s.observeMatch(siteName, rec.URI, rec.RuleID, rec.Client, rec.Severity)
@@ -1780,7 +1773,7 @@ func main() {
 		syslog:        newSyslogEngine(log),
 		hosts:         newHostObserver(log),
 		metrics:       newMetrics(),
-		security:      newSecurityManager(),
+		debug:         NewDebugEvidenceStore(debugEvidenceMaxFromEnv(), debugEvidenceTTLFromEnv()),
 		ipmgr:         newIPManager(log, *adminAddr, os.Getenv("WAF_DATA_INTERFACE")),
 		log:           log,
 		configPath:    *configPath,
@@ -1788,20 +1781,12 @@ func main() {
 		tlsFrontend:   newTLSFrontendPublisher(log),
 		bootCfg:       cfg,
 	}
-	aiEng.security = s.security
 	notifier.sink = s.syslog.forwardNotify // fan notifications out to syslog
+	SetDebugEvidenceStore(s.debug)
 	if err := s.apply(cfg); err != nil {
 		log.Error("initial build failed", "err", err)
 		os.Exit(1)
 	}
-
-	// Build the admin state container before listeners are exposed so persistent
-	// security/session/audit state can be restored atomically at startup.
-	admin := newAdminServer(s, *adminToken, log)
-	if err := loadPersistentSecurityState(effectiveSecurityStatePath(s), s, admin); err != nil {
-		log.Warn("could not load persistent security state", "err", err)
-	}
-	securityStateStop, securityStateWG := startPersistentSecurityState(s, admin, 30*time.Second)
 
 	// ── site-map persistence: restore state before traffic can mutate it ──
 	if err := s.maps.load(*configPath); err != nil {
@@ -1833,7 +1818,12 @@ func main() {
 	metricsStop := make(chan struct{})
 	s.metrics.startSampler(3*time.Second, metricsStop)
 
+	// ── bounded debug-evidence retention ──
+	debugStop := make(chan struct{})
+	go s.debug.RunCleanup(debugStop, time.Minute)
+
 	// ── admin listener ──
+	admin := newAdminServer(s, *adminToken, log)
 	adminSrv := &http.Server{
 		Addr:              *adminAddr,
 		Handler:           admin.handler(),
@@ -1887,6 +1877,7 @@ func main() {
 	<-ctx.Done()
 	log.Info("shutting down")
 	close(metricsStop)
+	close(debugStop)
 	// Managed service IPs intentionally survive a routine stop/restart. They are
 	// removed when manage_ip is disabled or the site is deleted, not merely
 	// because the process is being upgraded.
@@ -1915,8 +1906,6 @@ func main() {
 	}
 	close(sitemapStop) // final site-map flush includes drained observations
 	sitemapWG.Wait()
-	close(securityStateStop)
-	securityStateWG.Wait()
 	log.Info("stopped cleanly")
 }
 
