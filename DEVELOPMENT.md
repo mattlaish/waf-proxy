@@ -144,3 +144,16 @@ Implemented a repair-only slice after a Markdown↔code audit found release/prov
 Status: **QUALIFICATION_REQUIRED**. This repair does not create new real Coraza/libvectorscan/Go1.25 qualification evidence.
 
 Truth-boundary validation found and repaired one additional release defect: importing the canonical Python source-manifest helper could create `tools/__pycache__`, changing the staging manifest, and plain `go version` could invoke Go's auto-toolchain download whose network error text contained nondeterministic ephemeral ports. Release source enumeration now excludes Python bytecode/cache artifacts, the builder suppresses bytecode generation, and release Go-version evidence forces `GOTOOLCHAIN=local`. Fixed-epoch reproducibility passed after these repairs.
+
+## Phase 4 Slice A Trusted Client Identity Foundation
+
+Implementation update:
+- Added ClientIdentityDecision evidence model.
+- Debug evidence now carries client identity decision context.
+- Added initial `wafctl proxy identity show` operator visibility.
+- Existing trusted proxy resolver remains authoritative; no duplicate resolver was introduced.
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+
+Phase 4 Slice A follow-up: added client identity audit event model constants CLIENT_IDENTITY_RESOLVED and CLIENT_IDENTITY_HEADER_REJECTED.

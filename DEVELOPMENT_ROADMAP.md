@@ -217,3 +217,77 @@ Implemented source slice:
 - unsupported scopes remain Coraza-only
 
 Status: IMPLEMENTED_TESTING_DEFERRED
+
+
+## Phase 4 Slice A Trusted Client Identity Foundation
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+
+
+Phase 4 Slice A follow-up: added client identity audit event model constants CLIENT_IDENTITY_RESOLVED and CLIENT_IDENTITY_HEADER_REJECTED.
+
+---
+
+# Phase 4 Slice B — L7 Abuse Controls
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented:
+- L7 abuse control boundary
+- trusted client identity reuse
+- request rate window enforcement foundation
+- concurrent connection/request tracking foundation
+
+Deferred:
+- production tuning
+- traffic qualification
+- TLS handshake protection qualification
+
+---
+
+# Phase 4 Slice C — Manual CIDR Policy
+
+Status: PLANNED
+
+Scope:
+- CIDR allow list
+- CIDR deny list
+- priority evaluation
+- policy evidence
+- optional TTL lifecycle
+
+Boundary:
+- consumes trusted client identity from Slice A
+- does not replace Coraza authority
+- does not introduce distributed policy storage
+
+
+## Slice C Update
+Manual CIDR Policy Engine implementation completed. Status: IMPLEMENTED_TESTING_DEFERRED.
+
+## Phase 4 Slice D — Custom Block Page / Correlation
+Status: IMPLEMENTED_TESTING_DEFERRED
+Completed implementation foundation:
+- request correlation ID
+- HTML/JSON block response abstraction
+- security event model foundation
+
+
+## Phase 4 Slice E — Persistent Security State
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented foundation: security state models and in-memory persistence abstraction. Production database durability, HA replication, retention tuning, and external integrations remain deferred.
+
+
+## Phase 4 Slice F — PKI Slice 3 Hardening
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented foundation: CRL retrieval validation, refresh state model, and last-known-good retention boundary.
+
+
+## Phase 5 Slice A — Runtime Qualification Closure
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented: runtime qualification evidence schema foundation. Real Go 1.25, Coraza v3.7.0 transaction, and libvectorscan runtime gates remain NOT_RUN until executed on a qualified release host.

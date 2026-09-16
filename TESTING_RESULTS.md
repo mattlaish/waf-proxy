@@ -428,3 +428,71 @@ Executed on the packaging host:
 Still **NOT_RUN / BLOCKED**: real Go 1.25 full suite, real Coraza v3.7 transaction truth gate, real libvectorscan `hs_compile_multi`/`hs_scan`, representative production CRS Phase 1 differential/zero-FN qualification, and real organizational minisign signing/verification with an approved key.
 
 The final delivery artifact is rebuilt after this ledger update and must repeat the artifact verifier, negative truth-boundary gates, reproducibility gate, and baseline-relative patch reconstruction. Its final SHA-256 is external delivery metadata and is intentionally not self-embedded here.
+
+## Phase 4 Slice A
+
+Completed source-level changes:
+- ClientIdentityDecision model
+- debug evidence field
+- wafctl proxy identity show
+
+Remaining validation:
+- full Go qualification
+- runtime proxy deployment tests
+- complete audit event pipeline validation
+
+
+Phase 4 Slice A follow-up: added client identity audit event model constants CLIENT_IDENTITY_RESOLVED and CLIENT_IDENTITY_HEADER_REJECTED.
+
+## Phase 4 Slice B Validation
+
+Implemented but testing deferred.
+
+Executed:
+- Source modification completed
+
+Not Run:
+- go test ./... (blocked: Go 1.25 toolchain download unavailable in offline environment)
+- production proxy traffic validation
+- load qualification
+
+## Phase 4 Slice C Roadmap Preparation
+
+Status:
+PLANNED
+
+No implementation tests executed.
+
+Not Run:
+- CIDR policy functional tests
+- policy persistence tests
+- enforcement integration tests
+
+
+## Phase 4 Slice C CIDR Policy
+- Source implementation: added
+- go test ./...: NOT_RUN/BLOCKED (Go 1.25 toolchain download unavailable)
+
+## Phase 4 Slice D
+Status: IMPLEMENTED_TESTING_DEFERRED
+Runtime qualification remains separate.
+
+
+## Phase 4 Slice E — Persistent Security State
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented foundation: security state models and in-memory persistence abstraction. Production database durability, HA replication, retention tuning, and external integrations remain deferred.
+
+
+## Phase 4 Slice F PKI Hardening
+- Source changes added.
+- Runtime PKI qualification remains NOT_RUN.
+- Production CA/CRL infrastructure validation remains deferred.
+
+
+## Phase 5 Slice A — Runtime Qualification Closure
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented: runtime qualification evidence schema foundation. Real Go 1.25, Coraza v3.7.0 transaction, and libvectorscan runtime gates remain NOT_RUN until executed on a qualified release host.

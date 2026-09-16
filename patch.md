@@ -858,3 +858,54 @@ Truth boundary: these controls harden release provenance and packaging only; the
 - Corrected README/INSTALL/MANIFEST historical-vs-current test wording and local-vs-API `wafctl` behavior.
 - Validation evidence recorded separately in TESTING_RESULTS.md after concentrated execution.
 - Reproducibility repair during validation: exclude/suppress Python `__pycache__` and force `GOTOOLCHAIN=local` for Go version evidence so fixed-epoch archives cannot drift on auto-toolchain network error details.
+
+
+Phase 4 Slice A follow-up: added client identity audit event model constants CLIENT_IDENTITY_RESOLVED and CLIENT_IDENTITY_HEADER_REJECTED.
+
+# Phase 4 Slice B Patch Summary
+
+Added L7 abuse control foundation:
+- L7AbuseConfig
+- l7AbuseController
+- trusted ClientIdentityDecision reuse
+- request window and concurrency enforcement
+- HTTP 429 abuse response boundary
+
+No Coraza, VectorScan, XDP, or PKI architecture changes.
+
+# Phase 4 Slice C Roadmap Documentation Patch
+
+Documentation synchronization only:
+- Added Slice C roadmap entry
+- Defined Manual CIDR Policy scope boundary
+- Recorded implementation status as PLANNED
+
+No runtime/source implementation included.
+
+
+Phase 4 Slice C implementation:
+- Added CIDR Policy Engine
+- Integrated with trusted client identity pipeline
+
+Phase 4 Slice D implementation:
+- Added correlation ID middleware
+- Added block response abstraction
+- Added security event model foundation
+
+
+## Phase 4 Slice E — Persistent Security State
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented foundation: security state models and in-memory persistence abstraction. Production database durability, HA replication, retention tuning, and external integrations remain deferred.
+
+
+Phase 4 Slice F patch summary:
+Added PKI CRL retrieval hardening helpers, refresh lifecycle model, and last-known-good retention foundation.
+
+
+## Phase 5 Slice A — Runtime Qualification Closure
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented: runtime qualification evidence schema foundation. Real Go 1.25, Coraza v3.7.0 transaction, and libvectorscan runtime gates remain NOT_RUN until executed on a qualified release host.

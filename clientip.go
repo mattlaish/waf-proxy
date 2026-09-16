@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 )
 
 const (
@@ -18,6 +20,34 @@ const (
 // peer is trusted, then walked from right to left until the first untrusted
 // hop. This prevents an external client from choosing its own identity by
 // prepending an address to X-Forwarded-For.
+const (
+	AuditClientIdentityResolved       = "CLIENT_IDENTITY_RESOLVED"
+	AuditClientIdentityHeaderRejected = "CLIENT_IDENTITY_HEADER_REJECTED"
+)
+
+type ClientIdentityAuditEvent struct {
+	Action   string                 `json:"action"`
+	Decision ClientIdentityDecision `json:"decision"`
+}
+
+type ClientIdentityAuditSink func(ClientIdentityAuditEvent)
+
+var clientIdentityAuditSink atomic.Value
+
+func SetClientIdentityAuditSink(sink ClientIdentityAuditSink) {
+	clientIdentityAuditSink.Store(sink)
+}
+
+func emitClientIdentityAudit(event ClientIdentityAuditEvent) {
+	v := clientIdentityAuditSink.Load()
+	if v == nil {
+		return
+	}
+	if sink, ok := v.(ClientIdentityAuditSink); ok && sink != nil {
+		sink(event)
+	}
+}
+
 type ClientIdentityDecision struct {
 	RemoteAddr       string `json:"remote_addr"`
 	ResolvedClientIP string `json:"resolved_client_ip"`
@@ -25,6 +55,13 @@ type ClientIdentityDecision struct {
 	TrustedProxy     bool   `json:"trusted_proxy"`
 	Decision         string `json:"decision"`
 	RejectionReason  string `json:"rejection_reason,omitempty"`
+}
+
+type clientIdentityContextKey struct{}
+
+func clientIdentityFromContext(ctx context.Context) (ClientIdentityDecision, bool) {
+	v, ok := ctx.Value(clientIdentityContextKey{}).(ClientIdentityDecision)
+	return v, ok
 }
 
 type clientIPResolver struct {
@@ -87,6 +124,14 @@ func (r *clientIPResolver) isTrusted(ip net.IP) bool {
 	return false
 }
 
+func (d ClientIdentityDecision) AuditEvent() ClientIdentityAuditEvent {
+	action := AuditClientIdentityResolved
+	if d.Decision == "REJECTED" {
+		action = AuditClientIdentityHeaderRejected
+	}
+	return ClientIdentityAuditEvent{Action: action, Decision: d}
+}
+
 func (r *clientIPResolver) ResolveDecision(req *http.Request) ClientIdentityDecision {
 	d := ClientIdentityDecision{RemoteAddr: clientIP(req), ResolvedClientIP: clientIP(req), Source: "REMOTE_ADDR", Decision: "ACCEPTED"}
 	peer := net.ParseIP(d.RemoteAddr)
@@ -106,6 +151,9 @@ func (r *clientIPResolver) ResolveDecision(req *http.Request) ClientIdentityDeci
 	resolved := r.resolve(req)
 	d.ResolvedClientIP = resolved
 	d.Source = "X_FORWARDED_FOR"
+	if d.Decision == "ACCEPTED" {
+		// Caller may emit the decision audit event from d.AuditEvent().
+	}
 	return d
 }
 
@@ -147,13 +195,16 @@ func (r *clientIPResolver) resolve(req *http.Request) string {
 // letting any of them accidentally re-interpret untrusted forwarding headers.
 func (r *clientIPResolver) wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		resolved := r.resolve(req)
+		decision := r.ResolveDecision(req)
+		resolved := decision.ResolvedClientIP
 		_, port, err := net.SplitHostPort(req.RemoteAddr)
 		if err == nil {
 			req.RemoteAddr = net.JoinHostPort(resolved, port)
 		} else {
 			req.RemoteAddr = resolved
 		}
+		req = req.WithContext(context.WithValue(req.Context(), clientIdentityContextKey{}, decision))
+		emitClientIdentityAudit(decision.AuditEvent())
 		next.ServeHTTP(w, req)
 	})
 }

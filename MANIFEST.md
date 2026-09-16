@@ -161,3 +161,50 @@ These files do not enable acceleration by themselves; Coraza remains authoritati
 - `verify-release-artifact.sh` — hardened post-package archive/source/evidence verifier with exact source/release manifest coverage, provenance cross-digests and SBOM dependency checks.
 - `verify-release-signature.sh` — detached minisign verification with an independently supplied approved public key; returns NOT_CONFIGURED when minisign is unavailable.
 - `BUILD_PROVENANCE.json` / `BUILD_SHA256SUMS.txt` — generated only after a successful binary build and intentionally excluded from complete-source ZIP staging.
+
+
+Phase 4 Slice A follow-up: added client identity audit event model constants CLIENT_IDENTITY_RESOLVED and CLIENT_IDENTITY_HEADER_REJECTED.
+
+## Phase 4 Slice B Added Files
+
+- l7_abuse.go
+- l7_abuse_test.go
+
+Modified:
+- main.go
+
+## Phase 4 Slice C Roadmap Documentation Update
+
+Added roadmap references:
+- Manual CIDR Policy boundary
+- Slice C scope definition
+
+No Slice C source files added.
+
+
+Phase 4 Slice C source additions:
+- cidr_policy.go
+
+Phase 4 Slice D artifacts:
+- block_response.go
+- correlation.go
+- security_event.go
+
+
+## Phase 4 Slice E — Persistent Security State
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented foundation: security state models and in-memory persistence abstraction. Production database durability, HA replication, retention tuning, and external integrations remain deferred.
+
+
+Phase 4 Slice F additions:
+- pki_hardening.go
+- pki_hardening_test.go
+
+
+## Phase 5 Slice A — Runtime Qualification Closure
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented: runtime qualification evidence schema foundation. Real Go 1.25, Coraza v3.7.0 transaction, and libvectorscan runtime gates remain NOT_RUN until executed on a qualified release host.

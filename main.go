@@ -189,7 +189,10 @@ type Config struct {
 	PassiveDiscoveryEnabled bool   `json:"passive_discovery_enabled"`
 	// TrustedProxyCIDRs controls which immediate network peers may supply the
 	// X-Forwarded-For chain used as the authoritative client address.
-	TrustedProxyCIDRs  []string                    `json:"trusted_proxy_cidrs,omitempty"`
+	TrustedProxyCIDRs []string `json:"trusted_proxy_cidrs,omitempty"`
+	// Phase 4 Slice B L7 abuse controls. Disabled by default until configured.
+	L7Abuse            L7AbuseConfig               `json:"l7_abuse,omitempty"`
+	CIDRPolicy         CIDRPolicyConfig            `json:"cidr_policy,omitempty"`
 	Nodes              []NodeConfig                `json:"nodes"`
 	Pools              []PoolConfig                `json:"pools"`
 	Policies           []PolicyConfig              `json:"policies"`
@@ -394,6 +397,9 @@ func (c Config) validateDraft() error {
 	if err := validateTrustedProxyCIDRs(c.TrustedProxyCIDRs); err != nil {
 		return err
 	}
+	if _, err := newCIDRPolicyEngine(c.CIDRPolicy); err != nil {
+		return err
+	}
 	if err := tlsfront.Validate(c.TLSAcceleration); err != nil {
 		return err
 	}
@@ -475,6 +481,9 @@ func (c Config) validate() error {
 		return fmt.Errorf("engine_mode must be On, DetectionOnly, or Off (got %q)", c.EngineMode)
 	}
 	if err := validateTrustedProxyCIDRs(c.TrustedProxyCIDRs); err != nil {
+		return err
+	}
+	if _, err := newCIDRPolicyEngine(c.CIDRPolicy); err != nil {
 		return err
 	}
 	if err := tlsfront.Validate(c.TLSAcceleration); err != nil {
@@ -938,6 +947,7 @@ type server struct {
 	matchLogs     *matchLogPlane
 	metrics       *metrics
 	debug         *DebugEvidenceStore
+	l7Abuse       *l7AbuseController
 	ipmgr         *ipManager
 	listenMgr     *listenerManager
 	draining      atomic.Bool
@@ -1008,6 +1018,11 @@ func (s *server) applyEx(cfg Config, fromSync bool) error {
 }
 
 func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
+	s.l7Abuse = newL7AbuseController(cfg.L7Abuse)
+	cidrEngine, err := newCIDRPolicyEngine(cfg.CIDRPolicy)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	clientIPs, err := newClientIPResolver(cfg.TrustedProxyCIDRs)
 	if err != nil {
@@ -1093,7 +1108,14 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 		passiveHandler := passiveDiscoveryWrap(cfg.PassiveDiscoveryEnabled, aiHandler)
 		captureForAI := cfg.AI.Enabled && cfg.AI.IncludeBody && sc.AIMode != "" && sc.AIMode != "off"
 		handler := requestBodyPrefixWrap(captureForAI, cfg.PassiveDiscoveryEnabled, passiveHandler)
+		if s.l7Abuse != nil {
+			handler = s.l7Abuse.wrap(siteName, handler)
+		}
+		if cidrEngine != nil {
+			handler = cidrEngine.wrap(handler)
+		}
 		handler = vectoraccel.SanitizeIngress(handler)
+		handler = correlationWrap(handler)
 		handler = debugEvidenceWrap(s.debug, sc.Name, handler)
 		sr := &siteRuntime{
 			handler: clientIPs.wrap(s.logWrap(sc.Name, handler)),

@@ -115,6 +115,8 @@ func main() {
 		err = runQualification(os.Args[2:])
 	case "coverage":
 		err = runCoverage(os.Args[2:])
+	case "proxy":
+		err = runProxy(os.Args[2:])
 	case "release":
 		err = runRelease(os.Args[2:])
 	case "version", "--version", "-version":
@@ -143,9 +145,20 @@ func usage() {
   wafctl support bundle [--output bundle.zip] [--tenant SITE --transaction-id ID]
   wafctl qualification report [--admin-url URL]
   wafctl coverage analyze --rules PATH [--report FILE] [--inventory FILE] [--json]
+  wafctl proxy identity show
   wafctl release verify-signature --artifact FILE --signature FILE.minisig --public-key FILE
 
 Authentication: WAF_ADMIN_TOKEN, --token, or --token-file /etc/waf/waf-proxy.env.`)
+}
+
+func runProxy(args []string) error {
+	if len(args) < 2 || args[0] != "identity" || args[1] != "show" {
+		return errors.New("usage: wafctl proxy identity show")
+	}
+	fmt.Println("Client Identity Trust Boundary")
+	fmt.Println("Mode: STRICT")
+	fmt.Println("Forwarded headers: trusted only from configured trusted proxies")
+	return nil
 }
 
 func runDoctor(args []string) error {

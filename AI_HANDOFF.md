@@ -1543,3 +1543,77 @@ Coverage and live VectorScan eligibility now share `internal/capability`; do not
 The source release builder emits only `SOURCE_ARCHIVE`. Actual binary type/variant belongs to `BUILD_PROVENANCE.json` produced after a real build. Release evidence schema v2, source-bound govulncheck evidence, complete source/release manifests, `PROVENANCE.json` cross-digests, and SBOM↔`go.mod` checks are mandatory artifact gates. Unsigned hashes are not producer authentication; only a detached signature verified against an approved public key establishes that boundary.
 
 Phase 0/1 real Go 1.25 + Coraza v3.7 + libvectorscan qualification remains NOT_RUN/BLOCKED on the packaging host and must not be inferred from source/artifact hardening PASS results.
+
+## Phase 4 Slice A progress
+
+Trusted client identity work extends the existing client IP resolver. It does not create a second identity path. Client identity evidence is attached to debug capture and operator visibility is provided through `wafctl proxy identity show`.
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+
+Phase 4 Slice A follow-up: added client identity audit event model constants CLIENT_IDENTITY_RESOLVED and CLIENT_IDENTITY_HEADER_REJECTED.
+
+## Phase 4 Slice B — L7 Abuse Controls (Implementation Start)
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented foundation:
+- trusted client identity context reused from Slice A
+- configurable L7 abuse middleware boundary
+- per-client request window control
+- per-client concurrent request tracking
+- 429 enforcement evidence boundary
+
+Not claimed:
+- production traffic qualification
+- TLS handshake enforcement
+- benchmark qualification
+- release readiness
+
+## Phase 4 Slice C — Manual CIDR Policy (Roadmap Entry)
+
+Status: PLANNED
+
+Scope boundary:
+- manual CIDR allow policy
+- manual CIDR deny policy
+- priority evaluation
+- policy match evidence
+- optional TTL handling
+
+Dependency:
+- reuse Slice A ClientIdentityDecision resolved client identity
+
+Not implemented:
+- CIDR enforcement engine
+- policy persistence
+- cleanup worker
+- distributed policy sync
+
+
+## Phase 4 Slice C — Manual CIDR Policy
+Status: IMPLEMENTED_TESTING_DEFERRED
+Added CIDR policy engine foundation using trusted client identity context.
+
+## Phase 4 Slice D — Custom Block Page / Correlation
+Status: IMPLEMENTED_TESTING_DEFERRED
+Added correlation ID foundation, reusable block response generation, and security event model foundation.
+
+
+## Phase 4 Slice E — Persistent Security State
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented foundation: security state models and in-memory persistence abstraction. Production database durability, HA replication, retention tuning, and external integrations remain deferred.
+
+
+## Phase 4 Slice F PKI Slice 3 Hardening
+- Added CRL retrieval boundary hardening foundation.
+- Added SSRF-oriented URL validation and Last Known Good CRL retention helpers.
+
+
+## Phase 5 Slice A — Runtime Qualification Closure
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented: runtime qualification evidence schema foundation. Real Go 1.25, Coraza v3.7.0 transaction, and libvectorscan runtime gates remain NOT_RUN until executed on a qualified release host.

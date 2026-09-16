@@ -24,16 +24,17 @@ import (
 // Tenant is the site name in the current single-control-plane model. Evidence
 // is supportability-only and MUST NOT participate in request verdicts.
 type DebugBundle struct {
-	Tenant        string         `json:"tenant"`
-	TransactionID string         `json:"transaction_id"`
-	Request       map[string]any `json:"request,omitempty"`
-	Response      map[string]any `json:"response,omitempty"`
-	TLS           map[string]any `json:"tls,omitempty"`
-	Proxy         map[string]any `json:"proxy,omitempty"`
-	Coraza        map[string]any `json:"coraza,omitempty"`
-	VectorScan    map[string]any `json:"vectorscan,omitempty"`
-	CapturedAt    time.Time      `json:"captured_at"`
-	ExpiresAt     time.Time      `json:"expires_at,omitempty"`
+	Tenant         string         `json:"tenant"`
+	TransactionID  string         `json:"transaction_id"`
+	Request        map[string]any `json:"request,omitempty"`
+	Response       map[string]any `json:"response,omitempty"`
+	TLS            map[string]any `json:"tls,omitempty"`
+	Proxy          map[string]any `json:"proxy,omitempty"`
+	Coraza         map[string]any `json:"coraza,omitempty"`
+	VectorScan     map[string]any `json:"vectorscan,omitempty"`
+	ClientIdentity map[string]any `json:"client_identity,omitempty"`
+	CapturedAt     time.Time      `json:"captured_at"`
+	ExpiresAt      time.Time      `json:"expires_at,omitempty"`
 }
 
 type debugCaptureWindow struct {
@@ -372,7 +373,7 @@ func debugEvidenceWrap(store *DebugEvidenceStore, tenant string, next http.Handl
 			"protocol":        r.Proto,
 			"content_length":  r.ContentLength,
 			"client":          maskedDebugClientIP(clientIP(r)),
-			"client_identity": map[string]any{"remote_addr": clientIP(r), "source": "REMOTE_ADDR"},
+			"client_identity": clientIdentityEvidence(r),
 			"headers":         debugHeaderSubset(r.Header),
 		}
 		tlsEvidence := map[string]any{}
@@ -385,7 +386,7 @@ func debugEvidenceWrap(store *DebugEvidenceStore, tenant string, next http.Handl
 				"resumed":             r.TLS.DidResume,
 			}
 		}
-		store.Put(DebugBundle{Tenant: tenant, TransactionID: id, Request: req, TLS: tlsEvidence})
+		store.Put(DebugBundle{Tenant: tenant, TransactionID: id, Request: req, ClientIdentity: req["client_identity"].(map[string]any), TLS: tlsEvidence})
 		w.Header().Set("X-WAF-Request-ID", id)
 		sw := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
 		next.ServeHTTP(sw, r)
@@ -429,4 +430,11 @@ func truncateDebugString(s string, max int) string {
 		return s
 	}
 	return s[:max] + "[truncated]"
+}
+
+func clientIdentityEvidence(r *http.Request) map[string]any {
+	if d, ok := clientIdentityFromContext(r.Context()); ok {
+		return map[string]any{"remote_addr": d.RemoteAddr, "resolved_client_ip": d.ResolvedClientIP, "source": d.Source, "trusted_proxy": d.TrustedProxy, "decision": d.Decision, "rejection_reason": d.RejectionReason}
+	}
+	return map[string]any{"remote_addr": clientIP(r), "source": "REMOTE_ADDR"}
 }
