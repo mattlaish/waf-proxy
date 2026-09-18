@@ -1,0 +1,26 @@
+{
+  "format": "waf-proxy-performance-certification-v1",
+  "generated_at": null,
+  "status": "NOT_RUN",
+  "evidence_status": "NOT_RUN",
+  "target_status": "NOT_RUN",
+  "required_scenarios": [
+    "clean-get",
+    "json-1k",
+    "json-16k",
+    "json-64k",
+    "json-256k",
+    "sqli-64k",
+    "xss-64k",
+    "traversal"
+  ],
+  "vectorscan_security": {
+    "status": "NOT_RUN",
+    "reason": "No real VectorScan benchmark and zero-false-negative qualification evidence executed on this packaging host."
+  },
+  "warnings": [
+    "Real full-proxy performance measurements were not executed on this packaging host.",
+    "No approved production performance target was evaluated."
+  ],
+  "truth_boundary": "This file is a NOT_RUN evidence placeholder only. It contains no measured throughput or production sizing claim."
+}

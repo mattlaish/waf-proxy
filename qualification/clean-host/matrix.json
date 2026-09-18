@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "evidence_type": "clean-host-distribution-matrix",
+  "status": "NOT_RUN",
+  "truth_boundary": "Each platform remains NOT_RUN until the real dedicated clean host executes package install, explicit CRS provisioning, systemd start, authenticated admin API, reverse-proxy traffic, upgrade and removal.",
+  "platforms": {
+    "debian-12": "NOT_RUN",
+    "ubuntu-22.04": "NOT_RUN",
+    "ubuntu-24.04": "NOT_RUN",
+    "rhel-9": "NOT_RUN",
+    "rocky-9": "NOT_RUN",
+    "almalinux-9": "NOT_RUN",
+    "oraclelinux-9": "NOT_RUN"
+  }
+}

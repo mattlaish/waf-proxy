@@ -74,9 +74,14 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RuntimeDirectory=waf-proxy
 RuntimeDirectoryMode=0750
+# Persistent learning/security state (for example VectorScan learning state).
+# systemd creates and preserves /var/lib/waf-proxy across service restarts and
+# package upgrades.
+StateDirectory=waf-proxy
+StateDirectoryMode=0750
 
 # waf-proxy writes config.json back on save; /etc/waf must stay writable.
-ReadWritePaths=/etc/waf
+ReadWritePaths=/etc/waf /var/lib/waf-proxy
 # Audit log dir: systemd creates /var/log/waf (owned by the service user) and
 # makes it writable inside the sandbox. Matches SecAuditLog in coraza.conf.
 LogsDirectory=waf

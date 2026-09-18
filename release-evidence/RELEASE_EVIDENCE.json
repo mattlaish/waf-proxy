@@ -2,15 +2,15 @@
   "artifact_type": "SOURCE_ARCHIVE",
   "authenticity": "UNAUTHENTICATED_UNLESS_DETACHED_SIGNATURE_VERIFIED",
   "build_variant": "source",
-  "generated_from_source_date_epoch": "2026-09-14T00:00:00Z",
+  "generated_from_source_date_epoch": "2026-09-18T00:00:00Z",
   "govulncheck": {
     "evidence_type": "govulncheck",
-    "executed_at": "2026-09-14T11:06:41Z",
+    "executed_at": null,
     "output": "",
-    "reason": "govulncheck executable unavailable",
+    "reason": "no govulncheck evidence supplied",
     "result_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "schema_version": 1,
-    "source_manifest_sha256": "66eb35cb7f8b5d096e7ac233a179625b64a25de27a707bbb8d9641d3bea66ad2",
+    "source_manifest_sha256": "4b8dc36168ea7c26bacdd3878c84fc0dc131efddbd550c3db6e561473e193fee",
     "status": "NOT_RUN",
     "tool": "govulncheck",
     "tool_version": "NOT_AVAILABLE"
@@ -20,12 +20,12 @@
     "required": false,
     "status": "NOT_REQUIRED_FOR_ARTIFACT_TYPE"
   },
-  "release": "phase3-truth-boundary-repair-2026-09-14",
+  "release": "openai-responses-structured-secrets-2026-09-18",
   "reproducible_metadata": true,
   "schema_version": 2,
-  "source_date_epoch": 1789344000,
-  "source_file_count": 161,
-  "source_manifest_sha256": "66eb35cb7f8b5d096e7ac233a179625b64a25de27a707bbb8d9641d3bea66ad2",
+  "source_date_epoch": 1789689600,
+  "source_file_count": 273,
+  "source_manifest_sha256": "4b8dc36168ea7c26bacdd3878c84fc0dc131efddbd550c3db6e561473e193fee",
   "truth_boundary": "Integrity-bound metadata does not authenticate its producer and does not qualify Coraza, VectorScan, CRS, kTLS, QAT, or target-host runtime behavior.",
   "versions": {
     "coraza": {

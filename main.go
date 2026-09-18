@@ -43,6 +43,7 @@ import (
 	"syscall"
 	"time"
 
+	"waf-proxy/internal/hsm"
 	"waf-proxy/internal/tlsfront"
 	"waf-proxy/internal/vectoraccel"
 
@@ -155,16 +156,17 @@ type PagePolicy struct {
 }
 
 type SiteConfig struct {
-	Name         string   `json:"name"`
-	Listen       string   `json:"listen"` // address THIS site binds, e.g. ":443"
-	Hostnames    []string `json:"hostnames"`
-	Pool         string   `json:"pool"`   // references PoolConfig.Name
-	Policy       string   `json:"policy"` // references PolicyConfig.Name (base ruleset)
-	PreserveHost bool     `json:"preserve_host"`
-	EngineMode   string   `json:"engine_mode,omitempty"` // "" inherits global
-	AIMode       string   `json:"ai_mode,omitempty"`     // off | advisory | block ("" = off)
-	TLSCert      string   `json:"tls_cert,omitempty"`
-	TLSKey       string   `json:"tls_key,omitempty"`
+	Name           string        `json:"name"`
+	Listen         string        `json:"listen"` // address THIS site binds, e.g. ":443"
+	Hostnames      []string      `json:"hostnames"`
+	Pool           string        `json:"pool"`   // references PoolConfig.Name
+	Policy         string        `json:"policy"` // references PolicyConfig.Name (base ruleset)
+	PreserveHost   bool          `json:"preserve_host"`
+	EngineMode     string        `json:"engine_mode,omitempty"` // "" inherits global
+	AIMode         string        `json:"ai_mode,omitempty"`     // off | advisory | block ("" = off)
+	TLSCert        string        `json:"tls_cert,omitempty"`
+	TLSKey         string        `json:"tls_key,omitempty"`
+	TLSKeyProvider hsm.KeyConfig `json:"tls_key_provider,omitempty"`
 	// ManageIP: when true and Listen has a concrete IP not on any interface,
 	// the WAF assigns it to the matching NIC on Apply (and removes it when the
 	// site goes away). Requires CAP_NET_ADMIN. Off for VIPs owned by keepalived.
@@ -203,6 +205,7 @@ type Config struct {
 	Notify             NotifyConfig                `json:"notify"`
 	HA                 HAConfig                    `json:"ha"`
 	Syslog             SyslogConfig                `json:"syslog"`
+	HSM                hsm.RuntimeConfig           `json:"hsm,omitempty"`
 	TLSAcceleration    tlsfront.AccelerationConfig `json:"tls_acceleration,omitempty"`
 	VectorAcceleration vectoraccel.Config          `json:"vector_acceleration,omitempty"`
 
@@ -268,6 +271,7 @@ func defaultConfig() Config {
 		Notify:             defaultNotifyConfig(),
 		HA:                 defaultHAConfig(),
 		Syslog:             defaultSyslogConfig(),
+		HSM:                hsm.DefaultRuntimeConfig(),
 		TLSAcceleration:    tlsfront.AccelerationConfig{Mode: tlsfront.ModeGo, KTLS: tlsfront.AccelOff, QAT: tlsfront.AccelOff},
 		VectorAcceleration: vectoraccel.Defaults(),
 	}
@@ -403,6 +407,9 @@ func (c Config) validateDraft() error {
 	if err := tlsfront.Validate(c.TLSAcceleration); err != nil {
 		return err
 	}
+	if err := c.HSM.Validate(); err != nil {
+		return err
+	}
 	if err := vectoraccel.Validate(c.VectorAcceleration); err != nil {
 		return err
 	}
@@ -472,6 +479,9 @@ func (c Config) validateDraft() error {
 		if s.ManagePrefixLen < 0 || s.ManagePrefixLen > 128 {
 			return fmt.Errorf("site %q: manage_prefix_len must be 0-128", s.Name)
 		}
+		if err := validateSiteTLSKeyProvider(s, c.TLSAcceleration, false); err != nil {
+			return fmt.Errorf("site %q: %w", s.Name, err)
+		}
 	}
 	return nil
 }
@@ -487,6 +497,9 @@ func (c Config) validate() error {
 		return err
 	}
 	if err := tlsfront.Validate(c.TLSAcceleration); err != nil {
+		return err
+	}
+	if err := c.HSM.Validate(); err != nil {
 		return err
 	}
 	if err := vectoraccel.Validate(c.VectorAcceleration); err != nil {
@@ -717,8 +730,8 @@ func (c Config) validate() error {
 				}
 			}
 		}
-		if (s.TLSCert == "") != (s.TLSKey == "") {
-			return fmt.Errorf("%s: tls_cert and tls_key must both be set or both be empty", where)
+		if err := validateSiteTLSKeyProvider(s, c.TLSAcceleration, true); err != nil {
+			return fmt.Errorf("%s: %w", where, err)
 		}
 		if claimed[s.Listen] == nil {
 			claimed[s.Listen] = map[string]string{}
@@ -831,7 +844,7 @@ func publicListenerSet(c Config) map[string]bool {
 		if _, ok := out[s.Listen]; !ok {
 			out[s.Listen] = false
 		}
-		if s.TLSCert != "" {
+		if siteTLSEnabled(s) {
 			out[s.Listen] = true
 		}
 	}
@@ -906,12 +919,13 @@ func (lr *listenerRuntime) lookup(host string) *siteRuntime {
 }
 
 type runtimeState struct {
-	listeners map[string]*listenerRuntime
-	pools     map[string]*poolRuntime
-	cfg       Config
-	builtAt   time.Time
-	cancel    context.CancelFunc // stops this runtime's health monitors
-	vector    *vectoraccel.Manager
+	listeners  map[string]*listenerRuntime
+	pools      map[string]*poolRuntime
+	cfg        Config
+	builtAt    time.Time
+	cancel     context.CancelFunc // stops this runtime's health monitors
+	vector     *vectoraccel.Manager
+	hsmSigners []hsm.Signer
 }
 
 func (rt *runtimeState) close() {
@@ -920,6 +934,11 @@ func (rt *runtimeState) close() {
 	}
 	if rt.cancel != nil {
 		rt.cancel()
+	}
+	for _, signer := range rt.hsmSigners {
+		if signer != nil {
+			_ = signer.Close()
+		}
 	}
 	if rt.vector != nil {
 		_ = rt.vector.Close()
@@ -947,6 +966,7 @@ type server struct {
 	matchLogs     *matchLogPlane
 	metrics       *metrics
 	debug         *DebugEvidenceStore
+	hsmAudit      *hsm.AuditRing
 	l7Abuse       *l7AbuseController
 	ipmgr         *ipManager
 	listenMgr     *listenerManager
@@ -1123,12 +1143,22 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 			mode:    mode,
 		}
 		if sc.TLSCert != "" {
-			cert, err := tls.LoadX509KeyPair(sc.TLSCert, sc.TLSKey)
-			if err != nil {
-				rt.close()
-				return nil, fmt.Errorf("site %q: tls: %w", sc.Name, err)
+			if sc.TLSKeyProvider.Configured() {
+				cert, signer, err := hsm.LoadTLSCertificate(ctx, hsm.PKCS11Provider{}, cfg.HSM, sc.TLSKeyProvider, sc.TLSCert, s.recordHSMAudit)
+				if err != nil {
+					rt.close()
+					return nil, fmt.Errorf("site %q: HSM TLS: %w", sc.Name, err)
+				}
+				rt.hsmSigners = append(rt.hsmSigners, signer)
+				sr.cert = cert
+			} else {
+				cert, err := tls.LoadX509KeyPair(sc.TLSCert, sc.TLSKey)
+				if err != nil {
+					rt.close()
+					return nil, fmt.Errorf("site %q: tls: %w", sc.Name, err)
+				}
+				sr.cert = &cert
 			}
-			sr.cert = &cert
 		}
 
 		listenerKey := runtimeListenerKey(cfg, sc.Listen)
@@ -1796,6 +1826,7 @@ func main() {
 		hosts:         newHostObserver(log),
 		metrics:       newMetrics(),
 		debug:         NewDebugEvidenceStore(debugEvidenceMaxFromEnv(), debugEvidenceTTLFromEnv()),
+		hsmAudit:      hsm.NewAuditRing(500),
 		ipmgr:         newIPManager(log, *adminAddr, os.Getenv("WAF_DATA_INTERFACE")),
 		log:           log,
 		configPath:    *configPath,

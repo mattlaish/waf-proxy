@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "evidence_type": "clean-host-distribution-qualification",
+  "platform": "rhel-9",
+  "status": "NOT_RUN",
+  "executed": false,
+  "truth_boundary": "Placeholder only. PASS requires real dedicated clean-host execution."
+}

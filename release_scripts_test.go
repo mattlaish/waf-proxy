@@ -15,7 +15,26 @@ func TestReleaseScriptsAreLFAndBashSyntaxClean(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths = append(paths, filepath.Join("benchmark", "build.sh"))
+	paths = append(paths,
+		filepath.Join("benchmark", "build.sh"),
+		filepath.Join("qualification", "hsm", "run-softhsm-qualification.sh"),
+		filepath.Join("qualification", "hsm", "run-vendor-hsm-qualification.sh"),
+		filepath.Join("packaging", "deb", "build-deb.sh"),
+		filepath.Join("packaging", "deb", "build-release-deb.sh"),
+		filepath.Join("packaging", "deb", "verify-deb.sh"),
+		filepath.Join("packaging", "deb", "tests", "test-deb-packaging.sh"),
+		filepath.Join("packaging", "rpm", "build-rpm.sh"),
+		filepath.Join("packaging", "rpm", "build-release-rpm.sh"),
+		filepath.Join("packaging", "rpm", "verify-rpm.sh"),
+		filepath.Join("packaging", "rpm", "tests", "test-rpm-source.sh"),
+		filepath.Join("packaging", "rpm", "tests", "test-rpm-packaging.sh"),
+		filepath.Join("packaging", "qualification", "build-lifecycle-fixtures.sh"),
+		filepath.Join("packaging", "qualification", "run-package-lifecycle-qualification.sh"),
+		filepath.Join("packaging", "qualification", "tests", "test-qualification-source.sh"),
+		filepath.Join("packaging", "cleanhost", "run-clean-host-qualification.sh"),
+		filepath.Join("packaging", "cleanhost", "tests", "test-clean-host-source.sh"),
+		filepath.Join("tools", "tests", "test-openai-integration-source.sh"),
+	)
 	sort.Strings(paths)
 	if len(paths) == 0 {
 		t.Fatal("no release shell scripts found")

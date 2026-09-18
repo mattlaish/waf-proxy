@@ -52,23 +52,31 @@ with zipfile.ZipFile(archive) as zf:
 PY
 extracted="$tmp/extracted"
 required=(
- AGENTS.md README.md AI_HANDOFF.md DEVELOPMENT_ROADMAP.md TESTING_RESULTS.md MANIFEST.md patch.md INSTALL.md RELEASE_PROCESS.md DEVELOPMENT.md TESTING.md
+ AGENTS.md README.md AI_HANDOFF.md DEVELOPMENT_ROADMAP.md TESTING_RESULTS.md MANIFEST.md patch.md INSTALL.md PACKAGING_TOOL.md RELEASE_PROCESS.md DEVELOPMENT.md TESTING.md DEB_PACKAGE_GATE_RESULT.md RPM_PACKAGE_GATE_RESULT.md PACKAGE_LIFECYCLE_GATE_RESULT.md CLEAN_HOST_DISTRIBUTION_GATE_RESULT.md PACKAGE_TOOL_GATE_RESULT.md OPENAI_INTEGRATION_GATE_RESULT.md
  build.sh build-release-artifact.sh verify-release-artifact.sh verify-release-signature.sh release-security-scan.sh release-artifact-negative-tests.sh verify-reproducible-source-release.sh
- tools/release_evidence.py tools/source_manifest.py qualify-release-host.sh run-phase1-qualification.sh install.sh go.mod go.sum
- cmd/wafctl/main.go cmd/wafqualify/main.go qualification/corpus/default.jsonl
+ tools/release_evidence.py tools/source_manifest.py tools/waf_package_builder.py tools/tests/test_waf_package_builder.py tools/tests/test-waf-package-source.sh tools/tests/test-openai-integration-source.sh internal/openaiapi/responses.go internal/openaiapi/responses_test.go internal/secretref/secretref.go internal/secretref/secretref_test.go ai_openai_integration_test.go waf-package qualify-release-host.sh run-phase1-qualification.sh install.sh go.mod go.sum
+ packaging/deb/build-deb.sh packaging/deb/build-release-deb.sh packaging/deb/verify-deb.sh packaging/deb/tests/test-deb-packaging.sh
+ packaging/rpm/waf-proxy.spec packaging/rpm/build-rpm.sh packaging/rpm/build-release-rpm.sh packaging/rpm/verify-rpm.sh packaging/rpm/validate-rpm-source.py packaging/rpm/tests/test-rpm-source.sh packaging/rpm/tests/test-rpm-packaging.sh
+ packaging/qualification/README.md packaging/qualification/package_lifecycle_qualify.py packaging/qualification/build-lifecycle-fixtures.sh packaging/qualification/run-package-lifecycle-qualification.sh packaging/qualification/tests/test_package_lifecycle.py packaging/qualification/tests/test-qualification-source.sh
+ qualification/package-lifecycle/deb-upgrade-rollback-NOT_RUN.json qualification/package-lifecycle/rpm-upgrade-rollback-NOT_RUN.json
+ packaging/cleanhost/README.md packaging/cleanhost/clean_host_qualify.py packaging/cleanhost/run-clean-host-qualification.sh packaging/cleanhost/tests/test_clean_host_qualify.py packaging/cleanhost/tests/test-clean-host-source.sh
+ qualification/clean-host/matrix.json qualification/clean-host/debian-12-NOT_RUN.json qualification/clean-host/ubuntu-22.04-NOT_RUN.json qualification/clean-host/ubuntu-24.04-NOT_RUN.json qualification/clean-host/rhel-9-NOT_RUN.json qualification/clean-host/rocky-9-NOT_RUN.json qualification/clean-host/almalinux-9-NOT_RUN.json qualification/clean-host/oraclelinux-9-NOT_RUN.json
+ cmd/wafctl/main.go cmd/wafqualify/main.go cmd/hsmqualify/main.go qualification/corpus/default.jsonl
+ internal/hsm/config.go internal/hsm/provider.go internal/hsm/pkcs11.go internal/hsm/pkcs11_linux_cgo.go internal/hsm/pkcs11_stub.go internal/hsm/secret.go hsm_integration.go
+ qualification/hsm/README.md qualification/hsm/run-softhsm-qualification.sh qualification/hsm/run-vendor-hsm-qualification.sh qualification/hsm/softhsm-qualification-report.json qualification/hsm/vendor-hsm-qualification.json
  release-evidence/RELEASE_EVIDENCE.json release-evidence/PROVENANCE.json release-evidence/SOURCE_MANIFEST.sha256 release-evidence/sbom.spdx.json release-evidence/sbom.cyclonedx.json
  RELEASE_MANIFEST.txt
 )
 for path in "${required[@]}"; do [[ -f "$extracted/$path" ]] || { echo "ERROR: required file missing: $path" >&2; exit 1; }; done
 
-for path in build.sh build-release-artifact.sh verify-release-artifact.sh verify-release-signature.sh release-security-scan.sh release-artifact-negative-tests.sh verify-reproducible-source-release.sh qualify-release-host.sh run-phase1-qualification.sh install.sh upgrade.sh uninstall.sh waf-doctor.sh setup-interfaces.sh; do
+for path in waf-package tools/tests/test-waf-package-source.sh tools/tests/test-openai-integration-source.sh build.sh build-release-artifact.sh verify-release-artifact.sh verify-release-signature.sh release-security-scan.sh release-artifact-negative-tests.sh verify-reproducible-source-release.sh qualify-release-host.sh run-phase1-qualification.sh install.sh upgrade.sh uninstall.sh waf-doctor.sh setup-interfaces.sh qualification/hsm/run-softhsm-qualification.sh qualification/hsm/run-vendor-hsm-qualification.sh packaging/deb/build-deb.sh packaging/deb/build-release-deb.sh packaging/deb/verify-deb.sh packaging/deb/tests/test-deb-packaging.sh packaging/rpm/build-rpm.sh packaging/rpm/build-release-rpm.sh packaging/rpm/verify-rpm.sh packaging/rpm/tests/test-rpm-source.sh packaging/rpm/tests/test-rpm-packaging.sh packaging/qualification/build-lifecycle-fixtures.sh packaging/qualification/run-package-lifecycle-qualification.sh packaging/qualification/tests/test-qualification-source.sh packaging/cleanhost/run-clean-host-qualification.sh packaging/cleanhost/tests/test-clean-host-source.sh; do
  [[ -f "$extracted/$path" ]] || continue
  size=$(wc -c < "$extracted/$path"); (( size>=200 )) || { echo "ERROR: critical script implausibly small: $path" >&2; exit 1; }
  head -n1 "$extracted/$path" | grep -Eq '^#!/(usr/bin/env bash|bin/bash)' || { echo "ERROR: unexpected shell shebang: $path" >&2; exit 1; }
  [[ -x "$extracted/$path" ]] || { echo "ERROR: executable mode lost: $path" >&2; exit 1; }
  bash -n "$extracted/$path"
 done
-for path in tools/release_evidence.py tools/source_manifest.py; do
+for path in tools/release_evidence.py tools/source_manifest.py tools/waf_package_builder.py tools/tests/test_waf_package_builder.py packaging/rpm/validate-rpm-source.py packaging/qualification/package_lifecycle_qualify.py packaging/qualification/tests/test_package_lifecycle.py packaging/cleanhost/clean_host_qualify.py packaging/cleanhost/tests/test_clean_host_qualify.py; do
  [[ -x "$extracted/$path" ]] || { echo "ERROR: executable mode lost: $path" >&2; exit 1; }
  python3 - "$extracted/$path" <<'PYCOMPILE'
 import pathlib,sys

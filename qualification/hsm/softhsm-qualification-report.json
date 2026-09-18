@@ -1,0 +1,8 @@
+{
+  "format": "waf-proxy-hsm-qualification-v1",
+  "status": "NOT_RUN",
+  "provider": "pkcs11",
+  "vendor_class": "softhsm",
+  "tls_handshake": "NOT_RUN",
+  "note": "Run qualification/hsm/run-softhsm-qualification.sh on a host with a pre-provisioned SoftHSM token/key and matching certificate."
+}

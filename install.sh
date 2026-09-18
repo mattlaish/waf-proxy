@@ -37,6 +37,8 @@ echo "==> creating audit log dir /var/log/waf"
 # systemd's LogsDirectory=waf also creates this, but make it now so running the
 # binary directly (outside systemd) can write its audit log too.
 install -d -o waf -g waf -m 0750 /var/log/waf
+# Persistent learner/security state. Keep across source-installer upgrades.
+install -d -o waf -g waf -m 0750 /var/lib/waf-proxy
 # Pre-create the log file waf-owned so a stray foreground/root run can't seed it
 # root-owned (which would then block the waf service with EACCES).
 [[ -e /var/log/waf/audit.log ]] || install -o waf -g waf -m 0640 /dev/null /var/log/waf/audit.log

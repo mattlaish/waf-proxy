@@ -73,7 +73,7 @@ type ResultFile struct {
 	Results     []Result   `json:"results"`
 }
 
-const toolVersion = "1.0.0"
+const toolVersion = "1.1.0"
 
 func collectSystemInfo() SystemInfo {
 	host, _ := os.Hostname()

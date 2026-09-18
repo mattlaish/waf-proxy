@@ -303,6 +303,8 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("GET /api/vector-acceleration", a.auth(a.handleVectorAcceleration))
 	mux.HandleFunc("POST /api/vector-acceleration/reset", a.authRole(roleReviewer, a.handleVectorAccelerationReset))
 	mux.HandleFunc("GET /api/tls-acceleration", a.auth(a.handleTLSAcceleration))
+	mux.HandleFunc("GET /api/hsm/status", a.auth(a.handleHSMStatus))
+	mux.HandleFunc("GET /api/hsm/audit", a.authRole(roleReviewer, a.handleHSMAudit))
 	mux.HandleFunc("GET /api/doctor", a.auth(a.handleDoctor))
 	mux.HandleFunc("GET /api/debug/status", a.auth(a.handleDebugStatus))
 	mux.HandleFunc("POST /api/debug/capture", a.authRole(roleOperator, a.handleDebugCapture))
@@ -326,12 +328,13 @@ func (a *adminServer) handleStatus(w http.ResponseWriter, _ *http.Request) {
 			mode = rt.cfg.EngineMode
 		}
 		sites = append(sites, map[string]any{
-			"name":      sc.Name,
-			"listen":    sc.Listen,
-			"hostnames": sc.Hostnames,
-			"pool":      sc.Pool,
-			"engine":    mode,
-			"tls":       sc.TLSCert != "",
+			"name":             sc.Name,
+			"listen":           sc.Listen,
+			"hostnames":        sc.Hostnames,
+			"pool":             sc.Pool,
+			"engine":           mode,
+			"tls":              siteTLSEnabled(sc),
+			"tls_key_provider": hsmStatusLabel(sc),
 		})
 	}
 	anyTLS := false
@@ -353,7 +356,8 @@ func (a *adminServer) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		"restart_pending":  a.srv.restartPending(rt.cfg),
 		"rules_built_at":   rt.builtAt.Format(time.RFC3339),
 		"ai_enabled":       rt.cfg.AI.Enabled,
-		"ai_key_set":       rt.cfg.AI.APIKey != "",
+		"ai_key_set":       rt.cfg.AI.secretConfigured(),
+		"ai_api_style":     rt.cfg.AI.effectiveOpenAIAPIStyle(),
 		"version":          buildVersion,
 		"commit":           buildCommit,
 		"ha_enabled":       rt.cfg.HA.Enabled,
@@ -361,6 +365,30 @@ func (a *adminServer) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		"ha_token_set":     rt.cfg.HA.PeerToken != "",
 		"notify_unread":    a.srv.notify.unreadCount(),
 	})
+}
+
+func (a *adminServer) handleHSMStatus(w http.ResponseWriter, r *http.Request) {
+	rt := a.srv.rt.Load()
+	if rt == nil {
+		http.Error(w, "runtime unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	statuses := make([]any, 0, len(rt.hsmSigners))
+	for _, signer := range rt.hsmSigners {
+		if signer == nil {
+			continue
+		}
+		statuses = append(statuses, signer.HealthCheck(r.Context()))
+	}
+	writeJSON(w, map[string]any{"providers": statuses})
+}
+
+func (a *adminServer) handleHSMAudit(w http.ResponseWriter, _ *http.Request) {
+	if a.srv.hsmAudit == nil {
+		writeJSON(w, []any{})
+		return
+	}
+	writeJSON(w, a.srv.hsmAudit.List())
 }
 
 func (a *adminServer) handleTLSAcceleration(w http.ResponseWriter, _ *http.Request) {
@@ -1201,9 +1229,9 @@ func (a *adminServer) handleFS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *adminServer) handleGetConfig(w http.ResponseWriter, _ *http.Request) {
-	c := a.srv.rt.Load().cfg
-	c.AI.APIKey = "" // never expose secrets; UI shows "set" indicators
+	c := redactAISecrets(a.srv.rt.Load().cfg)
 	c.HA.PeerToken = ""
+	c = redactHSMSecretRefs(c)
 	users := make([]UserConfig, len(c.Users)) // copy with hashes blanked
 	for i, u := range c.Users {
 		u.PasswordHash = ""
@@ -1260,12 +1288,11 @@ func (a *adminServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	// Blank secrets on submit mean "keep the current ones" — the UI never
 	// receives stored secrets, so it can't echo them back.
 	cur := a.srv.rt.Load().cfg
-	if c.AI.APIKey == "" {
-		c.AI.APIKey = cur.AI.APIKey
-	}
+	preserveAISecrets(cur, &c)
 	if c.HA.PeerToken == "" {
 		c.HA.PeerToken = cur.HA.PeerToken
 	}
+	preserveHSMSecretRefs(cur, &c)
 	// Users are managed only via the dedicated user endpoints; a general config
 	// save never touches them (the console can't see the hashes anyway).
 	c.Users = cur.Users
@@ -1288,9 +1315,9 @@ func (a *adminServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		if err := c.validate(); err != nil {
 			applyErr = err.Error()
 		}
-		resp := c
-		resp.AI.APIKey = ""
+		resp := redactAISecrets(c)
 		resp.HA.PeerToken = ""
+		resp = redactHSMSecretRefs(resp)
 		writeJSON(w, map[string]any{"config": resp, "draft": true, "apply_ready": applyErr == "", "apply_error": applyErr})
 		return
 	}
@@ -1314,9 +1341,9 @@ func (a *adminServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	if !fromSync {
 		a.audit.add(who(r).user, "config.apply", fmt.Sprintf("%d sites, %d pools, %d policies", len(c.Sites), len(c.Pools), len(c.Policies)))
 	}
-	resp := c
-	resp.AI.APIKey = ""
+	resp := redactAISecrets(c)
 	resp.HA.PeerToken = ""
+	resp = redactHSMSecretRefs(resp)
 	writeJSON(w, map[string]any{
 		"config":           resp,
 		"applied":          true,

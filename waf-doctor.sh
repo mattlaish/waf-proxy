@@ -19,11 +19,21 @@ set -uo pipefail
 
 ETC=/etc/waf
 LOGDIR=/var/log/waf
+# Source installs use /usr/local + /etc/systemd; distro packages use /usr +
+# /lib/systemd. Prefer the effective /etc unit when both exist because systemd
+# gives administrator units there precedence over vendor units.
+UNIT=/etc/systemd/system/waf-proxy.service
+TLSUNIT=/etc/systemd/system/waf-tls-frontend.service
+[[ -f "$UNIT" ]] || UNIT=/lib/systemd/system/waf-proxy.service
+[[ -f "$TLSUNIT" ]] || TLSUNIT=/lib/systemd/system/waf-tls-frontend.service
 BIN=/usr/local/bin/waf-proxy
 TLSBIN=/usr/local/bin/waf-tlsfront
 CTLBIN=/usr/local/bin/wafctl
-UNIT=/etc/systemd/system/waf-proxy.service
-TLSUNIT=/etc/systemd/system/waf-tls-frontend.service
+if [[ -f "$UNIT" ]] && grep -q 'ExecStart=/usr/bin/waf-proxy' "$UNIT"; then
+  BIN=/usr/bin/waf-proxy
+  TLSBIN=/usr/bin/waf-tlsfront
+  CTLBIN=/usr/bin/wafctl
+fi
 ENVF="$ETC/waf-proxy.env"
 CFG="$ETC/config.json"
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -33,6 +43,14 @@ GROUP_=waf
 MODE="fix"
 [[ "${1:-}" == "--check" ]] && MODE="check"
 [[ $EUID -eq 0 ]] || { echo "run as root: sudo $0" >&2; exit 1; }
+if command -v runuser >/dev/null 2>&1; then
+  AS_WAF="runuser -u $USER_ --"
+elif command -v sudo >/dev/null 2>&1; then
+  AS_WAF="sudo -u $USER_"
+else
+  echo "runuser (preferred) or sudo is required for waf-user permission checks" >&2
+  exit 1
+fi
 
 red(){ printf '\033[31m%s\033[0m\n' "$*"; }
 grn(){ printf '\033[32m%s\033[0m\n' "$*"; }
@@ -57,6 +75,7 @@ if [[ "$MODE" == fix ]]; then
   install -d -o root   -g "$GROUP_" -m 0750 "$ETC/certs"
   install -d -o root   -g "$GROUP_" -m 0750 "$ETC/crs"
   install -d -o "$USER_" -g "$GROUP_" -m 0750 "$LOGDIR"
+  install -d -o "$USER_" -g "$GROUP_" -m 0750 /var/lib/waf-proxy
 
   # config.json: waf owns it (console writes it), 0600 (secrets)
   if [[ -e "$CFG" ]]; then
@@ -108,15 +127,17 @@ check(){ # desc, test-cmd
   if eval "$2" >/dev/null 2>&1; then grn "PASS  $1"; else red "FAIL  $1"; FAILED=1; fi
 }
 
-check "/etc/waf is group-writable by waf (config persists)"      "sudo -u $USER_ test -w $ETC"
-check "waf can read config.json"                                  "[[ ! -e $CFG ]] || sudo -u $USER_ test -r $CFG"
+check "/etc/waf is group-writable by waf (config persists)"      "$AS_WAF test -w $ETC"
+check "waf can read config.json"                                  "[[ ! -e $CFG ]] || $AS_WAF test -r $CFG"
 check "config.json owned by waf"                                  "[[ ! -e $CFG ]] || [[ \$(stat -c %U $CFG) == $USER_ ]]"
-check "waf CANNOT read waf-proxy.env (token stays root-only)"     "[[ ! -e $ENVF ]] || ! sudo -u $USER_ test -r $ENVF"
-check "waf can write the audit log"                               "sudo -u $USER_ test -w $LOGDIR/audit.log"
+check "waf CANNOT read waf-proxy.env (token stays root-only)"     "[[ ! -e $ENVF ]] || ! $AS_WAF test -r $ENVF"
+check "waf can write the audit log"                               "$AS_WAF test -w $LOGDIR/audit.log"
 check "no stray non-waf files under /etc/waf (except env)"        "[[ -z \"\$(find $ETC ! -group $USER_ ! -path $ENVF 2>/dev/null)\" ]]"
 check "unit grants CAP_NET_BIND_SERVICE (80/443 bind as waf)"     "grep -q AmbientCapabilities=CAP_NET_BIND_SERVICE $UNIT"
 check "unit permits AF_NETLINK (managed-IP interface discovery)" "grep -Eq '^RestrictAddressFamilies=.*AF_NETLINK' $UNIT"
 check "unit has LogsDirectory=waf (sandbox log write)"            "grep -q LogsDirectory=waf $UNIT"
+check "unit has StateDirectory=waf-proxy (persistent state write)"     "grep -q '^StateDirectory=waf-proxy$' $UNIT"
+check "persistent state directory writable by waf"                     "$AS_WAF test -w /var/lib/waf-proxy"
 check "waf-proxy binary present and root-owned"                   "[[ -x $BIN ]] && [[ \$(stat -c %U $BIN) == root ]]"
 check "waf-tlsfront binary present and root-owned"                 "[[ -x $TLSBIN ]] && [[ \$(stat -c %U $TLSBIN) == root ]]"
 check "wafctl binary present and root-owned"                       "[[ -x $CTLBIN ]] && [[ \$(stat -c %U $CTLBIN) == root ]]"

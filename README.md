@@ -1,5 +1,19 @@
 # waf-proxy
 
+## Current canonical status — 2026-09-17
+
+The audited GitHub `main@1d52d65a73a802e32f02994e51f0a07beb240177`
+was found non-buildable. A root-build-integrity repair is implemented, but the
+exact repaired bytes have not executed the mandatory Go 1.25 dependency-drift
+and root-build gates in this environment. Current source state is therefore
+`IMPLEMENTED_TESTING_DEFERRED` and the Source Buildability Gate is `BLOCKED`.
+
+Artifact integrity, source reconstruction, package fixtures, and component
+source checks retain their separately scoped PASS evidence. They do not promote
+root buildability or release readiness. Read `DOCUMENTATION_INDEX.md` and
+`SOURCE_BASELINE_GATE_RESULT.md` before relying on older historical sections in
+this ledger.
+
 Multi-site, **load-balancing** reverse proxy with an embedded [Coraza](https://github.com/corazawaf/coraza) WAF engine (SecLang-compatible, runs OWASP CRS 4.x) and a built-in admin console. The portable build remains pure Go; optional VectorScan acceleration uses CGO/libhs. The console has no CDN dependency and works on an air-gapped management segment.
 
 ```
@@ -9,10 +23,14 @@ client ─▶ listener :443 ──┤                                     ├─
 client ─▶ listener :8443 ─ site api  (:8443, api.example.com) ───▶ pool ─▶ ...
 ```
 
-## New-chat continuation
+## Documentation and current release truth
 
-For current development state and the next engineering gates, read `AI_HANDOFF.md`, `DEVELOPMENT_ROADMAP.md`, and `TESTING_RESULTS.md`. `HANDOVER_PROMPT.md` is the copy/paste bootstrap prompt for a fresh development chat.
-
+Start with `DOCUMENTATION_INDEX.md`. For continuation use `AI_HANDOFF.md` and
+`HANDOVER_STATUS.md`; `HANDOVER_PROMPT.md` is the copy/paste bootstrap prompt.
+The current root-build repair is implemented but **source buildability remains
+BLOCKED** until the exact repaired bytes pass Go 1.25 `go mod tidy -diff` and
+`go build ./...` plus the downstream CI gates. No production DEB/RPM should be
+built from an unproven root source commit.
 
 ## Model (F5-style)
 
@@ -47,6 +65,43 @@ WAF_VECTORSCAN=required ./build.sh
 ./qualify-release-host.sh --preflight
 ./qualify-release-host.sh --core
 ```
+
+## Enterprise Linux distribution packages
+
+The formal enterprise Linux distribution paths are:
+
+- Debian / Ubuntu: `.deb` package
+- RHEL / Rocky / AlmaLinux / Oracle Linux: `.rpm` package
+
+`install.sh` remains a generic development/recovery path. For Debian/Ubuntu, build
+the qualified binaries first and then create the deterministic package:
+
+```bash
+SOURCE_DATE_EPOCH=<approved-epoch> \
+  packaging/deb/build-release-deb.sh --output-dir dist/deb
+
+sudo apt install ./dist/deb/waf-proxy_<version>_<arch>.deb
+```
+
+The `.deb` never downloads OWASP CRS in `postinst`, preserves dpkg conffiles and
+`/var/lib/waf-proxy` across upgrades, preserves an existing break-glass admin
+token, and does not auto-start a fresh installation before CRS is explicitly
+provisioned. See `packaging/deb/README.md` and `INSTALL.md`.
+
+On a qualified RHEL-family release host, the equivalent RPM path is:
+
+```bash
+SOURCE_DATE_EPOCH=<approved-epoch> \
+  packaging/rpm/build-release-rpm.sh --output-dir dist/rpm
+
+sudo dnf install ./dist/rpm/waf-proxy-<version>-1.<arch>.rpm
+```
+
+The RPM uses `%config(noreplace)` for operator configuration, preserves the
+existing break-glass token and `/var/lib/waf-proxy`, never fetches CRS/packages
+in scriptlets, leaves a fresh install inactive until CRS is explicitly
+provisioned, and does not disable or auto-generate SELinux policy. See
+`packaging/rpm/README.md`, `packaging/rpm/SELINUX.md`, and `INSTALL.md`.
 
 ## Run
 
@@ -104,28 +159,92 @@ Example config with two backends load-balanced behind one site:
 
 ## AI-assisted analysis & enforcement (Setup / AI tab)
 
-Connect an LLM (OpenAI, or any OpenAI-compatible endpoint — vLLM, Ollama, llama.cpp, a local gateway — or Anthropic) and have it judge traffic. Configure the connector (provider, base URL, model, API key, timeout), an analysis policy, and redaction, then set each site's **AI enforcement** mode:
+The WAF has one asynchronous LLM connector with per-site `off`, `advisory`, and
+`block` modes. Coraza remains the deterministic/authoritative WAF engine; AI is
+an optional second-opinion/enrichment path and is never inserted into the live
+request hot path.
 
-- **off** — no AI.
-- **advisory** — AI analyzes and logs a verdict; never blocks.
-- **block** — a high-confidence malicious verdict adds the source IP to a **dynamic blocklist** (with TTL); subsequent requests are dropped inline.
+### OpenAI Responses API + Structured Outputs
 
-**How it stays fast and safe:**
+For native OpenAI use, select:
 
-- **Async, never in the hot path.** WAF-flagged requests (any engine mode) and a configurable sample of others are queued; a small worker pool calls the LLM. The only inline cost on the data path is a blocklist map lookup. LLM latency never touches live requests.
-- **Fail-open, always.** Disabled/slow/errored/garbage output ⇒ nothing blocked. The AI can only ever *add* a time-boxed block via a schema-valid, high-score verdict.
-- **Privacy/PHI.** Credentials (`Authorization`, `Cookie`, `X-Api-Key`, …) are **never** sent, regardless of settings. Redaction is on by default (only a safe header subset leaves; body omitted). Optional client-IP hashing. Point it at a self-hosted model to keep data on-prem. **The config file stores the API key in cleartext at `0600` — treat it as a secret at rest.**
-- **Prompt injection.** The request is wrapped in delimiters and the model is told to treat it as untrusted data; only a parsed, validated JSON verdict (`{verdict, score, category, reason}`) can affect control flow — never the model's prose. This is defense-in-depth, not a guarantee: keep CRS doing the deterministic blocking and use the AI as a second opinion.
+```json
+{
+  "provider": "openai",
+  "api_style": "responses",
+  "base_url": "https://api.openai.com/v1",
+  "api_key_ref": "env:OPENAI_API_KEY",
+  "model": "gpt-4o-mini"
+}
+```
 
-The tab shows a live **AI blocklist** (with one-click unblock) and a **verdicts** feed (verdict, score, category, action, reason). **Test connection** runs a canned SQLi sample end-to-end so you can validate the connector before enabling enforcement.
+The connector sends `POST {base_url}/responses`, uses Bearer authentication,
+sets `store=false`, maps the configured token cap to `max_output_tokens`, and
+requests strict JSON Schema output. Traffic verdicts are constrained to
+`verdict`, `score`, `category`, and `reason`; page-profile review uses a separate
+strict schema with `agree`, `confidence`, and `reason`.
 
-**Prompts (system + user).** The analyzer sends the model two parts. The **system prompt** is fixed and injection-hardened — it instructs the model to act as a WAF analyst, to treat everything inside the request delimiters as untrusted attacker-controlled data, and to ignore any instructions embedded in that data. It is compiled into the binary and is **not** editable from the console, on purpose: an edit that weakened it would let hostile traffic prompt-inject the very analyzer inspecting it. The **user prompt** is built per-request from the captured HTTP data (method, path, safe header subset, optionally body) inside `<request>…</request>` delimiters. Only a parsed, schema-valid JSON verdict (`{verdict, score, category, reason}`) can affect control flow — never the model's free-text output. "Analysis policy" (threshold, only-on-match, sample rate) is part of the **global LLM connector** config; whether a given site *uses* the analyzer, and whether a verdict may block, is the **per-site AI mode** above — the two are deliberately separate (one connection, per-site policy).
+Refusals, incomplete/non-completed responses, malformed payloads, HTTP failures,
+timeouts, and oversized provider responses become connector errors. At the WAF
+engine boundary those errors remain **fail-open**: no AI block is created.
 
-API: `GET /api/ai/verdicts` · `GET /api/ai/blocklist` · `POST /api/ai/unblock {ip}` · `POST /api/ai/test`. The API key is masked on read and preserved when the form submits it blank.
+For vLLM, Ollama, llama.cpp, or another endpoint implementing the historical
+OpenAI Chat Completions contract, select:
 
-**Save draft vs Apply.** The console separates persisting your work from making it live. **Save draft** (`PUT /api/config?draft=1`) writes your work-in-progress to disk with only light structural checks — so you can build a config incrementally (add a node, save; add a pool, save) without every half-finished state being fully consistent, and the running WAF is untouched. **Apply** (`PUT /api/config`) validates the whole config (cross-references, rules files, everything) and swaps it into the live engine. Full validation errors — an unknown pool, a member with no node — surface at Apply, which is the correct place for them, not while you're still wiring things up.
+```json
+"api_style": "chat_completions"
+```
 
-**Everything applies live.** On Apply: pools, members, monitors, LB methods, engine modes, certificates, **and listen addresses** all reconcile via atomic swap plus live listener management — a bad config leaves the old runtime serving. Adding or removing a listen address opens or closes **only that socket**; unchanged listeners and their in-flight connections are untouched, so building a new site never interrupts existing traffic. No process restart is needed for any config change.
+That path continues to use `POST {base_url}/chat/completions`. Historical
+configs created before `api_style` existed and still carrying a legacy inline
+`api_key` retain this Chat Completions wire contract so an upgrade does not
+silently change provider protocol. New configuration should not add inline keys.
+
+### Secret references
+
+New AI credentials are references, not secret values in `config.json`:
+
+```text
+env:OPENAI_API_KEY
+file:/etc/waf/secrets/openai.key
+```
+
+The admin API/UI returns neither the secret value nor the stored reference;
+blank secret-reference input means “preserve the existing credential”. The
+legacy `api_key` field remains read-compatible only for migration and is removed
+when an operator supplies `api_key_ref`.
+
+`file:` secrets must be absolute clean paths, regular files with no symlinked
+path component, at most 4096 bytes, non-empty, and inaccessible to group/world
+(`0600` is the normal mode). See `INSTALL.md` for deployment examples.
+
+### Runtime behavior
+
+- **off** — no AI analysis for that site.
+- **advisory** — AI records a verdict but never blocks.
+- **block** — only a schema-valid `malicious` verdict meeting `block_threshold`
+  adds the source IP to the site-scoped TTL blocklist.
+- **Async, never in the hot path.** WAF-flagged requests and an optional sample
+  of other requests are queued to workers; inline dataplane cost is the existing
+  blocklist lookup.
+- **Privacy.** Authorization/cookie/token-like headers are excluded; request body
+  is omitted by default; client IP may be HMAC-hashed.
+- **Prompt-injection boundary.** Captured request data is untrusted data and only
+  validated structured fields can reach enforcement logic.
+- **No requested OpenAI response storage.** Native Responses calls explicitly
+  send `store=false`.
+
+The console exposes verdicts and the current AI blocklist plus manual unblock.
+`POST /api/ai/test` sends a canned SQLi sample through the same configured
+provider path before a site is switched to enforcement.
+
+API: `GET /api/ai/verdicts` · `GET /api/ai/blocklist` ·
+`POST /api/ai/unblock {ip}` · `POST /api/ai/test`.
+
+Current truth: the Responses/Structured-Outputs/secret-reference implementation
+and isolated provider mock suite are implemented, but the repository-root Go
+1.25 test/build gate is still `BLOCKED` on this packaging host. See
+`OPENAI_INTEGRATION_GATE_RESULT.md` and `SOURCE_BASELINE_GATE_RESULT.md`.
 
 ### Backend HTTPS trust
 
@@ -727,7 +846,7 @@ Build it separately from the production WAF binary:
 # or: go build -o ./bin/wafbench ./cmd/wafbench
 ```
 
-The tool provides five commands:
+The tool provides six commands:
 
 - `backend` — deterministic local HTTP backend with a fixed response size;
 - `http` — full running-waf load test with clean GET, 1/16/64/256 KiB JSON,
@@ -741,6 +860,11 @@ The tool provides five commands:
   sizing heuristic uses clean traffic only for the Coraza-share median and
   surfaces whether regex acceleration, XDP, or more profiling is the stronger
   next experiment.
+- `certify` — binds real full-proxy benchmark JSON to an explicit approved
+  performance target, records evidence hashes and comparability checks, and
+  keeps certification `NOT_RUN` when targets or required runtime evidence are
+  absent. VectorScan certification additionally requires the real Phase 1
+  zero-false-negative report.
 
 Linux runs can add `--pid <waf-proxy-pid>` to measure WAF process CPU/RSS and
 CPU microseconds per operation, plus `--iface <nic>` for RX/TX Mbps and PPS.
@@ -851,6 +975,82 @@ an `nginx -t` preflight, then publishes the live control file consumed by the
 companion. The Setup tab exposes configuration and live probe/resolution state.
 
 
+
+## External HSM / PKCS#11 TLS keys — Phase 5 Slice G
+
+The built-in Go TLS listener can keep a site's private key inside an external
+PKCS#11 token/HSM. The certificate chain remains a normal PEM file, while the
+private key is represented by a Go `crypto.Signer` backed by an exact PKCS#11
+slot/token + key label/ID lookup. The WAF never exports or persists HSM private
+key material.
+
+PKCS#11 is an explicit build capability. To build an HSM-capable Coraza-only
+binary without requiring VectorScan:
+
+```bash
+WAF_VECTORSCAN=off WAF_HSM_PKCS11=required ./build.sh
+```
+
+To combine native VectorScan and PKCS#11:
+
+```bash
+WAF_VECTORSCAN=required WAF_HSM_PKCS11=required ./build.sh
+```
+
+`WAF_HSM_PKCS11=off` is the default so the pre-existing portable Coraza build
+remains CGO-free. `auto` enables the provider only when Linux + a CGO compiler
+are available. The PKCS#11 module itself is loaded at runtime with `dlopen`; it
+must be an absolute, regular, non-symlink, root-owned file under an approved
+`hsm.allowed_module_dirs` tree, with no group/world write permission.
+
+Example site configuration:
+
+```json
+{
+  "hsm": {
+    "allowed_module_dirs": ["/usr/lib", "/usr/local/lib", "/opt/vendor"]
+  },
+  "tls_acceleration": {"mode": "go"},
+  "sites": [{
+    "name": "payments",
+    "listen": ":443",
+    "hostnames": ["payments.example.com"],
+    "tls_cert": "/etc/waf/certs/payments-chain.pem",
+    "tls_key": "",
+    "tls_key_provider": {
+      "provider": "pkcs11",
+      "module_path": "/opt/vendor/lib/libpkcs11.so",
+      "slot_id": 7,
+      "token_label": "prod-token",
+      "key_label": "waf-tls",
+      "key_id": "01",
+      "pin_secret_ref": "file:/run/secrets/waf-hsm-pin"
+    }
+  }]
+}
+```
+
+`pin_secret_ref` accepts only `env:NAME` or `file:/absolute/path`; inline PINs
+are rejected. File-backed PINs must be regular, non-symlink files with no
+group/world permissions and are preferred over environment secrets for
+production. Admin config responses redact the secret reference, HSM audit
+records contain only provider / slot / key reference / operation / result, and
+qualification reports intentionally omit the PIN, secret reference, module
+path, and token label.
+
+HSM-backed sites cannot also configure `tls_key`. There is **no automatic
+filesystem-key fallback**. The external NGINX/OpenSSL TLS frontend is also
+rejected for HSM-backed sites; use `tls_acceleration.mode=go` so TLS handshakes
+call the HSM-backed `crypto.Signer` directly. Apply verifies the certificate
+public key by signing and verifying a challenge before runtime swap. HSM
+initialization, login, key lookup, certificate association, or signing failure
+therefore fails closed.
+
+Runtime health is available at `GET /api/hsm/status`; restricted audit evidence
+is available at `GET /api/hsm/audit`. SoftHSM and real-vendor qualification
+instructions live in `qualification/hsm/`. A SoftHSM PASS proves the software
+PKCS#11 path only and must never be promoted to vendor-HSM qualification.
+
 ## VectorScan Learning Accelerator — 2026-09-04
 
 The optional VectorScan path is a **learning accelerator**, not a replacement WAF engine. Coraza v3.7.0 remains authoritative. Eligible standalone positive `@rx` rules are conservatively grouped only when the request data source and transformation semantics can be reproduced exactly; unsupported rules remain `CORAZA_ONLY`. Initial supported sources are `REQUEST_URI`, `REQUEST_FILENAME`, `REQUEST_METHOD`, `REQUEST_PROTOCOL`, and fixed-name `REQUEST_HEADERS:name`, with explicit `t:none` and optional `t:lowercase`. Chains, negated regex, aggregate/multi-variable selectors, ARGS/body rules, and unsupported transforms are not accelerated.
@@ -918,3 +1118,62 @@ The report is conservative and mirrors the current VectorScan runtime classifier
 ## Phase 3 release hardening
 
 Release engineering treats provenance and packaging as security controls. The source ZIP builder now identifies its output only as `SOURCE_ARCHIVE`; portable/native **binary** identity is recorded only for actual binaries produced by `build.sh`. Source releases generate schema-v2 `RELEASE_EVIDENCE.json`, `PROVENANCE.json`, SPDX 2.3 and CycloneDX 1.5 SBOMs, a complete source SHA-256 manifest, and deterministic metadata when `SOURCE_DATE_EPOCH` is supplied. `release-security-scan.sh` records source-bound `govulncheck` PASS/FAIL/BLOCKED/NOT_RUN evidence; missing prerequisites are never converted to PASS. The artifact verifier requires complete source/release manifests, provenance cross-digests, SBOM↔`go.mod` parity, and truthful source-artifact identity. Detached minisign signing remains optional; authenticity exists only after `verify-release-signature.sh` or `wafctl release verify-signature` validates the detached signature with an approved public key. Unsigned provenance is integrity-bound metadata, not authenticated producer evidence.
+
+
+## Enterprise package upgrade / rollback qualification — Distribution Slice C
+
+The formal `.deb` and `.rpm` paths now share one package-lifecycle qualification
+harness under `packaging/qualification/`. The runner is non-mutating by default;
+real execution requires root on a dedicated disposable host plus the exact
+`I_UNDERSTAND_THIS_MUTATES_A_DEDICATED_HOST` acknowledgement. It does not call
+`apt`, `dnf`, `yum`, `curl`, or `wget`, so lifecycle qualification preserves the
+offline-safe distribution contract.
+
+Version N, N+1 and an optional intentional-failure package are bound into the
+JSON evidence by native package metadata and SHA-256. A real run verifies local
+configuration bytes, the generated admin secret, `/var/lib/waf-proxy` state and
+service active-state across upgrade, failed upgrade/recovery and rollback. The
+secret is compared only in memory and neither its value nor a digest is written
+to evidence. Changed packaged defaults can exercise `.dpkg-dist` or `.rpmnew`;
+`.dpkg-old` / `.rpmsave` are recorded only when the native package manager emits
+them.
+
+`build-lifecycle-fixtures.sh` can create deterministic semantic fixtures using
+`/bin/true`. A fixture or preflight PASS proves packaging mechanics only. Real
+package-manager execution and the Slice D clean-host distro matrix remain
+separate gates.
+
+## Clean-host distribution qualification — Distribution Slice D
+
+The formal DEB/RPM distribution paths now include a dedicated clean-machine
+acceptance harness under `packaging/cleanhost/`. It is **not** a container or
+source-install smoke test. A PASS requires a real dedicated host matching one of
+these exact targets: Debian 12, Ubuntu 22.04/24.04, RHEL 9, Rocky 9, AlmaLinux 9,
+or Oracle Linux 9. RHEL-family runs additionally require SELinux `Enforcing`.
+
+The runner uses only local packages and a local approved CRS directory. It never
+calls apt/dnf/yum/curl/wget/git. It validates fresh-install no-autostart, explicit
+CRS provisioning, `waf-doctor --check`, explicit systemd start, `/healthz`,
+break-glass authenticated admin API access, real reverse-proxy traffic, Version
+N→N+1 upgrade preservation, and non-purge package removal with persistent state
+retained. Preflight/source/container results remain `NOT_RUN` and cannot promote
+a distro in the checked-in matrix.
+
+## Project-local DEB/RPM builder — `waf-package`
+
+The repository now has one project-specific packaging entry point:
+
+```bash
+./waf-package doctor --format deb
+./waf-package deb --version 2026.09.16.1
+./waf-package doctor --format rpm
+./waf-package rpm --version 2026.09.16.1 --rpm-release 1
+```
+
+`./waf-package all` builds the canonical binaries once and packages the exact
+same provenance-bound bytes as both DEB and RPM. It reads the Go/Coraza pins
+from `go.mod`, forces `GOTOOLCHAIN=local`, runs the existing `build.sh` gates,
+and then invokes the existing format-specific builders/verifiers. Missing prerequisites fail closed. Go module access is offline by default and
+requires explicit `--allow-module-network`; the utility never bootstraps a Go
+toolchain, OS packages, CRS, or native libraries. See `PACKAGING_TOOL.md` for
+host requirements and examples.

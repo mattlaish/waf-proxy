@@ -41,15 +41,20 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"waf-proxy/internal/openaiapi"
+	"waf-proxy/internal/secretref"
 )
 
 // ── config ──────────────────────────────────────────────────────────────
 
 type AIConfig struct {
 	Enabled    bool   `json:"enabled"`
-	Provider   string `json:"provider"` // openai | anthropic
-	BaseURL    string `json:"base_url"` // e.g. https://api.openai.com/v1
-	APIKey     string `json:"api_key"`  // masked on read; preserved on blank write
+	Provider   string `json:"provider"`              // openai | anthropic
+	APIStyle   string `json:"api_style,omitempty"`   // responses | chat_completions (OpenAI only)
+	BaseURL    string `json:"base_url"`              // e.g. https://api.openai.com/v1
+	APIKeyRef  string `json:"api_key_ref,omitempty"` // env:NAME | file:/absolute/path
+	APIKey     string `json:"api_key,omitempty"`     // legacy inline secret; never exposed by admin API
 	Model      string `json:"model"`
 	TimeoutSec int    `json:"timeout_sec"`
 	MaxTokens  int    `json:"max_tokens"`
@@ -79,6 +84,7 @@ func defaultAIConfig() AIConfig {
 	return AIConfig{
 		Enabled:        false,
 		Provider:       "openai",
+		APIStyle:       "", // effective default: official OpenAI => Responses; legacy/custom => compatibility
 		BaseURL:        "https://api.openai.com/v1",
 		Model:          "gpt-4o-mini",
 		TimeoutSec:     8,
@@ -110,8 +116,29 @@ func (c AIConfig) validate() error {
 	if c.Provider != "openai" && c.Provider != "anthropic" {
 		return fmt.Errorf("ai: provider must be openai or anthropic")
 	}
-	if !strings.HasPrefix(c.BaseURL, "http://") && !strings.HasPrefix(c.BaseURL, "https://") {
-		return fmt.Errorf("ai: base_url must be an http(s) URL")
+	u, err := url.Parse(c.BaseURL)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("ai: base_url must be an http(s) origin/path without userinfo, query, or fragment")
+	}
+	if c.Provider == "openai" {
+		style := c.effectiveOpenAIAPIStyle()
+		if style != "responses" && style != "chat_completions" {
+			return fmt.Errorf("ai: api_style must be responses or chat_completions")
+		}
+		if style == "responses" && u.Scheme != "https" {
+			return fmt.Errorf("ai: OpenAI Responses API requires an https base_url")
+		}
+	}
+	if c.APIKey != "" && c.APIKeyRef != "" {
+		return fmt.Errorf("ai: configure api_key_ref instead of setting both api_key and api_key_ref")
+	}
+	if c.APIKeyRef != "" {
+		if err := secretref.Validate(c.APIKeyRef); err != nil {
+			return fmt.Errorf("ai: api_key_ref: %w", err)
+		}
+	}
+	if c.Provider == "openai" && c.effectiveOpenAIAPIStyle() == "responses" && c.APIKey == "" && c.APIKeyRef == "" {
+		return fmt.Errorf("ai: OpenAI Responses API requires api_key_ref (legacy inline api_key remains migration-only)")
 	}
 	if strings.TrimSpace(c.Model) == "" {
 		return fmt.Errorf("ai: model is required when enabled")
@@ -138,6 +165,62 @@ func (c AIConfig) validate() error {
 		return fmt.Errorf("ai: queue_size must be 1-10000")
 	}
 	return nil
+}
+
+func (c AIConfig) effectiveOpenAIAPIStyle() string {
+	if c.APIStyle != "" {
+		return c.APIStyle
+	}
+	// Backward compatibility: configurations created before api_style existed
+	// used chat/completions and may still carry a legacy inline key. Never
+	// silently move those configs to a different wire contract during upgrade.
+	if c.APIKey != "" {
+		return "chat_completions"
+	}
+	// New/secret-reference configurations aimed at the official OpenAI origin
+	// default to Responses API. Custom OpenAI-compatible endpoints retain the
+	// historical Chat Completions contract unless explicitly opted into Responses.
+	u, err := url.Parse(c.BaseURL)
+	if err == nil && strings.EqualFold(u.Hostname(), "api.openai.com") {
+		return "responses"
+	}
+	return "chat_completions"
+}
+
+func (c AIConfig) secretConfigured() bool { return c.APIKeyRef != "" || c.APIKey != "" }
+
+func (c AIConfig) resolveAPIKey() ([]byte, error) {
+	if c.APIKeyRef != "" {
+		return secretref.Resolve(c.APIKeyRef)
+	}
+	if c.APIKey != "" { // legacy migration path only
+		return []byte(c.APIKey), nil
+	}
+	return nil, nil
+}
+
+// redactAISecrets returns a copy safe for configuration API responses. It also
+// exposes the effective non-secret wire contract so a legacy config round-trip
+// cannot silently switch from Chat Completions to Responses.
+func redactAISecrets(c Config) Config {
+	c.AI.APIStyle = c.AI.effectiveOpenAIAPIStyle()
+	c.AI.APIKey = ""
+	c.AI.APIKeyRef = ""
+	return c
+}
+
+// preserveAISecrets applies the UI's blank-means-preserve rule without ever
+// sending stored secret material back to the browser. Supplying api_key_ref is
+// an explicit migration away from any legacy inline key.
+func preserveAISecrets(current Config, next *Config) {
+	if next.AI.APIKeyRef == "" {
+		next.AI.APIKeyRef = current.AI.APIKeyRef
+	}
+	if next.AI.APIKeyRef != "" {
+		next.AI.APIKey = ""
+	} else if next.AI.APIKey == "" {
+		next.AI.APIKey = current.AI.APIKey
+	}
 }
 
 // ── engine ──────────────────────────────────────────────────────────────
@@ -818,22 +901,55 @@ func decodeJSONObject(text string, dst any) error {
 	return fmt.Errorf("no valid JSON object in model output")
 }
 
+func verdictSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"verdict":  map[string]any{"type": "string", "enum": []string{"benign", "suspicious", "malicious"}},
+			"score":    map[string]any{"type": "integer", "minimum": 0, "maximum": 100},
+			"category": map[string]any{"type": "string"},
+			"reason":   map[string]any{"type": "string"},
+		},
+		"required":             []string{"verdict", "score", "category", "reason"},
+		"additionalProperties": false,
+	}
+}
+
+func profileReviewSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"agree":      map[string]any{"type": "boolean"},
+			"confidence": map[string]any{"type": "integer", "minimum": 0, "maximum": 100},
+			"reason":     map[string]any{"type": "string"},
+		},
+		"required":             []string{"agree", "confidence", "reason"},
+		"additionalProperties": false,
+	}
+}
+
 func (e *aiEngine) callLLM(ctx context.Context, cfg AIConfig, userPrompt string) (aiVerdict, error) {
-	txt, err := e.callLLMRaw(ctx, cfg, aiSystemPrompt, userPrompt)
+	var txt string
+	var err error
+	if cfg.Provider == "openai" && cfg.effectiveOpenAIAPIStyle() == "responses" {
+		txt, err = e.callOpenAIResponses(ctx, cfg, aiSystemPrompt, userPrompt, "waf_verdict", verdictSchema())
+	} else {
+		txt, err = e.callLLMRaw(ctx, cfg, aiSystemPrompt, userPrompt)
+	}
 	if err != nil {
 		return aiVerdict{}, err
 	}
 	return parseVerdict(txt)
 }
 
-// callLLMRaw sends a system+user prompt and returns the model's text content,
-// unparsed. Both the verdict path and the profile-review path build on it.
+// callLLMRaw preserves the historical free-text/JSON prompt contract for
+// Anthropic and OpenAI-compatible Chat Completions endpoints.
 func (e *aiEngine) callLLMRaw(ctx context.Context, cfg AIConfig, system, user string) (string, error) {
 	switch cfg.Provider {
 	case "anthropic":
 		return e.callAnthropic(ctx, cfg, system, user)
 	default:
-		return e.callOpenAI(ctx, cfg, system, user)
+		return e.callOpenAIChatCompletions(ctx, cfg, system, user)
 	}
 }
 
@@ -863,7 +979,30 @@ func (e *aiEngine) doJSON(ctx context.Context, url string, headers map[string]st
 	return b, nil
 }
 
-func (e *aiEngine) callOpenAI(ctx context.Context, cfg AIConfig, system, user string) (string, error) {
+func (e *aiEngine) authHeaders(cfg AIConfig, header string) (map[string]string, func(), error) {
+	key, err := cfg.resolveAPIKey()
+	if err != nil {
+		return nil, func() {}, err
+	}
+	cleanup := func() { secretref.Zero(key) }
+	headers := map[string]string{}
+	if len(key) > 0 {
+		headers[header] = string(key)
+	}
+	return headers, cleanup, nil
+}
+
+func (e *aiEngine) callOpenAIResponses(ctx context.Context, cfg AIConfig, system, user, schemaName string, schema map[string]any) (string, error) {
+	key, err := cfg.resolveAPIKey()
+	if err != nil {
+		return "", fmt.Errorf("resolve AI API key: %w", err)
+	}
+	defer secretref.Zero(key)
+	req := openaiapi.NewResponsesRequest(cfg.Model, cfg.MaxTokens, system, user, schemaName, schema)
+	return openaiapi.CallResponses(ctx, e.client.Load(), cfg.BaseURL, key, req)
+}
+
+func (e *aiEngine) callOpenAIChatCompletions(ctx context.Context, cfg AIConfig, system, user string) (string, error) {
 	payload := map[string]any{
 		"model":       cfg.Model,
 		"max_tokens":  cfg.MaxTokens,
@@ -873,9 +1012,13 @@ func (e *aiEngine) callOpenAI(ctx context.Context, cfg AIConfig, system, user st
 			{"role": "user", "content": user},
 		},
 	}
-	headers := map[string]string{}
-	if cfg.APIKey != "" {
-		headers["Authorization"] = "Bearer " + cfg.APIKey
+	headers, cleanup, err := e.authHeaders(cfg, "Authorization")
+	if err != nil {
+		return "", fmt.Errorf("resolve AI API key: %w", err)
+	}
+	defer cleanup()
+	if auth := headers["Authorization"]; auth != "" {
+		headers["Authorization"] = "Bearer " + auth
 	}
 	b, err := e.doJSON(ctx, strings.TrimRight(cfg.BaseURL, "/")+"/chat/completions", headers, payload)
 	if err != nil {
@@ -889,7 +1032,7 @@ func (e *aiEngine) callOpenAI(ctx context.Context, cfg AIConfig, system, user st
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(b, &out); err != nil || len(out.Choices) == 0 {
-		return "", fmt.Errorf("unexpected openai response")
+		return "", fmt.Errorf("unexpected openai-compatible response")
 	}
 	return out.Choices[0].Message.Content, nil
 }
@@ -903,10 +1046,12 @@ func (e *aiEngine) callAnthropic(ctx context.Context, cfg AIConfig, system, user
 			{"role": "user", "content": user},
 		},
 	}
-	headers := map[string]string{"anthropic-version": "2023-06-01"}
-	if cfg.APIKey != "" {
-		headers["x-api-key"] = cfg.APIKey
+	headers, cleanup, err := e.authHeaders(cfg, "x-api-key")
+	if err != nil {
+		return "", fmt.Errorf("resolve AI API key: %w", err)
 	}
+	defer cleanup()
+	headers["anthropic-version"] = "2023-06-01"
 	b, err := e.doJSON(ctx, strings.TrimRight(cfg.BaseURL, "/")+"/messages", headers, payload)
 	if err != nil {
 		return "", err
@@ -931,7 +1076,13 @@ func (e *aiEngine) reviewProfile(ctx context.Context, path, summary, profile str
 		`Given a page path and a short description of its content signals, decide if the proposed profile fits. ` +
 		`Respond with ONLY JSON: {"agree":true|false,"confidence":0-100,"reason":"one sentence"}.`
 	user := "path: " + path + "\nsignals: " + summary + "\nproposed_profile: " + profile
-	txt, err := e.callLLMRaw(ctx, cfg, sys, user)
+	var txt string
+	var err error
+	if cfg.Provider == "openai" && cfg.effectiveOpenAIAPIStyle() == "responses" {
+		txt, err = e.callOpenAIResponses(ctx, cfg, sys, user, "waf_profile_review", profileReviewSchema())
+	} else {
+		txt, err = e.callLLMRaw(ctx, cfg, sys, user)
+	}
 	if err != nil {
 		return false, 0, "", err
 	}

@@ -1,0 +1,74 @@
+#!/bin/sh
+set -eu
+
+case "${1:-}" in
+  configure)
+    if ! getent group waf >/dev/null 2>&1; then
+      addgroup --system waf >/dev/null
+    fi
+    if ! id waf >/dev/null 2>&1; then
+      adduser --system --ingroup waf --no-create-home --home /nonexistent --shell /usr/sbin/nologin waf >/dev/null
+    fi
+
+    install -d -o root -g waf -m 0770 /etc/waf
+    install -d -o root -g waf -m 0750 /etc/waf/certs /etc/waf/crs
+    install -d -o waf -g waf -m 0750 /var/lib/waf-proxy /var/log/waf
+    [ -e /var/log/waf/audit.log ] || install -o waf -g waf -m 0640 /dev/null /var/log/waf/audit.log
+
+    if [ -e /etc/waf/config.json ]; then
+      chown waf:waf /etc/waf/config.json
+      chmod 0600 /etc/waf/config.json
+    fi
+    if [ -e /etc/waf/coraza.conf ]; then
+      chown root:waf /etc/waf/coraza.conf
+      chmod 0640 /etc/waf/coraza.conf
+    fi
+    if [ -e /etc/waf/waf-tls-frontend.env ]; then
+      chown root:root /etc/waf/waf-tls-frontend.env
+      chmod 0644 /etc/waf/waf-tls-frontend.env
+    fi
+
+    # Generated exactly once. Upgrades never rotate or replace this break-glass
+    # credential. Do not print it into package-manager logs.
+    if [ ! -e /etc/waf/waf-proxy.env ]; then
+      umask 077
+      token="$(openssl rand -hex 24)"
+      {
+        echo '# waf-proxy environment. Keep 0600 — this is a break-glass admin credential.'
+        printf 'WAF_ADMIN_TOKEN=%s\n' "$token"
+      } > /etc/waf/waf-proxy.env
+      chown root:root /etc/waf/waf-proxy.env
+      chmod 0600 /etc/waf/waf-proxy.env
+      echo 'waf-proxy: created initial admin token in /etc/waf/waf-proxy.env (value not printed)'
+    else
+      chown root:root /etc/waf/waf-proxy.env
+      chmod 0600 /etc/waf/waf-proxy.env
+      echo 'waf-proxy: preserved existing /etc/waf/waf-proxy.env'
+    fi
+
+    if command -v systemctl >/dev/null 2>&1; then
+      main_was_active=0
+      tls_was_active=0
+      systemctl is-active --quiet waf-proxy.service 2>/dev/null && main_was_active=1 || true
+      systemctl is-active --quiet waf-tls-frontend.service 2>/dev/null && tls_was_active=1 || true
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      # Fresh installs intentionally do NOT auto-start: CRS must first be
+      # provisioned explicitly. Existing running deployments are restarted so
+      # an upgrade actually activates the newly installed binary. Capture both
+      # service states before restarting the main service because Requires= may
+      # stop the TLS frontend as a side effect.
+      if [ "$main_was_active" -eq 1 ]; then
+        systemctl try-restart waf-proxy.service || exit 1
+      fi
+      if [ "$tls_was_active" -eq 1 ]; then
+        systemctl try-restart waf-tls-frontend.service || exit 1
+      fi
+    fi
+
+    if [ ! -s /etc/waf/crs/crs-setup.conf ]; then
+      echo 'waf-proxy: OWASP CRS is not provisioned; service was not auto-started on fresh install.'
+      echo 'waf-proxy: see /usr/share/doc/waf-proxy/CRS-PROVISIONING.md before systemctl enable --now waf-proxy.'
+    fi
+    ;;
+esac
+exit 0

@@ -1,5 +1,19 @@
 # AI Development Handoff
 
+## Current canonical status — 2026-09-17
+
+The audited GitHub `main@1d52d65a73a802e32f02994e51f0a07beb240177`
+was found non-buildable. A root-build-integrity repair is implemented, but the
+exact repaired bytes have not executed the mandatory Go 1.25 dependency-drift
+and root-build gates in this environment. Current source state is therefore
+`IMPLEMENTED_TESTING_DEFERRED` and the Source Buildability Gate is `BLOCKED`.
+
+Artifact integrity, source reconstruction, package fixtures, and component
+source checks retain their separately scoped PASS evidence. They do not promote
+root buildability or release readiness. Read `DOCUMENTATION_INDEX.md` and
+`SOURCE_BASELINE_GATE_RESULT.md` before relying on older historical sections in
+this ledger.
+
 ## Project
 WAF Proxy
 
@@ -1617,3 +1631,266 @@ Implemented foundation: security state models and in-memory persistence abstract
 Status: IMPLEMENTED_TESTING_DEFERRED
 
 Implemented: runtime qualification evidence schema foundation. Real Go 1.25, Coraza v3.7.0 transaction, and libvectorscan runtime gates remain NOT_RUN until executed on a qualified release host.
+
+
+Phase 5 Slice B — VectorScan Production Qualification
+Status: IMPLEMENTED_TESTING_DEFERRED
+Documentation update: qualification boundary recorded.
+
+
+## Phase 5 Slice C — Enterprise Deployment Readiness (IMPLEMENTED_TESTING_DEFERRED)
+
+Added deployment readiness evidence foundation:
+- preflight report model
+- health/readiness evidence boundary
+- deployment diagnostics foundation
+
+Runtime deployment qualification remains NOT_RUN until executed on target environments.
+
+
+## Phase 5 Slice D — Security Operations Experience
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented foundation: security timeline events, investigation query model, change audit model, and structured evidence export. Production SOC workflow and SIEM integration remain deferred.
+
+
+## Current Work — Phase 5 Slice E
+
+Reliability Qualification foundation implemented. Future sessions must preserve the boundary between reliability framework implementation and executed production qualification evidence.
+
+## Current Work — Phase 5 Slice F Performance Certification
+
+Status: **IMPLEMENTED_TESTING_DEFERRED**.
+
+Canonical implementation:
+
+- `cmd/wafbench/certify.go` — performance certification evidence binding, target evaluation, comparability checks, VectorScan security gate, and regression deltas.
+- `cmd/wafbench/certify_test.go` — focused truth-boundary/unit tests.
+- `cmd/wafbench/main.go` — exposes `wafbench certify`.
+- `cmd/wafbench/model.go` — wafbench evidence version advanced to 1.1.0.
+- `qualification/performance/README.md` — operator evidence contract.
+- `qualification/performance/target.example.json` — explicitly non-approved target example.
+- `qualification/performance/performance-certification-NOT_RUN.json` — placeholder proving no real benchmark was executed on the packaging host.
+
+Certification semantics:
+
+1. `evidence_status=PASS` means only that real benchmark result files are present, executed, hash-bound, and comparable.
+2. `target_status=PASS` requires an explicit `waf-proxy-performance-target-v1` target and measured results meeting every stated requirement.
+3. final `status=PASS` requires both of the above. If VectorScan results are supplied, it also requires the real `waf-phase1-vectorscan-differential-v1` zero-false-negative PASS report.
+4. No target => final `NOT_RUN`; incompatible run shape/system => `BLOCKED`; target miss or failed VectorScan safety evidence => `FAIL`/`BLOCKED` as applicable.
+
+Do not convert component microbenchmarks, theoretical throughput, or the example target into deployment sizing claims. Application Gbps in the report is measured payload throughput (`AppMbps/1000`), not Ethernet line rate.
+
+Baseline hygiene repair completed in this slice: restored the five unique Phase 5 Slice B `qualification/vectorscan` files from the stale nested `waf-work/` mirror into the canonical path, corrected the replay package mismatch, and removed the duplicate tree.
+
+Focused local validation completed with Go 1.23 in isolated standard-library-only harnesses. Canonical Go 1.25 module validation and all real performance qualification remain deferred/blocked on this packaging host.
+
+Next roadmap item after Slice F implementation is **Phase 5 Slice G — External HSM / PKCS#11 Support**. Do not start it by redesigning TLS/PKI; reuse existing PKI/TLS boundaries and keep private keys non-exportable.
+
+Slice F packaging note: the incoming Slice E ZIP regressed executable modes on release/install tooling to `0644`. Slice F restores all verifier-required shell scripts and executable Python release tools to `0755`. Future packaging must preserve those modes; `verify-release-artifact.sh` treats mode loss as an artifact failure.
+
+## Current Work — Phase 5 Slice G External HSM / PKCS#11 Support
+
+Status: **IMPLEMENTED_TESTING_DEFERRED**.
+
+Canonical implementation now includes:
+
+- `internal/hsm/` — config validation, secret-reference resolution, provider/signer abstractions, module/session lifecycle, Linux PKCS#11 CGO adapter, build-disabled stub, health model and audit schema.
+- `hsm_integration.go` — site TLS-provider validation, no-fallback rules, config secret-reference redaction/preservation and restricted audit forwarding.
+- `main.go` — HSM runtime config, per-site key-provider config, and HSM-backed `tls.Certificate` construction during runtime build.
+- `admin.go` — `/api/hsm/status`, `/api/hsm/audit`, and HSM secret-reference redaction on config GET plus draft/applied PUT responses.
+- `syslog.go` — HSM audit forwarding with only the approved fields.
+- `cmd/hsmqualify/` and `qualification/hsm/` — explicit SoftHSM vs real-vendor qualification paths with separate evidence classes and checked-in `NOT_RUN` placeholders.
+- `build.sh` — independent `WAF_HSM_PKCS11=off|auto|required` capability and `pkcs11` build tag. A Coraza-only binary can now be HSM-capable without enabling VectorScan.
+
+Security invariants that future work must preserve:
+
+1. private keys remain inside the PKCS#11 provider; the WAF receives only signing operations;
+2. no automatic fallback from HSM to `tls_key` or the external TLS frontend;
+3. certificate ↔ HSM key association must be proven before runtime swap;
+4. PINs and PIN references must not appear in logs, audit evidence, qualification reports, or admin config responses;
+5. HSM audit payload fields are limited to provider, slot, key reference, operation, and result;
+6. module loading is allow-listed and Linux ownership/permission checked;
+7. SoftHSM PASS is not real-vendor HSM PASS.
+
+Current execution evidence is focused/local only: HSM isolated tests PASS, but SoftHSM runtime and real vendor HSM qualification are `NOT_RUN`; canonical Go 1.25 repository validation is still blocked on this packaging host.
+
+After Slice G packaging, do not invent a new feature slice automatically. The next engineering focus should be concentrated execution/closure of the already-defined Phase 0/1/5 deferred qualification gates on suitable release/production-like hosts.
+
+Slice G delivery-gate state: baseline-relative patch reconstruction PASS (215 source-tree files byte/mode identical); mandatory release artifact verifier PASS; fixed-epoch reproducible source-release check PASS; all 12 negative artifact mutations were rejected across segmented execution; detached signature remains NOT_CONFIGURED. These are source/supply-chain gates only and do not promote SoftHSM/vendor-HSM qualification.
+
+## Current Work — Enterprise Linux Distribution Packaging Slice A
+
+Slice A — Debian / Ubuntu DEB Packaging is implemented in source and remains `IMPLEMENTED_TESTING_DEFERRED`.
+
+Implemented:
+
+- `packaging/deb/build-release-deb.sh` builds the canonical binaries and passes their provenance-bound bytes to the package builder;
+- `packaging/deb/build-deb.sh` creates a deterministic `.deb` from `waf-proxy`, `wafctl`, `waf-tlsfront`, `BUILD_PROVENANCE.json`, and `BUILD_SHA256SUMS.txt`;
+- package paths use `/usr/bin`, `/usr/sbin`, `/lib/systemd/system`, `/etc/waf`, `/var/lib/waf-proxy`, and `/usr/share/doc/waf-proxy`;
+- `config.json`, `coraza.conf`, and `waf-tls-frontend.env` are dpkg conffiles;
+- fresh install creates `waf-proxy.env` once, does not print the token, and never rotates it on upgrade;
+- package maintainer scripts contain no network fetch and never obtain CRS automatically;
+- fresh install does not auto-start before explicit CRS provisioning;
+- systemd now declares `StateDirectory=waf-proxy`, fixing persistent learner/security-state writeability under `ProtectSystem=strict`;
+- `waf-doctor` auto-detects source-install versus distro-package binary/unit paths;
+- package fixture reproducibility/content/security verifier passes.
+
+Truth boundary:
+
+- production `.deb` from real Go 1.25 / Coraza v3.7.0 binaries is BLOCKED on this host because the local Go toolchain is older than 1.25;
+- Debian 12 and Ubuntu 22.04/24.04 clean-host installs remain NOT_RUN;
+- fixture package evidence must never be reported as production package/runtime qualification.
+
+Next planned distribution slice: **Slice B — RHEL-family RPM Packaging**.
+
+
+## 2026-09-16 — Enterprise Linux Distribution Packaging Slice B checkpoint
+
+Current authoritative implementation now includes both formal enterprise Linux package source paths: Debian/Ubuntu `.deb` (Slice A) and RHEL-family `.rpm` (Slice B). Slice B status is **IMPLEMENTED_TESTING_DEFERRED**.
+
+RPM implementation is under `packaging/rpm/` and includes the real spec, provenance/checksum-bound deterministic builder, release-host wrapper, package verifier, source-contract validator, source tests, real-toolchain fixture test, CRS guidance, and SELinux boundary documentation. Configuration uses `%config(noreplace)`; `/etc/waf/waf-proxy.env` is created once and remains unowned/preserved; persistent state remains `/var/lib/waf-proxy`; fresh install stays inactive until explicit CRS provisioning; active services only are `try-restart`ed on upgrade. Scriptlets never fetch CRS/packages and never weaken/generate SELinux policy.
+
+Executed source-level RPM validation PASSed. This host is Debian 13 and lacks `rpmbuild`, `rpm`, and `rpm2cpio`, so actual fixture-RPM/reproducibility/extracted-RPM checks are BLOCKED and must not be reported as PASS. Canonical Go 1.25 binary RPM is also BLOCKED here. RHEL/Rocky/Alma/Oracle clean-host and SELinux enforcing tests remain NOT_RUN.
+
+Next roadmap slice: **Enterprise Linux Distribution Packaging Slice C — Package Upgrade / Rollback Qualification**. Do not redesign either package path; validate their lifecycle semantics on suitable package-manager environments.
+
+Slice B delivery-gate checkpoint: baseline-relative reconstruction PASSed for 238 files with byte/mode identity; source Artifact Integrity PASSed; fixed-epoch source release reproducibility PASSed; clean-extracted RPM source validation PASSed; all 12 artifact mutation classes were rejected across segmented execution. Detached signing remains NOT_CONFIGURED. These gates do not change the actual-RPM BLOCKED or clean-host NOT_RUN status.
+
+
+## 2026-09-16 — Enterprise Linux Distribution Slice C checkpoint
+
+Slice C Package Upgrade / Rollback Qualification is now
+`IMPLEMENTED_TESTING_DEFERRED`. Do not redesign the DEB/RPM package paths. The
+canonical lifecycle implementation is under `packaging/qualification/` and must
+remain offline-safe, destructive only behind explicit dedicated-host opt-in, and
+secret-free in evidence. Local source/unit/DEB-fixture/preflight gates PASS.
+Real DEB upgrade/rollback remains NOT_RUN; RPM fixture execution is BLOCKED on
+this Debian host because RPM tools are absent; real RPM lifecycle remains
+NOT_RUN. The next planned distribution work is Slice D clean-host qualification,
+while production Go 1.25 package lifecycle can close Slice C when suitable hosts
+are available. Baseline-relative Slice B→Slice C patch reconstruction has been executed and PASSes with 247 files byte/mode identical.
+
+Slice C delivery-gate checkpoint: baseline-relative reconstruction PASSed for 247 files with byte/mode identity; complete-source Artifact Integrity PASSed (241 source / 247 packaged); fixed-epoch source-release reproducibility PASSed; all 12 artifact mutation classes were rejected across segmented execution; clean-extracted lifecycle source tests and DEB fixture/preflight PASSed; detached signing remains NOT_CONFIGURED. These delivery gates do not promote the real package-manager lifecycle gates.
+
+## Current Work — Enterprise Linux Distribution Packaging Slice D
+
+Slice D — Clean-host Distribution Qualification is implemented in source and
+remains `IMPLEMENTED_TESTING_DEFERRED`.
+
+Canonical implementation is under `packaging/cleanhost/` with checked-in
+`qualification/clean-host/` NOT_RUN evidence. Preserve these invariants:
+
+1. only exact Debian 12, Ubuntu 22.04/24.04, RHEL 9, Rocky 9, AlmaLinux 9 and
+   Oracle Linux 9 dedicated clean hosts may earn PASS;
+2. RHEL-family acceptance requires SELinux `Enforcing`;
+3. the runner never fetches packages/dependencies/CRS from the network;
+4. `/etc/waf` and `/var/lib/waf-proxy` must be absent before execution;
+5. fresh package install must not auto-start before explicit local CRS setup;
+6. PASS includes doctor, systemd start, health, break-glass admin API auth,
+   actual reverse-proxy traffic, N+1 upgrade preservation and package removal;
+7. admin token bytes are compared only in memory and never written or hashed in
+   evidence;
+8. container/source/preflight results remain NOT_RUN and cannot promote the
+   distro matrix.
+
+Current host source tests PASS, but it is Debian 13 and is correctly BLOCKED for
+all exact Slice D targets. All seven real distro rows remain NOT_RUN. Do not
+claim clean-host distribution closure until dedicated target-host reports exist.
+
+Slice D local regression note: inherited DEB package regression, RPM source gate
+and Slice C lifecycle source gate pass. The repository Go shipped-script test is
+BLOCKED under `GOTOOLCHAIN=local` because this packaging host has Go 1.23.2 and
+the module requires Go >=1.25.0. The supplied complete-source ZIP has no `.git`
+metadata, so Git synchronization/commit/push was not available in this workspace.
+
+Slice D source-delivery gates after source freeze: patch reconstruction PASS
+(261 files byte/mode identical), Artifact Integrity PASS (255 source / 261
+packaged), fixed-epoch reproducible source release PASS, clean-extracted Slice D
+source/unit gate PASS, and all 12 negative artifact mutations rejected across
+segmented execution. Detached producer signature remains NOT_CONFIGURED. These
+do not change the seven real clean-host platform rows from NOT_RUN.
+
+## Current Work — project-local DEB/RPM packaging utility
+
+`./waf-package` and `tools/waf_package_builder.py` are now the intended operator/
+developer entry point for producing this project's binary packages after source
+changes. Supported commands are `doctor`, `deb`, `rpm`, and `all`. The utility
+is deliberately repository-specific and delegates to `build.sh`,
+`packaging/deb/build-deb.sh`, and `packaging/rpm/build-rpm.sh`; do not replace
+those canonical paths with a parallel implementation.
+
+Important invariants: Go/Coraza pins come from `go.mod`; `GOTOOLCHAIN=local` is
+forced; no toolchain/dependency/CRS auto-install/download is allowed; one build
+produces provenance-bound binaries; `all` packages those same bytes in both
+formats; requested versions use a shared safe spelling; package results are
+recorded in `PACKAGE_BUILD_REPORT.json` with SHA-256. Current source tests are
+9/9 PASS plus source contract PASS. Real package execution remains BLOCKED on
+the current host by Go 1.23.2 (<1.25.0), and RPM also lacks its native package
+build tooling. Next action on an appropriate build host: run `./waf-package
+doctor --format deb`, then `./waf-package deb --version <release>`; separately
+run RPM doctor/build on an RPM-capable host, then execute Slice C/D gates.
+
+Complete-source packaging for the `waf-package` utility also passed source artifact integrity, fixed-epoch reproducibility, clean-extract source regression, and 12/12 negative mutation rejection. These results cover source delivery only; real WAF `.deb`/`.rpm` production builds still require a qualified Go 1.25+ release host (and RPM tools for RPM).
+
+## 2026-09-17 — Root build integrity repair
+
+GitHub `main@1d52d65a73a802e32f02994e51f0a07beb240177` was independently audited
+and found non-buildable. Treat any older `SOURCE_BASELINE_GATE_RESULT.md` PASS
+that relied only on archive completeness as superseded for buildability claims.
+
+Repair state:
+- `go.mod` / `go.sum` restored to the known-good Coraza v3.7.0 dependency graph
+  from the previously green CI branch (`go.mod` blob 7654301..., `go.sum` blob
+  7b2ad1b...);
+- `pki.go` restored to the CRL URL refresh companion implementation expected by
+  `pki_url.go` (`crlStore` mutex/config/issuers/roots/status fields plus runtime
+  builder integration);
+- debug evidence v2 uses `DebugEvidenceStore.List(tenant, limit)` and current
+  `DebugBundle` fields (`Tenant`, `TransactionID`, `CapturedAt`);
+- `tlsVersionName` is defined and regression-tested;
+- CI contains a mandatory `GOTOOLCHAIN=local go mod tidy -diff` gate before
+  `go build ./...`.
+
+Local static/source checks pass, but exact Go 1.25 build/test execution is
+BLOCKED on this host. Do not promote this repair to TESTED, and do not restore a
+Source Baseline PASS, until CI executes the exact repaired bytes successfully.
+
+Process requirement: changes to `main` must go through a PR with required CI.
+Branch protection is REQUIRED but was NOT_APPLIED by this session because the
+connected GitHub App returned HTTP 403 for branch-ref mutation/protection-like
+operations. Do not bypass this by writing repair commits directly to `main`.
+
+Artifact-integrity follow-up for the root build repair: candidate complete-source packaging passed the project verifier (265 source / 271 packaged), fixed-epoch reproducibility, clean-extract static smoke, byte/mode reconstruction, and all 12 negative artifact mutations. These results must not be used to promote source buildability: Go 1.25 tidy/build/test execution is still BLOCKED locally. Final artifact packaging is rerun after recording this evidence so delivery evidence refers to final bytes.
+
+## 2026-09-17 — Documentation consolidation checkpoint
+
+All Markdown files were synchronized after the root-build-integrity audit. Use
+`DOCUMENTATION_INDEX.md` as the entry point. `HANDOVER_PROMPT.md` and
+`HANDOVER_STATUS.md` now contain only the current continuation truth rather than
+a stack of historical next-slice notes. `INSTALL.md` includes the full package
+operations lifecycle and explicitly records that PostgreSQL is not currently a
+runtime dependency. No implementation status was promoted: root buildability
+remains BLOCKED pending exact Go 1.25 CI.
+
+## 2026-09-17 — OpenAI Responses/Structured Outputs hardening
+
+Status: `IMPLEMENTED_TESTING_DEFERRED`. Native OpenAI now uses `/responses` with strict JSON Schema output, `store=false`, secret references, and deterministic provider mocks. `chat_completions` remains for compatible/self-hosted endpoints and legacy inline-key configs preserve their historical wire contract. Isolated `openaiapi`/`secretref` unit+race+vet PASS; root Go 1.25 integration remains BLOCKED. Next mandatory action remains Go 1.25 PR/CI validation before package production.
+
+### OpenAI hardening verification checkpoint
+
+Executed on this source state: isolated `openaiapi` and `secretref` unit/race/vet PASS; OpenAI source/config/UI contract 16/16 PASS; inherited DEB, RPM-source, lifecycle-source, and clean-host-source gates PASS; source hygiene clean after test cleanup. Baseline-relative reconstruction from `waf-proxy-root-build-integrity-repair-docs-sync-2026-09-17.zip` PASS with 273/273 source files byte-for-byte and Unix-mode identical. Repository-root Go 1.25 build/test remains BLOCKED on the local Go 1.23.2 host.
+
+### 2026-09-18 — OpenAI hardening final delivery freeze
+
+Final delivery evidence after source freeze:
+- complete-source artifact verifier: **PASS — 273 source / 279 packaged files**;
+- fixed-epoch reproducibility: **PASS — byte-identical release ZIPs**;
+- clean-extract OpenAI source/config/UI contract: **16/16 PASS**;
+- clean-extract isolated `openaiapi` + `secretref` unit, race, and vet: **PASS**;
+- baseline-relative source patch reconstruction: **PASS — 273/273 source files byte + Unix-mode identical**;
+- final artifact negative mutation rejection: **12/12 PASS** across segmented execution;
+- root `GOTOOLCHAIN=local go test ./...`: **BLOCKED** before compilation because host Go 1.23.2 is below required Go 1.25.0.
+
+Delivery-integrity PASS does not promote Source Buildability. Exact Go 1.25 root tidy/build/vet/test/race/real-Coraza and live provider acceptance remain required.

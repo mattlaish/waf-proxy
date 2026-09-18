@@ -1,0 +1,14 @@
+{
+  "format": "waf-proxy-performance-target-v1",
+  "profile": "EXAMPLE_NOT_APPROVED",
+  "requirements": [
+    {
+      "role": "coraza_crs",
+      "scenario": "clean-get",
+      "min_rps": 1000,
+      "min_app_gbps": 0.01,
+      "max_p99_ms": 100,
+      "max_error_rate_percent": 0.1
+    }
+  ]
+}

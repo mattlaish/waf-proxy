@@ -1,75 +1,195 @@
-Version: phase3-truth-boundary-repair-2026-09-14
-Build Timestamp: 2026-09-14T00:00:00Z
+Version: openai-responses-structured-secrets-2026-09-18
+Build Timestamp: 2026-09-18T00:00:00Z
 Build Variant: source
 Reproducible Metadata: true
 Signing: NOT_CONFIGURED
-Packaged File Count Before Manifest: 166
+Packaged File Count Before Manifest: 278
 
 Tests:
-  See TESTING_RESULTS.md inside this artifact.
+  # Testing Results and Qualification Ledger
+  
+  ## Current canonical status — 2026-09-17
+  
+  The audited GitHub `main@1d52d65a73a802e32f02994e51f0a07beb240177`
+  was found non-buildable. A root-build-integrity repair is implemented, but the
+  exact repaired bytes have not executed the mandatory Go 1.25 dependency-drift
+  and root-build gates in this environment. Current source state is therefore
+  `IMPLEMENTED_TESTING_DEFERRED` and the Source Buildability Gate is `BLOCKED`.
+  
+  Artifact integrity, source reconstruction, package fixtures, and component
+  source checks retain their separately scoped PASS evidence. They do not promote
+  root buildability or release readiness. Read `DOCUMENTATION_INDEX.md` and
+  `SOURCE_BASELINE_GATE_RESULT.md` before relying on older historical sections in
+  this ledger.
+  
+  Handover checkpoint: 2026-09-07 (Asia/Taipei)
+  
+  This file separates **real execution**, **stub/API integration**, **ABI-only native checks**, **component benchmarks**, and **NOT_RUN release gates**. Do not promote one evidence class into another.
+  
+  ## Final packaged baseline
+  
+  - Source artifact: `waf-proxy-vectorscan-learning-coraza37-2026-09-04.zip`
+  - SHA-256: `64dc3034865d20aedaa38e10af5459da844ae6f6d92960e224223ec0ed359b22`
+  - Size: 342,234 bytes
+  - Patch artifact: `waf-proxy-vectorscan-learning-coraza37-2026-09-04.patch`
+  - SHA-256: `a24645a911caaa986c310509103093ba0cdc5e7bdcd4801251ccadd4e17a8398`
+  - Size: 77,830 bytes
+  - Patch baseline: TLS Acceleration / modern-NGINX release line
+  
+  Previous packaging verification already completed:
+  
+  - ZIP integrity test: PASS
+  - ZIP re-extract vs source: 106 files, byte-for-byte identical, file modes identical
+  - patch reconstruction from TLS/modern-NGINX baseline: byte-for-byte/file-mode identical to final source
+  - diff hygiene: 20 expected files changed for the VectorScan/Coraza phase; unrelated TLS/AI/LB files did not drift
+  
+  ## Real host evidence already obtained
+  
+  ### TLS frontend / modern NGINX
+  
+  Host evidence previously recorded:
+  
+  - NGINX 1.26.3
+  - OpenSSL 3.5.5
+  - modern syntax generated as `listen ... ssl;` + `http2 on;`
+  - `nginx -t`: PASS with no deprecated `listen ... http2` warning
+  - HTTPS -> NGINX -> private Unix socket -> WAF-side endpoint smoke: PASS
+  - curl negotiated HTTP/2: PASS
+  - forged Internet-side internal forwarding/private TLS headers were overwritten/cleared: PASS
+  - kTLS auto detection fell back to software TLS on the available host because kernel kTLS was not available
+  - QAT auto detection fell back to software TLS because `qatprovider` was unavailable
+  
+  This proves frontend/fallback behavior on that host. It does **not** prove real QAT hardware acceleration or active kTLS.
+  
+  ## Portable Coraza API-stub regression
+  
+  Purpose: validate project control flow, compile compatibility with the intended Coraza API surface, Go logic, and race behavior when the real module cannot be downloaded. It is **not** real Coraza correctness evidence.
+  
+  Final VectorScan/Coraza integration round:
+  
+  - full repository `go test`: PASS
+  - `go vet ./...`: PASS
+  - bounded `go test -race` groups: PASS
+    - root package: PASS (~14.4 s in the recorded run)
+    - `internal/vectoraccel`: PASS (~1.1 s)
+    - `internal/tlsfront`: PASS (~1.17 s)
+    - `internal/sigupdate`: PASS (~4.6 s)
+    - `cmd/wafbench`: PASS (~1.15 s)
+  
+  A single all-packages race invocation exceeded the execution runner timeout; no race detector report was produced. The bounded package runs are the recorded PASS evidence.
+  
+  ## Native libhs ABI-only gate
+  
+  Purpose: compile/link/exercise the actual CGO adapter shape without claiming real VectorScan regex behavior.
+  
+  Using a local ABI-compatible libhs test library:
+  
+  - vectorscan build-tag compile: PASS
+  - vectorscan-tag tests: PASS
+  - vectorscan-tag `go vet`: PASS
+  - vectorscan root race: PASS
+  - scan/close lifecycle paths compiled and ran
+  
+  This gate found and caused removal of an unsafe `cgo.Handle` integer -> `unsafe.Pointer` bridge. The final adapter uses C-owned context storage carrying `uintptr_t` handle data instead.
+  
+  **Evidence boundary:** this does not prove `hs_compile_multi`/`hs_scan` correctness, pattern compatibility, performance, SIMD behavior, or real libvectorscan lifecycle.
+  
+  ## Coraza transaction-truth integration
+  
+  Implemented and covered by project tests/stub API integration:
+  
+  - Learning truth source is transaction-final `tx.MatchedRules()` after `ProcessLogging()`;
+  - ErrorCallback remains available for existing match logging/AI/syslog but is not a Learning truth source;
+  - same transaction/group rule IDs are de-duplicated before Learning counters are updated;
+  - request-context transaction correlation replaces client/URI correlation, avoiding HTTP/2 identical-request ambiguity;
+  - semantic fingerprints include rule/adapter/Coraza/native version inputs and force re-Learning on drift;
+  - false negative or native scan failure moves the group to `FAILSAFE` and Coraza-only processing;
+  - no-hit skipping is permitted only for an `ACCELERATED` group and verification samples still execute full Coraza.
 
 Files:
-2e2a0e492385ee1383fcfd59b0c4909a701708f033e0d5988d7da6b5b9860b2c  AGENTS.md
-fbdd4034a59425eea3083bece3cfa1c021eb48ca46a629ee649db78c6f595caf  AI_HANDOFF.md
-85a7e76acbdad58f2eda3b72bc1fb28d692d7d045489020705bc00c49c392486  CLAUDE.md
-1094a4455456449342552eca83abb552cbbb506aeb6a1e840703d9af11d27962  DEVELOPMENT.md
-018f383e28e02956d4df6038989d092389b407c0830d3b0be79cc5d13a83ad42  DEVELOPMENT_ROADMAP.md
-a7ca3ea39838f2ba740bf1d2dd0fd8d37b8592590f8fd0eb0eb5cf05d44f388d  HANDOVER_PROMPT.md
-c1390095df2ef3fc7b514fec08fee61f99f111fb5abbe4ffdf56c416de19a13e  HANDOVER_STATUS.md
-e40165b48776c6a2d1de7eb21d72c72b821c8894bac8ffddf892ea6be5845c37  INSTALL.md
-7a9b0d98ac55214b3d2e42dfffd83eb608dfbd9dfbc07330885e44428187ec0c  MANIFEST.md
-373f9e29cc6667ca2665e06512204cfb988c94d787ed6c4d96f740e216374acb  README.md
-ad96e89b1f0af1747599b6b72a1b931cb4b8a70f3c84996b142fe3c00a6ba081  RELEASE_PROCESS.md
-a717b911fc5a3d17544af2b4899820602821504d6bd90f2715d671e48439028f  TESTING.md
-2ef5ce27e361e491914f4c2fc51335c03e52d563b85935040faad0a9f7bd68dc  TESTING_RESULTS.md
-7b755ed1c34fcea7b7a70add1869af81b7f24a1dd54005535d6c7585802d3d6d  admin.go
-ebf93936490be4d7e7cf716b150b373f71205d421d1f3481b17061ba34726083  ai.go
+e3a29faaceecfac71cc7dee5e5897396d48f716b1aafc694f146dd0871b91608  .github/workflows/ci.yml
+671fb5004c3aa4002c3858d4fc197bf7e9dfc665d13484ee4dd1442277fa72a3  AGENTS.md
+6049075ab8f44979a5933903b97d8f1a6428413d4a8e87963e37156c55604890  AI_HANDOFF.md
+89b8c46f481cca49627d2ec4ed2230537a6588fa0bbb0a7df99381c3c7201c06  CLAUDE.md
+712a739811bb2be03a68fc9dc22ce9d36448276e2c49486e137f3cc8199468a6  CLEAN_HOST_DISTRIBUTION_GATE_RESULT.md
+98ef1fd48b2654414c47b77dfd20e5a78bec261afee784c8fac3573d28a0dbd1  DEB_PACKAGE_GATE_RESULT.md
+daafe00e7ee69fdaedb2ea0dcc734eadf7328530c3190e82322208bc151b6302  DEVELOPMENT.md
+2abf22a408065bdfeee4c829b06430ac4851b6a53dacaf08ae6a8af46e5b79f6  DEVELOPMENT_ROADMAP.md
+2331da468532b1bee658ce365f4349ae35d467a9c85e48356c2ee10d548bde89  DOCUMENTATION_INDEX.md
+19f51021208126ab2a391b27a9accfccb47bb534fd81b227c183385a4c1903e3  HANDOVER_PROMPT.md
+162ef9ea5f75162e601eb361ab6fc193ac9bb2f90a965b52b2e1eff5648c8458  HANDOVER_STATUS.md
+f1fefa00f1b09391cc7f3459fa7d4c0ef66fe1ea6808bd072ab0ec6252f1387d  INSTALL.md
+653df5d2570a9059585169c65504e777e73f63e2334ddb4e743a4810ae453522  MANIFEST.md
+87c7579131bf3f92c16999e19e5775d9eff7ef20e51d8ab0ca5a421713dada16  OPENAI_INTEGRATION_GATE_RESULT.md
+1cc93554ade8773c3769203d095636c41600423ae454c306510967bcd8626aea  PACKAGE_LIFECYCLE_GATE_RESULT.md
+15cccc4ad0e027ccd62aa314c04f1e39d1588c227f60e53c3b0fde538482ef33  PACKAGE_TOOL_GATE_RESULT.md
+2f42c2e072d42604ef87baaed8cb0528b080dc117c34c669fb08106bf10ef6cd  PACKAGING_TOOL.md
+52b41191a05e349796332f5f1727b9be157cc8baef69c7fed5653ab0c7c67ba6  README.md
+cd4b9083b254ff11e2c1093fa7763e1572232e221ecd3d881347a520295de833  RELEASE_PROCESS.md
+437958906cd398f4c87927ca876dc98279062558aee60b6317d928f89fabce10  RPM_PACKAGE_GATE_RESULT.md
+a3f38a0d8db07cafb9cf11d32fc90ce4809b834c2c6c329aa835c2a2f42300fd  SOURCE_BASELINE_GATE_RESULT.md
+828586318cbcdd55099c416088ff99f48ce86316d9bedf673be28af519c5eb61  TESTING.md
+e92a4c3649e3d7de41f6f25fdd347a23183206b12c28bbdb513c05c7b3e6bc57  TESTING_RESULTS.md
+1b85a2751fb1842018cd01919b596d88e25730154a86659cb00f83f8ef040ca2  admin.go
+894a0a942a404aa5dd09d4783fbd75a4372170f4c3ded8ab88780144d62562b1  ai.go
+6fa843c2300cc8f0c195f9cd264932ac86e535089d72c28a346f8d700d30f8c6  ai_openai_integration_test.go
 6a8f1b9b977f5245fccb02a08c4825799c23bce47e3c6b7ada570095205b3878  ai_test.go
-303835dccd0cc3c710a7dd7edc43ddbd5fd99a512eb5ef437cffef3ae5f04c60  benchmark/README.md
+d539caa72b588aedf168bb0943e7ed61186e7889f49c0f0bb64a34e1ec10bf25  benchmark/README.md
 3f47bb42840b0b2ac99494ef25d6d15fccee70d20a524088cd0a17ac4a469faf  benchmark/build.sh
+8308603f25f8649b1dadf508bd36c7da14579de4ae91dc2abb1ba10519708a06  block_response.go
 cd7639842049811abb2f42d656ea61bfb42882049eaacd5a9ae97faff397a6c4  build-release-artifact.sh
-8f5efe9eb494eea583b32bf695a3159b36863438dd18583e46ceee97a623d7cb  build.sh
-92cd8026f8464524dcf0d1f99363741ccc36c4d105100e2a0fc39e6513ede29f  clientip.go
+e369d09387afaa40725a6f7320949f5fa13fbc2a934591b22c537c8789ddb8ab  build.sh
+8bfe07435c830b1111a79b80474225570a46b23a52828fa343a08d2c198f4241  change_audit.go
+d6d6b4d70949b144e1167a7a3f593d82c4549a1af24cd398aa85b25fed9174b0  cidr_policy.go
+1836ec1457098aa57af30a7ebe844391ba174ff5d3cca0fbb515dfc5895a050f  clientip.go
 ba55c0fa472aa7b9dbc6b75f9e50f2128e266e42127b92631894635c34cdffb3  clientip_test.go
+3e6bc19b5b7a9c16360d82362fb9db6dd1ebd17d1c266e0ce5459d67c94cea7e  cmd/hsmqualify/main.go
 f1cd316df60b9313c1c143dfdd2debb7bb6d8546312d66b89d8bdf656e01acbf  cmd/waf-tlsfront/main.go
 60b5e79884a991c8c6c2822898fc930923af7b43239f7f1c4de4f9c201fa56c1  cmd/wafbench/backend_mode.go
+a46c5fc7e88e71ab7a60d268c6e9b860e45f2d8e68829a525884fb6fec6d07e2  cmd/wafbench/certify.go
+51afdd67a34e73c36f25622f0acb715a9bb272107e278e5d93fc978da6dec96a  cmd/wafbench/certify_test.go
 dd29da1191382120af8e77f37f056347bf9f0c4c69a79a77b931ecd1487529e6  cmd/wafbench/compare.go
 0c4a800c47ae264c91f2dfbc446973707d1624bc591b742fc928e029a329f3b4  cmd/wafbench/coraza_mode.go
 7d45b41f686d7cb2ac174f46f43800c55ab3fe2faebbc07457d710ca18f7a907  cmd/wafbench/hist.go
 5ae7f9c3c99d838d8858cff860e7d5779f56b9733fcad07f285faeb3a5a7108b  cmd/wafbench/http_mode.go
 a8aecb59facce26cc0e3f83655ca5ea29f032c468433194d72426a96b0f21ab7  cmd/wafbench/l4_mode.go
-8d88d3c449a518b5c1284508f53bd9b9e973b78a07dd06638da4a4df9e8958d0  cmd/wafbench/main.go
-8cdd4b9f93943241c3f8ceeca6e157f7591f1f3112af03e52f86cc3563d4bc55  cmd/wafbench/model.go
+3da21f0406cbae1df7003cb1dde0d833b2893099bad61ae81df6b68daf47b5f2  cmd/wafbench/main.go
+10f723c8feb466de8180abe034a304b44de4b11ea372cc99c36ff4468c635cfd  cmd/wafbench/model.go
 7341f6487b8173b2215e2d793a926f0870db9ce964286a84a219aa9879c85b7c  cmd/wafbench/proc_linux.go
 0e237d3b19649fd4c06580f3e53dc82bbd07625df8f5e667312fa92df01461da  cmd/wafbench/proc_other.go
 6973e4e453e73655dfdaf62f83dc268beb69e9ab62ccc892261761df8c6cea09  cmd/wafbench/scenario.go
 d64e0bfe64ed12a7ee72ff930a0020734b8964785dfa1b51e3d83c1d236aac0c  cmd/wafbench/wafbench_test.go
 2d09a486b770a1e07ac191ed74d1c4babec74b745ab1ae7d9e721e355f19142a  cmd/wafctl/coverage.go
-04cdb21221b2ce52114aaf42ab9705c61b9dd3762b3b8995193418181f1172d3  cmd/wafctl/main.go
+748a8a25963f2001562b40e0ab9ecf9bca5fa9f1a00db9f2d6d94a9c2d40b22a  cmd/wafctl/main.go
 386e04a3f854e1aac73dec6bbbd66d520838e68478a1bc52265f783c6d7aaf99  cmd/wafctl/main_test.go
 0d01992d65cffe729b84c42caea6572985bcdaa8bc8859970eddcce7e7c3b303  cmd/wafqualify/main.go
-b8f17ed313c4a647a0997d78a9284d46a0b48c4894000b362a07f0400925d9c7  config.sample.json
+5697ce522f54293403bc59aff62deb13790b59e6655fce68e9407c1b7b9a16c3  config.sample.json
 40875efeef531386cef5a586ed4cccef5fb4091a27c6431422155ddbc518e352  config_pool_test.go
 c38880848c57e91179030b0c84b889b5d86c8adcf023f8e7a1bae8b29b7df71b  coraza.conf
 5a89d22287a828cadb23b2e9543ecc6ed7f6a67dc3a0578ecc874b5e1bc6e052  coraza_observer.go
 3dc913cd9d832abb076199b1130f175966ab34719acb625b7ba7bfb65e4bb77b  coraza_real_gate_test.go
-76cb2423584a5dc3ccd40c050af38b2504634be970e724a47c14b011d5500169  debug_bundle.go
+5f48715390638f456f17a4338af8ae0280da7e9cdfc1a6a9cf510947b2af5c7d  correlation.go
+5b8640823579c5df573254756d738d30d2a652ef9ed8ce138600a2166cee1d8f  debug_bundle.go
 c20103c800c929b2c093d9c4509ccc4f7b4d47e6efa2165fe7610e556a668b79  debug_bundle_test.go
 442c87ffcf00e6d9a3284fbdba11ec16cbda006f241367ac73a23d2971f4a0d5  debug_evidence.go
-0949288721c349dd33fb2b465e23501dc8e1fc6c0bb8958a1b9e6aeca1ff865d  debug_evidence_ops_v2.go
+20822298ae8d1da59320addd245ebf1ca6e7c7cf6480a6992b91715b1e2bb5ae  debug_evidence_ops_v2.go
+e7ef1cf078be25c3bc51608951f6b8480f33cc5502afdb9e159f4937d03d6f06  debug_evidence_ops_v2_test.go
 83be06587baeab0a9dae01fd52dbcbe3432ab1229212d4c3627b517cb4743c1e  debug_evidence_test.go
 6db5d9beb886bf5884e9d5ce1d3d31bd95c4f71284c46e65de0b956b77baa133  debug_lifecycle_v2.go
 0713994f86eb43f877e50d4554947c71bbba852d9154072414d3395521d2b8f9  debug_retention_worker_v2.go
+9391c46a7c01f829415c3d030c22c683cf9d5f3a8355a6ddafc8631e6ee40742  deployment_readiness.go
 0bf75a5ec806334c97a99c2896e9ea33c08ef70b14a213d79a0b23b6e23f557d  discovery.go
 c021fc346e6ec0c9ce8502e9d68a142f180f2ec5f562b27b9e0c5ebc9de8b71a  fieldpolicy_test.go
 18c9013683d6d5da7fdfe013ef86d289ee8fbefe1d7f6c4328a66d088d13d5e3  freebind_linux.go
 4d655dc660a83e528f2ec970c72ac77aa58c9588a8f4229081e67cf91de246e9  freebind_other.go
-5aef978f8f0c66df4d51f7606ddfa5f367d4e8ebc4a96579fcb13e49264d0ade  go.mod
-cce4707d40a0347bdd9044b7b97a88711450a8f726ad3422fa9e44d4ffff35f5  go.sum
+29950f92bf626789778e87f9c9df33fe5fc49504ab25a7c1b719f5bc99fbb36c  go.mod
+c3ed48273853eff709f1415d7181c334d33967ec3051861a1dd2e141f0aa175b  go.sum
 3de828e1fc17537c8f0d486a2e72b1c884f70c3e517a61fe419b855e04d596c6  ha.go
 47c768dfc972967fbce509d4c0cf32b1138d7fd6a22745f73960ec6d43526ae5  hotpath_test.go
+cdb33bb946b1ad4294081194f2c0f4c008e488c534323336f75b0d2b7deea2d9  hsm_integration.go
+8ab6bfe120c07aabbf7c47e7add8b0fe9786a1b0b4498fca6d541b0b9ac7f3f5  hsm_integration_test.go
 86d31edf86e19e76ed371cb5a4eb94ccc2028240ddb6e4fc20bbcdd1369d6ec2  hybrid_discovery_test.go
-a6fee6e335a6d025927371a7631b4e1eeb4bb9a1314e3a2497f3260d32acc6bb  install.sh
+de379e3cf76443da6b80c7a1dae205651ed21a6ffe78de443f4738500c0e9fd2  install.sh
 f4309ad80742c6acb455d461a1c76041fb46115ae08145c159326ad35c1ab054  internal/capability/classifier.go
 4a2c4faa9f6d406b97cf0c81c4e28b08327ff902a43fc8709fd1ec57ae1f6539  internal/capability/classifier_test.go
 9c05d4881e2ee4840eb1a70074b8f25e286a803ed04eac3a04559259ada88981  internal/coverage/capability.go
@@ -83,8 +203,21 @@ a7808211fda5e14d224ed558169496bcae33f7cfd36d2b85adbb9c18d548bed6  internal/cover
 be35c0875c4cb25e86086fbb6eb32e8011882d2e3b96f47e19c5e7e9d3453508  internal/coverage/crs/parser_test.go
 26c60115904d1e97082f6def31b180391f03e4393e1ce0236f9bd4d89bb5d323  internal/coverage/crs/report.go
 a2feb0a167969ee883b937501cf78170fa70a33431635a3e52af19f82624da19  internal/coverage/report.go
+83ad50351c5fed9eb4f7293ed01fc6a4a83ebe4279eadd8de4d03edaa862bb3a  internal/hsm/config.go
+e90c388781c20c79e1620ed37081a5dc4b2f6bbd631b1b5af003849a52c5009e  internal/hsm/module_security_linux.go
+c30df74cf5c136dc7c9f835bd8268ae852f3df3de585b3790119e6ffc8673cd3  internal/hsm/module_security_other.go
+d067f055e29df681c9ce5e50b8ece9a192c57f927f6bdf700dbfec246668977e  internal/hsm/pkcs11.go
+4b097f25d0c3409c01ea283ae52ccc576c16fb1ca837b1a3356ff781fa68e7e9  internal/hsm/pkcs11_linux_cgo.go
+a4db64e4c04b9c491ca2d6f09a6caaf2abbc88efeb1842579309439eb0aa3cb4  internal/hsm/pkcs11_stub.go
+b3c4373901ce5b8648674582faf2cda774f1dbdbc893301b1e6c5d15a560f5fd  internal/hsm/provider.go
+7a9d791928685f24dec44d01765ca8722c15e5583b83309a7b93670c16b5f908  internal/hsm/provider_test.go
+c6da8b352ec285da56fbba4f6d276ad1f3d441dedd9afda4b79af259ba1751ab  internal/hsm/secret.go
+a6ac46c02b5097334a5ffdd05915f59b3a56d4b8cce8a16c12ccb605f7e7485f  internal/openaiapi/responses.go
+63fad35da995a06cd6be02ac47ba5fc896d25891d1fa3fd6daa47a01c7fee6f0  internal/openaiapi/responses_test.go
 bc141811bc26e0e70dff33b92e07f3466739c9e1399e25dbb20dcf6e2bccf5e0  internal/qualification/corpus.go
 247bf109decca1c248611b32c810cfaa8352649f312fd562763f46f7e169fb4d  internal/qualification/corpus_test.go
+3298dc5c2814d8b703da1feafe9d05ad04ed4c94bab6cc391da2949d62e284eb  internal/secretref/secretref.go
+e78f0a8fc11f2422f8d9932518d6c62086b6c52af75d3d242b6b406368a4a127  internal/secretref/secretref_test.go
 a6e108db0e31d3b449b3badadbb53bdf87a1cee92d0c607145ccddc907b2aa8c  internal/sigupdate/sigupdate.go
 0a50122ea2d93aea94c16e9bf3af0e2fdd0fcf10ab2073d85adfea2c01584279  internal/sigupdate/sigupdate_test.go
 9c7d12f8979eab88f44be211a817a6b761c6edca7a3a70119f007e903fdaa453  internal/sigupdate/sigupdate_unix.go
@@ -102,10 +235,13 @@ d0739c16be1eecf747d407fe90130a37fe69b90b22681ce386969c391158530a  internal/vecto
 89d14d2cdfb4e5a59b7ae9f7c3455cfd690e8a85f2806418bae70eb90877ab2a  internal/vectoraccel/scanner_native_gate_test.go
 820097c83c1aecf86e1da5b18b3dd8d0dbc5bc92d5106b862cd4bce4f711639f  internal/vectoraccel/scanner_stub.go
 1512a3a6038e1d20668b9d7510388a74db334f966edbf3163466982a813d0670  internal/vectoraccel/truth_boundary_test.go
+7534e492c1f385711c6a88cdf6b15d2e806a7296ed036e75aa378040469902c2  investigation.go
 7158c527b610d4ba3b341b9acd94578135afa80a1d5d2848545e16bb02b9e89d  ipmanage.go
+cd4354389206d45c3fc2c3aeb0db01af551174bb0c73fa25b86b9da7c0015147  l7_abuse.go
+eb18aa3f4cf9a7fbf17585cef88c2f1359503d511c11bad375dc2e50aa26b669  l7_abuse_test.go
 e889cae3bdeac1b4f1fec5820a4c658cb39fc5592b74c68b6de9f2ed46fb536e  learn.go
 681a5f2a4a6d6aec0054d085572bc509f9ab169f868ac9f150e189b7fc076185  listeners.go
-2fc48c869ea1f27e55bc65410ddf4c9b7f740f1bc67388089a0d15bc9237f651  main.go
+4fb1349c8533c02a7ad8f1af68509b2a90585b835cb018e4051242a57e1961d6  main.go
 c5b49ae1c9272eb670e95b620d717cf897681940c9917f23c3dce0cef5923f80  matchlog.go
 70bbcf28c4bba3be500874cb2606b5313c2a9e00b0351ba470be26c4414a01e4  matchlog_test.go
 b6f1fb83ebb589e19afe23deaf11e2e23ea57b57eca23a8e667adc2288a9ddb6  metrics.go
@@ -113,57 +249,131 @@ b6f1fb83ebb589e19afe23deaf11e2e23ea57b57eca23a8e667adc2288a9ddb6  metrics.go
 6282fa9bd309b19c7bda3afaa05d90eb64d673edf465133c0f0488f23c241b4d  observations.go
 177c443e50d98d8b116591b0b4306916361f53ba16bb777bd565166d67699205  observations_test.go
 9dc5c57f5722a742ec24250f19202413427559627c6ca0894addb19f05251842  p1_tuning_test.go
-9367affc8c0615a8f9cf682b1535f45a7583c6e98749d5268eeb252e03f0529e  patch.md
-22345bc087b6f235ed9b9546dcefe84e79a47a6f0862795645a96b65d5d55f62  pki.go
+8baf318b1aa0b5ee35633fec1b7b7fffad849f3e4c07f3b674ac58cf430a6ebd  packaging/cleanhost/README.md
+4db783b64fb0020563d40def3c84e1df5f70eb8385a7baa086773fddc7546355  packaging/cleanhost/clean_host_qualify.py
+dd088652770a7f359cf07f739962da337594818251951130995260e6f52c1722  packaging/cleanhost/run-clean-host-qualification.sh
+e7dd884ee1baa4998d517c9cb82884ed76bed0b77e4b4144c65102234d8a6b3a  packaging/cleanhost/tests/test-clean-host-source.sh
+e156f6345c27a39a8b1fb52d7d6afb0103192b7ee1bba7f40d1e6152bb08fb81  packaging/cleanhost/tests/test_clean_host_qualify.py
+52ddcd35fa8ee0cc847646ff4caf65659d4db73c3c5ca562a7740012cd3b51e9  packaging/deb/CRS-PROVISIONING.md
+d09f2c047c273ffdbd3e3f5d5848ab6756337e807c1ff7cae88d467cf0356eae  packaging/deb/README.md
+48dd56e52a3a58bd49db5267bd88d40b4544a2f54830ea0a258fc8a967d78a99  packaging/deb/build-deb.sh
+d08b363aa81190408057663977045fe35c7cd4c22dadaedc8f447d67375f5e0c  packaging/deb/build-release-deb.sh
+910a60ca9ed986ec923350dec5b3b7859e321c35299ed82b68197b7a1ad037b0  packaging/deb/config/waf-tls-frontend.env
+03ade440c2279c9b785c5345970bee47663666a0b45568738e4ed1346d017754  packaging/deb/maintainer/postinst
+392a820ecb34c1cf121ee1d66ee10c014657860b089e28ab8a99c03d207d33c0  packaging/deb/maintainer/postrm
+c5ecd7ebee88a72020b13467f3cbfe433e8427b77a92ebf5938daf0b15886c10  packaging/deb/maintainer/prerm
+88f45fb59957e611446e28bf2f8bd50155020c5234551f43873a88edb2403887  packaging/deb/tests/test-deb-packaging.sh
+4dc1925db5d67d3b329195c393442347da6d8f19d6c27d21a5e7e8275edbdd32  packaging/deb/verify-deb.sh
+0de3118cf6e179690439a4f559c3d4e7f60ee6cc7f7a67bf0fdb214f667ea7ba  packaging/qualification/README.md
+007ab5f9d6f67d75418097ee08d61780d55d9f51e52af3d0ad8ba18c7e4aeb3a  packaging/qualification/build-lifecycle-fixtures.sh
+bb0ff4724c7e032705857f9b72d3483e3c4749650343bd8c8db064481a7b3efa  packaging/qualification/package_lifecycle_qualify.py
+6a679fee34c5f21f632a3a073833f3b851cffa5112e1fb81067ad14c7389b437  packaging/qualification/run-package-lifecycle-qualification.sh
+2731b79f204c6f652bd26f749871344c53192279ec7eaef6d5f03c4bd857b023  packaging/qualification/tests/test-qualification-source.sh
+585963e23799590974d68009bf4d8d4e04b6e292aeda6caaecefa206ce267e0d  packaging/qualification/tests/test_package_lifecycle.py
+b3125934c2082c70c883a215456f7d1f814dabbdcb9b45a6fda5ffe4b6209695  packaging/rpm/CRS-PROVISIONING.md
+81a9aa4f8219b2241113a6473f5dbe968e451616c87fe8dc3e122c1d93a77d78  packaging/rpm/README.md
+51144ded2ddc7a242b49a136f23445a0fb318c679fe40c7ad320eb449a6ae8bc  packaging/rpm/SELINUX.md
+62fd00fc84395b5189713c9df54924963b43ab6f38a13be24178351ca488097e  packaging/rpm/build-release-rpm.sh
+ba42714727cc970988b13044e2c0ff8f8f1b2fcf0def4c17db18d7b949b57a47  packaging/rpm/build-rpm.sh
+910a60ca9ed986ec923350dec5b3b7859e321c35299ed82b68197b7a1ad037b0  packaging/rpm/config/waf-tls-frontend.env
+a86e9b0cd85e1b48f582df567f0228be9066598e5202e913e7a9ea6cc5d8c628  packaging/rpm/tests/test-rpm-packaging.sh
+cca08cb34304b98ad5d8859f06b49d851b5b23e88554d1527d7ddc66fc8f5685  packaging/rpm/tests/test-rpm-source.sh
+ecf67fa281a0b4763513f878ac60c9c88568eeaabdd81cf1e8ba76dcb760c1c3  packaging/rpm/validate-rpm-source.py
+df962d362a8612ce1635a2ed0d6a3be1df756ca10574e976cc371cc9c53fbc80  packaging/rpm/verify-rpm.sh
+de34ab82c0836fae965203b630153aee391396aa5312d80f50b692699e0d6376  packaging/rpm/waf-proxy.spec
+bdbdcd50661ee6b640206537541a64316c09d02d206706154502f8a0207ce962  patch.md
+5c5b50c5c974f71d3b022df2008670445a654cc10fb1e8cb8b6290558cb5613a  pki.go
 620d5e73937908db4ea8d45246d0bd668dafe79fb494ce4151889eb991d5ecf3  pki_crl_test.go
+a8e87b35a323050f857ea5ec8644ed0849aaa94d7bc0a3dff0bd51ee1ddc316b  pki_hardening.go
+85602bce74bf83db38274c0cd7488451dc1211e7d1a430372dbd2c83ce43e431  pki_hardening_test.go
 cbb63e8542ff49ddd97fbfb707d9ea00dc8ef2ba039695e3287bae627ecec470  pki_test.go
+a1b9ad7ee4388502bc9d09aaba6feffb2a9a354415db41332e36111f9fd6c8ea  pki_url.go
+fdac41005cda5ba665ca0ab02d46b8147687ca249b179bf2c4e5ca9cdae2de96  pki_url_phase4_test.go
 babd9924e76af2d6aef4b94d705b7591fa4650c7efb3e1159d91b5cc424a2717  pool.go
 9bb7519bba24659a6de6bb292d56df7b431983d4efe007dfa997c4239c431a45  pool_hotpath_test.go
 5db84e4ec24132b46a3d0bba9c3ed532e0ff9474113d6e5443643f0536f7da1a  profiles.go
 641473f825cffd18ba326a1bd4f979e455d57f3d4d25bfa0e3db89fed1793e9e  proxy_buffer.go
 1404a38bb350194e9b2becafe51f4b3a12833edb062c2adb4102b7e3af89de4b  proxy_buffer_test.go
-a743ce493cfd4c4c2bf334622e237d6f2c8cc7d1e00d9db384ad0ef11211c4be  qualification/README.md
-6e4fd1439415a5521b01104a0632c366e00dad5306481b93cbd00d3ae45cba2e  qualification/corpus/README.md
+e6822df5e2cbb84561dcb2606fb36a6e20381f3192c684712a786976c36e9181  qualification/README.md
+89c70499209111e0e23cc5c5148be7af9e944ccd9b210c6d18909778ce20982c  qualification/clean-host/almalinux-9-NOT_RUN.json
+663824577a59ff4113409fde05a54d71dd27c014074c5edb5cab5d7e61796d94  qualification/clean-host/debian-12-NOT_RUN.json
+2650c3061a9244804aa28f8f82732d2fb4dd42d88900cad57659daf88c0720b5  qualification/clean-host/matrix.json
+83d1b4f9e47030263f5bf534fe04df09bcc7cfb4cf279340aedd2d607e7c95b4  qualification/clean-host/oraclelinux-9-NOT_RUN.json
+20931c8c0b6f5164c3749c974f10ac3a0d93c6221f25b8594b21d3229bd0374e  qualification/clean-host/rhel-9-NOT_RUN.json
+1c81289994e3f8e0fc37618f476a6f8c9f9715741873382c42508122f9f59493  qualification/clean-host/rocky-9-NOT_RUN.json
+0cd4d49de90bc9f0c2a0f61f2e4c93a55be0ec8d3f6e86cd49ff63a50c65c6ca  qualification/clean-host/ubuntu-22.04-NOT_RUN.json
+22129a00345337e7a747a7989e2d7b07e9464ca5acce1dd64adb5ca51824dab5  qualification/clean-host/ubuntu-24.04-NOT_RUN.json
+e24d64389ea00faed03538946ea9b978da4f240c7eb48536ef695a4011b698b5  qualification/corpus/README.md
 5da1a45978328e78e941a1ab939bc2b35681b300b6ab83119ec8a132b26e4cfb  qualification/corpus/default.jsonl
+c11e149cfb5ba0420f78b3b97230d5f96c93c90697d86fd238dacbe2b4cb58f1  qualification/hsm/README.md
+435bffbbf9b7d6dfaaf0f3569429705baf09ce4dc4e83eb2d6bb6b2f0c6c32cd  qualification/hsm/run-softhsm-qualification.sh
+26bf582a840fff01ef3317d103681ac179dd3f4c730871c9d22d6c2278c9eac1  qualification/hsm/run-vendor-hsm-qualification.sh
+4ccdba4a85bca6088e55891f335f3181fb23d69a3879105d279252eb0ec61497  qualification/hsm/softhsm-qualification-report.json
+3f6613c4605bb10499758cdea10c2951496a25420e76eec19c3e5194853cc143  qualification/hsm/vendor-hsm-qualification.json
+cb8237c3368214bf724380831cee38df8eb8e06e870b39777fc9ad19bf7a24e9  qualification/package-lifecycle/deb-upgrade-rollback-NOT_RUN.json
+e637a36d92cbabead2d4365d424188172be3f7299623b582b1d22f4b0928530b  qualification/package-lifecycle/rpm-upgrade-rollback-NOT_RUN.json
+3d7f738f3a9f629ba6193776f63bd00575fb23a24e9ef78ad61e342e9d4d2e81  qualification/performance/README.md
+293ed92e319c4d6feea816df49d3c740bb814ceb99d3fce28cfea36cb8cbe7dd  qualification/performance/performance-certification-NOT_RUN.json
+89ff152b1e7bfd6524736a0156714e298c70dd5c35728fd384127fd7f8f29c61  qualification/performance/target.example.json
+c2a58e4d34d4b70d9db6d26f7e8985bfbadd74d928d7eb055ed7539a00f74df6  qualification/runtime_report.go
+2fc64d8cabe31992c069c011f3f3e0140956f4aaf440cc87c9b19c88c5a47e50  qualification/vectorscan/differential.go
+fbeb8a48bc121efdcd182d532e074e3818cb21b15b8ee337df6afc3915a3c1ea  qualification/vectorscan/lifecycle.go
+a4cf7e2fbd342c56399151d8652f026a45ca8039eaa6fd10fb771d26b45cbe66  qualification/vectorscan/replay.go
+72bdc46a34b390ba235ed6e89f81bf87930cdf2d5a611451925d719165b5f7b1  qualification/vectorscan/report.go
+35e064301c493be695a9d8a91b1e018dac4374ecc188ff3b5be2ebf09da6e8ba  qualification/vectorscan/vectorscan_test.go
 a67982dca65a3f62143965a6d58ade359bfdbf4a6fb0c22644d62083cea9bc9e  qualification_diff.go
 9f783bae55922b0075919c363cb90d426e57e3c3f819413016646f11fc574750  qualify-release-host.sh
 a41b872af4c87a11de82e8178f3589905d12307e0c2c2b881b3933ee18712ae9  release-artifact-negative-tests.sh
-3ce64bbe97cacaac9e6affab14694b90ca3d72708d6eb40e6c0854b24898d5e8  release-evidence/PROVENANCE.json
-62d9edf75de78b5425c0b812774618ae515bac9260cc37af0727e932ce7bf6a0  release-evidence/RELEASE_EVIDENCE.json
-66eb35cb7f8b5d096e7ac233a179625b64a25de27a707bbb8d9641d3bea66ad2  release-evidence/SOURCE_MANIFEST.sha256
-8257fed1446ebefafdb2e498eb0b72c941edd894410958221947eb705a7281de  release-evidence/sbom.cyclonedx.json
-b68c557957f1a9563173321b44ee0de20d1f636cfc63fda09f11c33d7e8ee107  release-evidence/sbom.spdx.json
+bc197bd466daece784dde651d8167f9c72f2b1f545a490ae280356912c72c592  release-evidence/PROVENANCE.json
+6bc57dba363b1076b0815dc7fe46c1ea252dbf0db8ce82e1794d8ea5d2c7ae0d  release-evidence/RELEASE_EVIDENCE.json
+4b8dc36168ea7c26bacdd3878c84fc0dc131efddbd550c3db6e561473e193fee  release-evidence/SOURCE_MANIFEST.sha256
+ff11de888cfd953064bd37b0b6c3d1340bffb7c993cef164aa1aa4c4d22595f7  release-evidence/sbom.cyclonedx.json
+30f107ed33461b9f92fae82a8594e64b9360a1899b7a14a3c6116b6d6d551abd  release-evidence/sbom.spdx.json
 b6ca9b7d9e820357eac47a4db77ff32f3109ff75f46d7c09f9ee1116251f5dbe  release-security-scan.sh
-41077daf7a3ce02ce66a78482cf283454e5d8c2dcdf2faad81629b20c2129a9f  release_scripts_test.go
+43ccd38c43b082b58e69399185e516fb303e020d980a3a8bdd1416c67e98c7fc  release_scripts_test.go
+07333c135d90d88ecbe762911f714de2125f8366abc239da183fa0217c36f927  reliability.go
+16ed077fceea36de93e96c824846fc2922393b6ce7ebcae1f399e6ad15bbf9f5  reliability_test.go
 af1743801ce8d18c6f837081bba4a3eeeeee60d697de9e6f5bee09f263e5a917  run-phase1-qualification.sh
 98fa5ab0314590989c5de9585368c019d312c6b01ef578941d7de42c4fbfc770  runtime_smoke_test.go
+e7a9fddb76adbb3531d4ec240b4e40af2e50bcad596523c3e68d39290da7d6be  security_event.go
+b6c5531c0e6929942664199c81ff626a9347587705d3ce8c2350a8b14dd52b80  security_export.go
+a2c5ede89f33563220c0058604e5ea6ccb06a736a1ff2e3d5d7f4b0e2b07030c  security_state.go
+bebe3b639cc4de325c785f8e9e135998e5175ddafd9486397b3d257ea4c91c7b  security_state_test.go
+661a6e645be482084e45e9a9a298b1853cba73f38a7201699806d66a2883e9e5  security_timeline.go
 9a744231904128ef5fe1ae837c1878102069b8aa4133bdec8fa5c7d9284cc2f7  setup-interfaces.sh
 a38d95b50b43dfc179a515a82d80224c817551a0882b36dba6fe8a27b343f10a  sitemap.go
 f5f409a80b0956e7a06d3a7f1ac654e33e2795442f775d71b315d0f52ebcd79a  sitemap_persist.go
-7094d3429be1b724291710bb231c416adddcb63b12480eee289617f45a33d5d8  static/admin.html
+0b8c4c1f218d0e53dd1cac91b2fc5725842a0dabfc4bb3a5046b5034bfb4064d  static/admin.html
 83aae56abd54b9837adffcb93138becd01d1bd2941664f1948a13f56a418f753  static/theme.css
 eeed825f2157da6e0b909d5673725e6198fafc92db87fd8a449585c3545a52d0  support_api.go
 c9eb67b04dddaa3fa9dbed2faf79dd8763acaf777ec2f22d4cd88121fc8fce48  support_bundle_v2.go
-40c30705f16e03b86b985b31af8d88c512c5806d48704ef272ac09a337985ebd  syslog.go
+5a067449bc3ee7f9fcae2120add6308baca58210d77b93eb72129ee76f802ef7  syslog.go
 dc93c0f6736f453bac76b76ec17764bbb357a4adb01ef87d7b1f690584561c19  theme_test.go
 f5d1ce056074d7d7330bd8ae8dcc026423a82c5d6c7992e1736339a2701a498c  tls_acceleration_test.go
 3e5ea16e498e81d9fe402d422dca7607d74f119921cea01cb2ba8e3cde3fb3c4  tls_frontend_control.go
 5fa65465efe8485ae58f251a0b0861da67e455864c3eb05bc4617b61c828eac9  tools/release_evidence.py
 7d295b6d50808da84b0a3b7d5254105f91e3d68e2bf03ae0f85b50292e7c1de2  tools/source_manifest.py
+b3fe5d05d08e3c012e0b4398a315e3b7ff311edac100a150af2ab72f8c003d76  tools/tests/test-openai-integration-source.sh
+1a5a48a3a76e66b34dd903962f0003632a9c36ee66f297d80f85c2efaa849190  tools/tests/test-waf-package-source.sh
+1f08c2fbf3debe14509d5ccd578be3d242c42fe1a1197953f59867a924bdd3bf  tools/tests/test_waf_package_builder.py
+af70eff8dea578d71fcdf3f4b1383af09e2c3c4433ad6cf4cdee1026821c25d7  tools/waf_package_builder.py
 2328749e01336161f4cb719b15821c95e85399b443865ed55ce0d2c1dc72d535  uninstall.sh
 be9bfc302858774a96498fdaa54c3d78b94206439d9b021a1053ac92f4b6b90c  update.go
 a02407c4a2a11917f093e1047645a499515db990837ee4e7a3cb945bff9970f6  upgrade.sh
 e14611aa8bfacc00788858cfdf51f1f1bd61a00e80eb7f1e73b45d68412f2a72  users.go
 d505881bdbad313ea966ca96871113685412707fbbee69669fd76b6d3cc82717  vectorscan_audit_store.go
+eddf4cd5b42853621ec3bdc97a3512a87daf4012ed3ace72becfe751e74cece9  vectorscan_qualification.go
+f08d8faa22a7d4221bc12708b9255c782ccfca212a494b967b67859053995449  vectorscan_qualification_test.go
 877d78b470e5207bc239374ccf7df5e1f082ba79188a5e8878711f23e65528df  vectorscan_transition_audit.go
-ed3db0d8e424ad61508cf8218a891417752df793738f68a6934bf6ea12786a12  verify-release-artifact.sh
+0ac89f8b83bcb0b4b9595820df1c3e6a90cf67efde8677fc35f3c66d77495790  verify-release-artifact.sh
 55070477932224f39a4678cfd74f44a1c2ca298a1bab1cc95f12656dcdef7b5d  verify-release-signature.sh
 98bec50fa8fbc97d431f1e376e222caf460f0aa50e20e7b137a5758f3a345a72  verify-reproducible-source-release.sh
-98497c7969e74021824f55277e9f776b1c5e82eda335b11f57dd104842e2c948  waf-doctor.sh
-accbaa1b497d09f1abd08e22e9c35eefc2036f619b2dffc7c31f928983fc3ef6  waf-proxy.service
+6ee5e90ab7f1acf8c2096bdd653327846177cb61753a9c8069e1aa66c392b113  waf-doctor.sh
+bba26faf908c2512fc3ad111eb6a6ea0cc7bd0810f2eca4f7c371992935af1d1  waf-package
+7a8d90c38714df771df67edf7d97fcdd62b06baa35cfc1a7e7ea77dbc2a6a2d4  waf-proxy.service
 ab36c65679dd1565993bc944e002cf1628ab4de23134dbc8988f66d603df1d2b  waf-tls-frontend.service
 c4f2fb801cb98ba49ae85ebcf8819f44c77ec2fbb0934f03070e506edc45fa8e  watchdog.go
-89a6ddef8bbf5d1b624839c413df669a0ee579981277867b90430ab8a739ab6e  web/PORTING.md
+687825de2e9df21640e9fd7700f9182c99514497b0e32fe794c5da1b997414fd  web/PORTING.md
 7aeeb91ae9f6b9a12fba1b10061ee5e69f5b35f5afecb152cac6be072d4983b8  web/index.html
 a2598cf033c4ccb4077e8067656a45d0ffda165cd013b44c041d5313358c4135  web/package.json
 eff9e7fe8d0e5a254ff5af6ccd5e861f63e7071a258e4efbcebf7dfc4dea702e  web/src/App.jsx

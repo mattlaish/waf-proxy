@@ -6,6 +6,15 @@
   "backend_timeout_sec": 30,
   "passive_discovery_enabled": true,
   "trusted_proxy_cidrs": [],
+  "hsm": {
+    "allowed_module_dirs": [
+      "/usr/lib",
+      "/usr/lib64",
+      "/usr/local/lib",
+      "/usr/local/lib64",
+      "/opt"
+    ]
+  },
   "tls_acceleration": {
     "mode": "go",
     "ktls": "off",
@@ -126,15 +135,17 @@
       "ai_mode": "off",
       "tls_cert": "",
       "tls_key": "",
-      "page_policies": []
+      "page_policies": [],
+      "tls_key_provider": {}
     }
   ],
   "users": [],
   "ai": {
     "enabled": false,
     "provider": "openai",
+    "api_style": "responses",
     "base_url": "https://api.openai.com/v1",
-    "api_key": "",
+    "api_key_ref": "env:OPENAI_API_KEY",
     "model": "gpt-4o-mini",
     "timeout_sec": 8,
     "max_tokens": 300,

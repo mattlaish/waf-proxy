@@ -1,37 +1,59 @@
 # Development Roadmap — WAF Proxy
 
-Handover checkpoint: 2026-09-07 (Asia/Taipei)
+## Current canonical status — 2026-09-17
 
-This roadmap starts from the packaged implementation baseline `waf-proxy-vectorscan-learning-coraza37-2026-09-04.zip`. VectorScan is the selected regex-acceleration direction. Do **not** reopen XDP-vs-VectorScan selection unless the owner explicitly asks to revisit it.
+The audited GitHub `main@1d52d65a73a802e32f02994e51f0a07beb240177`
+was found non-buildable. A root-build-integrity repair is implemented, but the
+exact repaired bytes have not executed the mandatory Go 1.25 dependency-drift
+and root-build gates in this environment. Current source state is therefore
+`IMPLEMENTED_TESTING_DEFERRED` and the Source Buildability Gate is `BLOCKED`.
+
+Artifact integrity, source reconstruction, package fixtures, and component
+source checks retain their separately scoped PASS evidence. They do not promote
+root buildability or release readiness. Read `DOCUMENTATION_INDEX.md` and
+`SOURCE_BASELINE_GATE_RESULT.md` before relying on older historical sections in
+this ledger.
+
+Handover checkpoint: 2026-09-17 (Asia/Taipei)
+
+Historical roadmap lineage starts from `waf-proxy-vectorscan-learning-coraza37-2026-09-04.zip`; the current continuation point is the 2026-09-17 root-build-integrity repair described above. VectorScan remains the selected regex-acceleration direction. Do **not** reopen XDP-vs-VectorScan selection unless the owner explicitly asks to revisit it.
 
 ## Status vocabulary
 
-- **DONE** — implemented in the current source line.
-- **QUALIFICATION_REQUIRED** — code exists, but a real target/release-host gate is still mandatory before production enablement.
-- **PLANNED** — approved next work.
-- **DEFERRED** — intentionally postponed; do not start without owner direction.
+Implementation states used for current roadmap decisions:
+
+- **PLANNED** — approved but not implemented.
+- **IMPLEMENTED_TESTING_DEFERRED** — implementation exists, but required validation is blocked or not yet run.
+- **TESTED** — mandatory tests for that scope have executed successfully.
+- **RELEASED** — explicitly approved after all release-blocking gates.
+
+Evidence within a state uses `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`, and
+`NOT_CONFIGURED`. Historical sections may contain the legacy labels `DONE` and
+`QUALIFICATION_REQUIRED`; interpret `DONE` as implementation presence only and
+`QUALIFICATION_REQUIRED` as `IMPLEMENTED_TESTING_DEFERRED` unless a later gate
+explicitly promotes the scope.
 
 ## Current implementation baseline
 
 | Area | Status | Current truth |
 |---|---|---|
-| P0 hot-path cleanup | DONE | circular rings, atomic disabled gates, shared request-body prefix, reduced allocations |
-| P0-A proxy buffering | DONE | ReverseProxy BufferPool and streaming-safe FlushInterval behavior |
-| P0-B load balancing | DONE | zero-allocation member selection and removal of per-request member context handoff |
-| P0-C observations | DONE | bounded async observation plane with non-blocking enqueue |
-| P0-D match logging | DONE | independent bounded async aggregation/logging plane |
-| P1 response inspection | DONE | inherit/on/off response-body inspection plus configurable response-body limit |
-| P1 backend transport | DONE | configurable connection pool, shared pool transport, retired idle-connection cleanup |
-| P2 non-XDP hardening | DONE | release scripts fixed, AI lazy sampling, AI queue hardening, atomic blocklist, statusRecorder correctness |
-| Benchmark harness | DONE | backend/http/coraza/l4/compare modes and JSON/profile output |
-| TLS acceleration C1-C3 | DONE / QUALIFICATION_REQUIRED | optional NGINX/OpenSSL frontend, modern HTTP/2 syntax, kTLS/QAT detection/fallback; real QAT hardware remains unqualified |
-| Coraza dependency | DONE / QUALIFICATION_REQUIRED | source pinned to Coraza v3.7.0 and Go 1.25.0; real release-host execution still required |
-| VectorScan Learning Accelerator | DONE / QUALIFICATION_REQUIRED | conservative grouped acceleration, transaction-final Coraza truth, Learning/FAILSAFE state machine, optional native libhs |
-| XDP prefilter | DEFERRED | separate future L3/L4 feature; no longer part of the current selection decision |
+| P0 hot-path cleanup | IMPLEMENTED_TESTING_DEFERRED | circular rings, atomic disabled gates, shared request-body prefix, reduced allocations |
+| P0-A proxy buffering | IMPLEMENTED_TESTING_DEFERRED | ReverseProxy BufferPool and streaming-safe FlushInterval behavior |
+| P0-B load balancing | IMPLEMENTED_TESTING_DEFERRED | zero-allocation member selection and removal of per-request member context handoff |
+| P0-C observations | IMPLEMENTED_TESTING_DEFERRED | bounded async observation plane with non-blocking enqueue |
+| P0-D match logging | IMPLEMENTED_TESTING_DEFERRED | independent bounded async aggregation/logging plane |
+| P1 response inspection | IMPLEMENTED_TESTING_DEFERRED | inherit/on/off response-body inspection plus configurable response-body limit |
+| P1 backend transport | IMPLEMENTED_TESTING_DEFERRED | configurable connection pool, shared pool transport, retired idle-connection cleanup |
+| P2 non-XDP hardening | IMPLEMENTED_TESTING_DEFERRED | release scripts fixed, AI lazy sampling, AI queue hardening, atomic blocklist, statusRecorder correctness |
+| Benchmark harness | IMPLEMENTED_TESTING_DEFERRED | backend/http/coraza/l4/compare modes and JSON/profile output |
+| TLS acceleration C1-C3 | IMPLEMENTED_TESTING_DEFERRED | optional NGINX/OpenSSL frontend, modern HTTP/2 syntax, kTLS/QAT detection/fallback; real QAT hardware remains unqualified |
+| Coraza dependency | IMPLEMENTED_TESTING_DEFERRED | source pinned to Coraza v3.7.0 and Go 1.25.0; real release-host execution still required |
+| VectorScan Learning Accelerator | IMPLEMENTED_TESTING_DEFERRED | conservative grouped acceleration, transaction-final Coraza truth, Learning/FAILSAFE state machine, optional native libhs |
+| XDP prefilter | PLANNED | separate future L3/L4 feature; no longer part of the current selection decision |
 
 ## Phase 0 — Mandatory release-host qualification
 
-**Status: QUALIFICATION_REQUIRED — highest priority before production VectorScan enablement.**
+**Status: IMPLEMENTED_TESTING_DEFERRED — release-host qualification is not yet complete.**
 
 Run on a Linux release/target host with:
 
@@ -64,7 +86,7 @@ Current 2026-09-07 packaging-host execution: the new preflight ran and correctly
 
 ## Phase 1 — VectorScan Learning production qualification
 
-**Status: QUALIFICATION_REQUIRED — production runner implemented; real release-host/corpus execution remains mandatory.**
+**Status: IMPLEMENTED_TESTING_DEFERRED — production runner exists; real release-host/corpus execution remains mandatory.**
 
 Start in DetectionOnly with representative CRS and traffic/corpus. Keep Coraza authoritative.
 
@@ -85,7 +107,7 @@ Required validation:
 
 ## Phase 2 — Expand VectorScan coverage conservatively
 
-**Status: QUALIFICATION_REQUIRED — Slices A-C source implementation exists, but production promotion remains blocked until Phase 0/1 qualification passes.**
+**Status: IMPLEMENTED_TESTING_DEFERRED — Slices A-C source implementation exists, but production promotion remains blocked until Phase 0/1 qualification passes.**
 
 Current eligible scope is intentionally narrow: standalone positive `@rx` over reproducible request sources and supported transforms. Expand only when exact Coraza input semantics can be reproduced and regression-tested.
 
@@ -109,7 +131,7 @@ Implementation progress (2026-09-14):
 
 ## Phase 3 — Release engineering and supply-chain hardening
 
-**Status: QUALIFICATION_REQUIRED.**
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
 
 Implemented in source on 2026-09-14:
 
@@ -129,7 +151,9 @@ Qualification boundary: implementation of release tooling does not turn an unava
 
 ## Phase 4 — Existing security/product backlog
 
-**Status: PLANNED but lower priority than VectorScan qualification.**
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
+
+The bullets below are the original backlog description. Their source foundations were subsequently implemented in the Phase 4 Slice A-F entries later in this roadmap; production/live qualification remains deferred.
 
 The older backlog remains valid unless the owner reprioritizes it:
 
@@ -149,11 +173,17 @@ The older backlog remains valid unless the owner reprioritizes it:
 
 ## Immediate next development instruction
 
-A new development chat should begin with **Phase 0 real release-host qualification** if it has a suitable Linux host/toolchain. If it does not, it should not fabricate PASS results. It may improve tests/docs or prepare qualification automation, but production enablement of VectorScan remains blocked until the real gates are executed.
+**Priority 0 is root build integrity, not another feature slice.** Apply the
+prepared repair to a branch based on current/audited `main`, run the exact Go
+1.25 CI tidy/build/vet/test/race/real-Coraza sequence, and merge only through a
+PR with required CI. After root buildability is proven, build real DEB/RPM
+artifacts with `./waf-package`, then execute package lifecycle and clean-host
+qualification. Do not start a new feature phase while the root build gate is
+BLOCKED.
 
 ## Cross-cutting mandatory gate — Artifact Packaging Integrity
 
-**Status: DONE / REQUIRED FOR EVERY FUTURE RELEASE.**
+**Implementation state: TESTED; gate is REQUIRED FOR EVERY FUTURE RELEASE.**
 
 The release artifact itself is a production surface. Source tests do not prove that a ZIP, installer, or deployment bundle contains the validated files.
 
@@ -173,7 +203,7 @@ No artifact is releasable solely because source-tree tests passed. This gate is 
 
 ## Debug & Evidence Capture / Supportability Slice
 
-**Status: DONE / QUALIFICATION_REQUIRED.**
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
 
 Implemented in source:
 - bounded, opt-in per-site/tenant debug capture with an atomic disabled fast path;
@@ -291,3 +321,199 @@ Implemented foundation: CRL retrieval validation, refresh state model, and last-
 Status: IMPLEMENTED_TESTING_DEFERRED
 
 Implemented: runtime qualification evidence schema foundation. Real Go 1.25, Coraza v3.7.0 transaction, and libvectorscan runtime gates remain NOT_RUN until executed on a qualified release host.
+
+
+## Phase 5 Slice B — VectorScan Production Qualification
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented: qualification evidence model, Coraza vs VectorScan differential gate foundation, and zero false-negative failsafe boundary. Real CRS corpus replay, real libvectorscan runtime execution, and production qualification remain NOT_RUN.
+
+
+## Phase 5 Slice C — Enterprise Deployment Readiness (IMPLEMENTED_TESTING_DEFERRED)
+
+Added deployment readiness evidence foundation:
+- preflight report model
+- health/readiness evidence boundary
+- deployment diagnostics foundation
+
+Runtime deployment qualification remains NOT_RUN until executed on target environments.
+
+
+## Phase 5 Slice D — Security Operations Experience
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Scope: Security Event Timeline, Investigation Search foundation, Change Audit, Security Evidence Export.
+
+
+## Phase 5 Slice E — Reliability Qualification
+
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Implemented reliability qualification foundation:
+- failure scenario evidence model
+- recovery qualification boundary
+- dependency/resource failure scenario ledger
+
+Real failure injection and production reliability qualification remain NOT_RUN.
+
+## Phase 5 Slice F — Performance Certification
+
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
+
+Implemented in source on 2026-09-16:
+
+- extended the existing `cmd/wafbench` harness instead of creating a second benchmark stack;
+- added `wafbench certify` with hash-bound evidence inputs for `reverse_proxy_baseline`, `coraza_crs`, and optional `vectorscan_assisted` full-proxy runs;
+- added system/run-shape comparability checks covering OS/arch/CPU/Go identity, host identity when recorded, worker/concurrency count, GOMAXPROCS, and average request/response workload size;
+- added target-aware certification using explicit `waf-proxy-performance-target-v1` SLO files. Missing target keeps certification `NOT_RUN` even if benchmark inputs are complete;
+- added RPS, application throughput (Mbps/Gbps), p50/p95/p99, process CPU, CPU-us/request, RSS, softirq and optional network Gbps evidence snapshots;
+- added load-generator saturation warnings so generator-limited results are not treated as WAF ceilings;
+- added optional prior-report regression deltas for RPS and p99 without inventing an implicit pass/fail threshold;
+- VectorScan-assisted certification is blocked unless a real Phase 1 `wafqualify` report is supplied with `result=PASS`, `zero_false_negatives=true`, and `false_negative_count=0`;
+- added `qualification/performance/` operator documentation, target example, and explicit `NOT_RUN` placeholder evidence.
+
+Truth boundary:
+
+- no end-to-end performance benchmark was executed on this packaging host;
+- no production sizing target was approved or evaluated;
+- no Gbps/RPS number from this slice is a production sizing claim;
+- real Performance Certification remains `NOT_RUN` until the same artifact is measured on a qualified host and an approved target is supplied;
+- VectorScan remains optional acceleration and Coraza remains authoritative.
+
+Source-baseline hygiene repair performed while entering Slice F: the supplied Slice E ZIP contained a stale nested `waf-work/` source mirror. Five Phase 5 Slice B `qualification/vectorscan` files existed only in that mirror, and `replay.go` had a mismatched package declaration. Those files were restored to the canonical source path, the package mismatch was repaired, and the stale duplicate source tree was removed. This repair changes no dataplane decision semantics.
+
+## Phase 5 Slice G — External HSM / PKCS#11 Support
+
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
+
+Implemented in source on 2026-09-16:
+
+- `internal/hsm` provider abstraction with an explicit native `pkcs11` build tag and a fail-closed non-native stub;
+- independent `WAF_HSM_PKCS11=off|auto|required` build policy so HSM support does not depend on enabling VectorScan;
+- configurable approved module directories plus exact module path, slot/token, key label and/or CKA_ID selectors;
+- Linux module hardening: absolute clean path, regular non-symlink file, root-owned approved path, and no group/world write permission;
+- PKCS#11 module/session/login/private-key lifecycle with exact one-key lookup and bounded session/module reference management;
+- Go TLS `crypto.Signer` integration for RSA PKCS#1 v1.5, RSA-PSS and ECDSA signing paths;
+- certificate/public-key association proof by challenge signature before runtime swap;
+- PIN secret references limited to `env:NAME` or protected `file:/absolute/path`; inline PINs are rejected and resolved byte copies are zeroed after login;
+- admin/API secret-reference redaction, including both GET and config PUT responses;
+- provider/slot/token/key health model and `/api/hsm/status` runtime endpoint;
+- fail-closed TLS signing behavior and explicit rejection of filesystem-key fallback or external TLS frontend fallback;
+- HSM audit events restricted to `provider`, `slot`, `key_reference`, `operation`, and `result`, with matching syslog export;
+- mock/native-fixture tests for signer/TLS association, session/login/key lookup, secret handling, audit fields, and signing failure;
+- `cmd/hsmqualify` plus separate SoftHSM and real-vendor qualification runners/evidence classes;
+- checked-in SoftHSM and real-vendor evidence placeholders remain `NOT_RUN` until those environments are actually exercised.
+
+Truth boundary:
+
+- isolated HSM package tests on the packaging host are source-level/mock-native evidence only;
+- SoftHSM tooling/module is not installed on this packaging host, so SoftHSM qualification remains `NOT_RUN`;
+- real vendor HSM qualification remains `NOT_RUN` until the exact vendor module/token/key/login/failover/TLS path is executed on real production-class infrastructure;
+- no mock or SoftHSM result may upgrade the real-vendor gate;
+- canonical repository-wide Go 1.25 validation remains separate from the isolated local Go 1.23 HSM harness.
+
+## Enterprise Linux Distribution Packaging
+
+This stage follows Phase 5 and formalizes Linux package delivery. It is a deployment/distribution stage, not a new WAF detection phase.
+
+### Slice A — Debian / Ubuntu DEB Packaging
+
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
+
+Implemented on 2026-09-16:
+
+- deterministic binary `.deb` builder under `packaging/deb/`;
+- formal `/usr/bin` and systemd package layout;
+- dpkg conffile preservation for WAF configuration;
+- one-time admin-token creation with upgrade preservation and no secret value in package-manager output;
+- persistent `/var/lib/waf-proxy` systemd `StateDirectory`;
+- network-free maintainer scripts and explicit CRS provisioning boundary;
+- package verifier and reproducible fixture-package test;
+- native VectorScan packages fail closed unless the target distribution runtime dependency is explicitly supplied.
+
+Truth boundary: the local host cannot build the canonical Go 1.25 binaries, so a production `.deb` from the real WAF binaries is BLOCKED here. Fixture `.deb` PASS validates package mechanics only. Clean Debian/Ubuntu install qualification remains NOT_RUN.
+
+### Slice B — RHEL-family RPM Packaging
+
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
+
+Implemented on 2026-09-16 for RHEL, Rocky Linux, AlmaLinux, and Oracle Linux:
+
+- provenance/checksum-bound binary RPM builder under `packaging/rpm/`;
+- real `waf-proxy.spec` with standard `/usr`/`/etc`/`/var`/systemd paths;
+- `%config(noreplace)` for operator configuration and explicit `.rpmnew` preservation semantics;
+- one-time break-glass admin secret creation with no upgrade regeneration or package-manager secret output;
+- persistent `/var/lib/waf-proxy` and `/var/log/waf` ownership/state model;
+- fresh-install no-autostart plus controlled `try-restart` only for services already active on upgrade;
+- offline-safe scriptlets with no CRS/package/network fetch;
+- SELinux-aware policy boundary: no `setenforce`, `audit2allow`, `semanage`, or ad-hoc policy module injection from RPM scriptlets;
+- exact x86_64/aarch64 ELF-to-RPM architecture binding;
+- deterministic payload ordering/build-time controls and source-level package verifier;
+- native VectorScan package builds fail closed unless the exact target-distribution runtime dependency is supplied explicitly.
+
+Truth boundary: this Debian packaging host lacks `rpmbuild`, `rpm`, and `rpm2cpio`, so an actual fixture RPM and RPM-byte reproducibility gate are BLOCKED here. The production Go 1.25 RPM is also BLOCKED by the unavailable toolchain. Clean RHEL-family and SELinux-enforcing qualification remain NOT_RUN.
+
+### Slice C — Package Upgrade / Rollback Qualification
+
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
+
+Implemented on 2026-09-16:
+
+- one offline-safe lifecycle qualification runner for both DEB and RPM package managers;
+- destructive execution is opt-in, root-only and guarded by an exact dedicated-host acknowledgement;
+- SHA-256/native-metadata binding of Version N, Version N+1 and an intentional post-install-failure package;
+- operator-modified config, generated admin secret and `/var/lib/waf-proxy` state preservation checks across upgrade, failed upgrade, recovery and rollback;
+- service active/inactive-state preservation checks;
+- Debian `--force-confold` / `.dpkg-dist` and RPM `%config(noreplace)` / `.rpmnew` conflict evidence when packaged defaults actually change; `.dpkg-old` / `.rpmsave` are captured when emitted but never fabricated;
+- deterministic lifecycle fixture builder using `/bin/true` payloads strictly for package semantics, not WAF runtime evidence;
+- qualification-only RPM `%post` failure macro compiled only into explicit `qualification` fixture versions; normal RPM builds do not contain the failure branch;
+- separate DEB/RPM `NOT_RUN` evidence placeholders and an operator guide.
+
+Executed here: lifecycle unit/source tests PASS; deterministic three-package DEB fixture build and preflight PASS; real DEB lifecycle transaction NOT_RUN. RPM source path PASS, while RPM fixture/lifecycle execution is BLOCKED/NOT_RUN because this Debian host lacks the RPM toolchain. Clean-host distribution acceptance remains Slice D.
+
+### Slice D — Clean-host Distribution Qualification
+
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
+
+Implemented on 2026-09-16:
+
+- dedicated-host, root-only, explicit-ack qualification runner under `packaging/cleanhost/`;
+- exact distro/version matrix for Debian 12, Ubuntu 22.04/24.04, RHEL 9, Rocky 9, AlmaLinux 9 and Oracle Linux 9;
+- RHEL-family acceptance requires SELinux `Enforcing`;
+- strict clean-host preconditions reject a pre-existing package, `/etc/waf`, or `/var/lib/waf-proxy`;
+- local package SHA/native metadata and local CRS tree digest binding;
+- offline native package install/upgrade/remove only (`dpkg` / `rpm`), with no apt/dnf/yum/curl/wget/git dependency or CRS fetch;
+- fresh-install no-autostart verification, explicit local CRS provisioning, `waf-doctor --check`, explicit systemd enable/start, `/healthz`, break-glass first-login API and real loopback reverse-proxy traffic smoke;
+- upgrade preservation checks for admin secret, operator config and `/var/lib/waf-proxy` state plus repeated health/auth/traffic;
+- non-purge removal verification for package/service removal while secret, CRS, operator config (or RPM `.rpmsave`) and persistent state remain preserved;
+- checked-in per-platform `NOT_RUN` evidence and a matrix file.
+
+Executed here: clean-host unit/source policy tests PASS; the current Debian 13 shared packaging host is correctly BLOCKED for the Debian 12 matrix and no real clean-host transaction is claimed. All seven supported platform acceptance runs remain `NOT_RUN` until executed on dedicated clean VMs/hosts with real qualified packages and local approved CRS content.
+
+## Project-local package builder utility
+
+Status: `IMPLEMENTED_TESTING_DEFERRED`.
+
+`./waf-package` is the supported developer/release entry point for rebuilding the
+project's DEB and RPM after source changes. It must continue to compose the
+canonical build and format-specific package verifiers rather than creating an
+independent build path. Remaining qualification is execution on a Go 1.25+
+release host for a real DEB and on an RPM-capable Go 1.25+ host for a real RPM,
+followed by the existing Slice C/D lifecycle and clean-host gates.
+
+## Root Build Integrity Repair
+
+Status: **IMPLEMENTED_TESTING_DEFERRED**
+
+This is a release-integrity repair, not a new feature Slice. Promotion requires
+a green Go 1.25 CI run for `go mod tidy -diff`, root build, vet, tests, race, and
+real-Coraza gate on the exact repaired commit. Branch protection requiring CI
+before `main` merge remains an operational prerequisite.
+
+## OpenAI Connector Hardening
+
+**Status: IMPLEMENTED_TESTING_DEFERRED.**
+
+Implemented Responses API, strict Structured Outputs, secret references, and mock integration tests. Promotion requires the exact source bytes to pass the repository Go 1.25 root gates; live external-provider acceptance remains `NOT_RUN`.

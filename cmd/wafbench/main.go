@@ -24,6 +24,8 @@ func main() {
 		err = runBackend(os.Args[2:])
 	case "compare":
 		err = runCompare(os.Args[2:])
+	case "certify":
+		err = runCertify(os.Args[2:])
 	case "help", "-h", "--help":
 		usage()
 		return
@@ -49,6 +51,7 @@ Usage:
   wafbench l4      [flags]   benchmark TCP connect or TLS-handshake pressure
   wafbench backend [flags]   run a deterministic local benchmark backend
   wafbench compare [flags]   compare JSON results and suggest the next profiling direction
+  wafbench certify [flags]   bind real benchmark evidence into a target-aware certification report
 
 Typical flow:
   wafbench backend --listen 127.0.0.1:18081 --response-bytes 16384
@@ -58,6 +61,7 @@ Typical flow:
       --workers 8 --gomaxprocs 8 --response-inspection inherit --response-bytes 16384 --out coraza.json
   wafbench l4 --target 127.0.0.1:8443 --duration 10s --pid $(pidof waf-proxy) --iface eth0 --out l4.json
   wafbench compare --http http.json --coraza coraza.json --l4 l4.json
+  wafbench certify --proxy-baseline proxy.json --coraza-crs coraza.json --target target.json --out performance-certification.json
 
 Run "wafbench <command> -h" for command-specific flags.`)
 }

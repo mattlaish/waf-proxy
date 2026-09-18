@@ -1,5 +1,7 @@
 # Phase 1 VectorScan Production Qualification
 
+> **Documentation baseline — 2026-09-17.** This file documents a component or qualification path. Repository-wide release truth lives in [`DOCUMENTATION_INDEX.md`](../DOCUMENTATION_INDEX.md), [`SOURCE_BASELINE_GATE_RESULT.md`](../SOURCE_BASELINE_GATE_RESULT.md), and [`TESTING_RESULTS.md`](../TESTING_RESULTS.md). Component PASS evidence must not be promoted into a root-build, runtime, package-lifecycle, clean-host, or release PASS outside its stated scope.
+
 `run-phase1-qualification.sh` is the real differential gate. It must run on a
 Linux release/target host with Go >=1.25, Coraza v3.7.0 dependencies, real
 `libvectorscan`/`libhs`, and the production or representative CRS rules file.

@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "evidence_type": "waf-package-upgrade-rollback-qualification",
+  "package_format": "deb",
+  "status": "NOT_RUN",
+  "real_package_manager_execution": false,
+  "reason": "Run Slice C lifecycle qualification on a dedicated supported Debian/Ubuntu host with Version N/N+1/failure packages."
+}

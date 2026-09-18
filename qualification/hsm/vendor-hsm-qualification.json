@@ -1,0 +1,8 @@
+{
+  "format": "waf-proxy-hsm-qualification-v1",
+  "status": "NOT_RUN",
+  "provider": "pkcs11",
+  "vendor_class": "real_vendor_hsm",
+  "tls_handshake": "NOT_RUN",
+  "note": "Real vendor HSM qualification has not been executed. Mock or SoftHSM evidence must not upgrade this status."
+}

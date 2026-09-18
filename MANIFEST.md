@@ -1,5 +1,19 @@
 # waf-proxy — package manifest
 
+## Current canonical status — 2026-09-17
+
+The audited GitHub `main@1d52d65a73a802e32f02994e51f0a07beb240177`
+was found non-buildable. A root-build-integrity repair is implemented, but the
+exact repaired bytes have not executed the mandatory Go 1.25 dependency-drift
+and root-build gates in this environment. Current source state is therefore
+`IMPLEMENTED_TESTING_DEFERRED` and the Source Buildability Gate is `BLOCKED`.
+
+Artifact integrity, source reconstruction, package fixtures, and component
+source checks retain their separately scoped PASS evidence. They do not promote
+root buildability or release readiness. Read `DOCUMENTATION_INDEX.md` and
+`SOURCE_BASELINE_GATE_RESULT.md` before relying on older historical sections in
+this ledger.
+
 A Coraza-based reverse-proxy WAF with an embedded admin console, delivered as
 source you build into `waf-proxy` plus the optional `waf-tlsfront` companion. **Start with `INSTALL.md`.**
 
@@ -208,3 +222,174 @@ Phase 4 Slice F additions:
 Status: IMPLEMENTED_TESTING_DEFERRED
 
 Implemented: runtime qualification evidence schema foundation. Real Go 1.25, Coraza v3.7.0 transaction, and libvectorscan runtime gates remain NOT_RUN until executed on a qualified release host.
+
+
+Phase 5 Slice B — VectorScan Production Qualification
+Status: IMPLEMENTED_TESTING_DEFERRED
+Documentation update: qualification boundary recorded.
+
+
+## Phase 5 Slice C — Enterprise Deployment Readiness (IMPLEMENTED_TESTING_DEFERRED)
+
+Added deployment readiness evidence foundation:
+- preflight report model
+- health/readiness evidence boundary
+- deployment diagnostics foundation
+
+Runtime deployment qualification remains NOT_RUN until executed on target environments.
+
+
+## Phase 5 Slice D Update
+
+Added security operations foundation source artifacts and roadmap documentation.
+
+
+## Phase 5 Slice E Update
+
+Added reliability qualification source and evidence boundary documentation.
+
+## Phase 5 Slice F — Performance Certification
+
+Added:
+
+- `cmd/wafbench/certify.go` — hash-bound performance evidence, target evaluation, comparability and regression model.
+- `cmd/wafbench/certify_test.go` — certification truth-boundary tests.
+- `qualification/performance/README.md` — certification evidence contract.
+- `qualification/performance/target.example.json` — explicitly non-approved target schema example.
+- `qualification/performance/performance-certification-NOT_RUN.json` — no-measurement placeholder.
+
+Modified:
+
+- `cmd/wafbench/main.go` — `certify` command wiring.
+- `cmd/wafbench/model.go` — wafbench tool evidence version 1.1.0.
+- `benchmark/README.md`, `README.md` — certification workflow documentation.
+- canonical handoff/roadmap/testing/release Markdown for Slice F status and truth boundary.
+
+Source baseline repair:
+
+- restored `qualification/vectorscan/{differential.go,lifecycle.go,replay.go,report.go,vectorscan_test.go}` from the stale nested baseline copy;
+- corrected `replay.go` to the canonical `vectorscan` package;
+- removed obsolete nested `waf-work/` source mirror from the deliverable source tree.
+
+No XDP, DPDK, kernel-bypass, hardware-offload, Coraza-verdict, VectorScan-promotion, or TLS dataplane behavior was added by Slice F.
+
+Slice F mode repair:
+
+- restored executable mode `0755` for `build.sh`, `build-release-artifact.sh`, `verify-release-artifact.sh`, `verify-release-signature.sh`, `release-security-scan.sh`, `release-artifact-negative-tests.sh`, `verify-reproducible-source-release.sh`, `qualify-release-host.sh`, `run-phase1-qualification.sh`, `install.sh`, `upgrade.sh`, `uninstall.sh`, `waf-doctor.sh`, `setup-interfaces.sh`, `benchmark/build.sh`, `tools/release_evidence.py`, and `tools/source_manifest.py`.
+
+## Phase 5 Slice G — External HSM / PKCS#11 additions
+
+Source/runtime:
+
+- `internal/hsm/config.go` — PKCS#11 runtime/key configuration and module-path policy.
+- `internal/hsm/provider.go` — provider/signer interfaces, TLS certificate binding, health and restricted audit model.
+- `internal/hsm/pkcs11.go` — session/login/key lookup/sign lifecycle and RSA/ECDSA signing plans.
+- `internal/hsm/pkcs11_linux_cgo.go` — Linux native PKCS#11 loader (`pkcs11` build tag).
+- `internal/hsm/pkcs11_stub.go` — non-native/disabled fail-closed provider stub.
+- `internal/hsm/module_security_linux.go` — Linux root-ownership/module-path checks.
+- `internal/hsm/secret.go` — env/file secret-reference validation and bounded secret loading.
+- `hsm_integration.go` / `hsm_integration_test.go` — WAF config/runtime/audit integration and no-fallback/redaction tests.
+- `cmd/hsmqualify/main.go` — real PKCS#11 provider/TLS qualification runner.
+- `qualification/hsm/` — SoftHSM and real-vendor qualification scripts, documentation and explicit `NOT_RUN` evidence placeholders.
+
+Build/runtime truth:
+
+- native HSM capability requires Linux + CGO + the `pkcs11` build tag; `build.sh` exposes this as `WAF_HSM_PKCS11=off|auto|required`;
+- the vendor PKCS#11 module is runtime-loaded and is not vendored into the source artifact;
+- no private key, PIN, vendor library, token database, generated certificate, or production secret is included in the source package;
+- SoftHSM and real vendor qualification are not claimed unless their corresponding runners are actually executed.
+
+Slice G build/release integration:
+
+- `build.sh` — independent `WAF_HSM_PKCS11=off|auto|required` build capability and PKCS#11 provenance fields.
+- `verify-release-artifact.sh` — mandatory HSM source/qualification file presence and executable-mode checks.
+- `release_scripts_test.go` — both HSM qualification runners included in shipped-script regression checks.
+- `admin.go` / `syslog.go` — HSM status/audit operator surfaces and restricted audit forwarding.
+- `config.sample.json` — global HSM module allow-list and per-site key-provider schema example.
+
+## Enterprise Linux Distribution Packaging — Slice A additions
+
+- `packaging/deb/build-release-deb.sh` — qualified-host binary build + deterministic DEB wrapper.
+- `packaging/deb/build-deb.sh` — provenance/checksum-bound deterministic binary `.deb` builder.
+- `packaging/deb/verify-deb.sh` — extracted-content, conffile, service-path, state-directory, secret and network-fetch verifier.
+- `packaging/deb/tests/test-deb-packaging.sh` — reproducible fixture package and negative native-dependency test.
+- `packaging/deb/maintainer/postinst` — offline-safe service user/directory/secret lifecycle; no fresh autostart.
+- `packaging/deb/maintainer/prerm`, `postrm` — safe remove/upgrade lifecycle preserving persistent state.
+- `packaging/deb/config/waf-tls-frontend.env` — packaged non-secret frontend environment template.
+- `packaging/deb/CRS-PROVISIONING.md`, `packaging/deb/README.md` — operator/package build guidance.
+- `DEB_PACKAGE_GATE_RESULT.md` — package-slice executed/deferred gate ledger.
+- `waf-proxy.service` — persistent `StateDirectory=waf-proxy`.
+- `install.sh`, `waf-doctor.sh` — persistent state/source-vs-package path compatibility updates.
+
+No production secret, generated token, CRS runtime tree, `.deb` fixture, or compiled WAF binary is included in the complete source baseline.
+
+
+## Enterprise Linux Distribution Packaging — Slice B additions
+
+- `packaging/rpm/waf-proxy.spec` — binary RPM spec, `%config(noreplace)`, service-user lifecycle, controlled service restart, persistent state and offline scriptlets.
+- `packaging/rpm/build-release-rpm.sh` — qualified-host Go build + RPM wrapper.
+- `packaging/rpm/build-rpm.sh` — provenance/checksum/ELF-architecture-bound deterministic RPM builder.
+- `packaging/rpm/verify-rpm.sh` — extracted content, scriptlets, config flags, service paths, state path, secret and CRS verifier.
+- `packaging/rpm/validate-rpm-source.py` — RPM source-contract verifier usable even without an installed RPM toolchain.
+- `packaging/rpm/tests/test-rpm-source.sh` — shell/source/security policy test.
+- `packaging/rpm/tests/test-rpm-packaging.sh` — real rpmbuild fixture reproducibility and negative native-dependency test; reports BLOCKED when RPM tools are unavailable.
+- `packaging/rpm/config/waf-tls-frontend.env` — non-secret packaged frontend template.
+- `packaging/rpm/CRS-PROVISIONING.md` — network-free CRS provisioning boundary.
+- `packaging/rpm/SELINUX.md` — enforcing-SELinux qualification and no-scriptlet-policy-mutation boundary.
+- `packaging/rpm/README.md` — RHEL-family package build/install guidance.
+- `RPM_PACKAGE_GATE_RESULT.md` — executed/BLOCKED/NOT_RUN gate ledger.
+- `verify-release-artifact.sh` / `release_scripts_test.go` — DEB/RPM package builders/verifiers/tests are now critical shipped release files.
+
+No RPM binary, generated token, vendor HSM library, CRS runtime tree, or compiled WAF binary is included in the complete source baseline.
+
+
+## Enterprise Linux Distribution Packaging — Slice C additions
+
+- `packaging/qualification/package_lifecycle_qualify.py` — guarded DEB/RPM upgrade, failed-upgrade, recovery and rollback evidence runner.
+- `packaging/qualification/run-package-lifecycle-qualification.sh` — operator wrapper.
+- `packaging/qualification/build-lifecycle-fixtures.sh` — deterministic N/N+1/failure semantic fixture builder.
+- `packaging/qualification/tests/test_package_lifecycle.py` — lifecycle helper tests.
+- `packaging/qualification/tests/test-qualification-source.sh` — source/security/truth-boundary gate.
+- `packaging/qualification/README.md` — dedicated-host operating guide and truth boundaries.
+- `qualification/package-lifecycle/*-NOT_RUN.json` — separate DEB/RPM real-execution placeholders.
+- `PACKAGE_LIFECYCLE_GATE_RESULT.md` — current executed/BLOCKED/NOT_RUN Slice C gate ledger.
+- `packaging/rpm/waf-proxy.spec` / `build-rpm.sh` — qualification-only `%post` failpoint compiled only into explicitly guarded fixture builds.
+- `verify-release-artifact.sh` / `release_scripts_test.go` — new lifecycle qualification sources are now required/mode/syntax-checked release files.
+
+No lifecycle `.deb`/`.rpm` fixture, package-manager database, generated admin
+token, persistent-state marker, or qualification-host local artifact is included
+in the complete source baseline.
+
+## Enterprise Linux Distribution Slice D — Clean-host qualification
+
+- `packaging/cleanhost/README.md` — operator/truth-boundary guide.
+- `packaging/cleanhost/clean_host_qualify.py` — exact-distro clean-host install/start/auth/traffic/upgrade/remove runner.
+- `packaging/cleanhost/run-clean-host-qualification.sh` — operator entrypoint.
+- `packaging/cleanhost/tests/test_clean_host_qualify.py` — unit tests.
+- `packaging/cleanhost/tests/test-clean-host-source.sh` — source/security contract gate.
+- `qualification/clean-host/matrix.json` — seven-platform NOT_RUN matrix.
+- `qualification/clean-host/*-NOT_RUN.json` — per-platform truth-boundary placeholders.
+- `CLEAN_HOST_DISTRIBUTION_GATE_RESULT.md` — executed/deferred clean-host gate ledger.
+
+## Project-local package builder additions
+
+- `waf-package` — executable project-root entry point for `doctor`, `deb`, `rpm`, and `all`.
+- `tools/waf_package_builder.py` — fail-closed package build orchestrator.
+- `tools/tests/test_waf_package_builder.py` — Python unit tests for source/version/package orchestration logic.
+- `tools/tests/test-waf-package-source.sh` — shell/source/CLI contract gate.
+- `PACKAGING_TOOL.md` — operator/developer guide for rebuilding DEB/RPM after source changes.
+
+## Root Build Integrity Repair (2026-09-17)
+
+Repair-relevant source:
+- `.github/workflows/ci.yml` — mandatory module-tidy drift + root build/test CI;
+- `go.mod` / `go.sum` — canonical Coraza v3.7.0 dependency graph;
+- `pki.go` / `pki_url.go` — matched CRL URL refresh/store implementation;
+- `pki_url_phase4_test.go` — URL/SSRF/LKG/concurrency/cache regression coverage;
+- `debug_bundle.go` — current evidence model plus TLS version naming helper;
+- `debug_evidence_ops_v2.go` — current store API/model mapping;
+- `debug_evidence_ops_v2_test.go` — integration regression tests.
+
+## OpenAI connector hardening files
+
+Added: `internal/openaiapi/responses.go`, `internal/openaiapi/responses_test.go`, `internal/secretref/secretref.go`, `internal/secretref/secretref_test.go`, `ai_openai_integration_test.go`, `tools/tests/test-openai-integration-source.sh`, `OPENAI_INTEGRATION_GATE_RESULT.md`. Modified: `ai.go`, `admin.go`, `config.sample.json`, `static/admin.html`, release verifier/tests, and canonical documentation.

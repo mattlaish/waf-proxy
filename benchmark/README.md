@@ -1,5 +1,7 @@
 # wafbench performance harness
 
+> **Documentation baseline — 2026-09-17.** This file documents a component or qualification path. Repository-wide release truth lives in [`DOCUMENTATION_INDEX.md`](../DOCUMENTATION_INDEX.md), [`SOURCE_BASELINE_GATE_RESULT.md`](../SOURCE_BASELINE_GATE_RESULT.md), and [`TESTING_RESULTS.md`](../TESTING_RESULTS.md). Component PASS evidence must not be promoted into a root-build, runtime, package-lifecycle, clean-host, or release PASS outside its stated scope.
+
 `cmd/wafbench` is the repeatable benchmark/profiling tool for this repository. It is intentionally split into a network/full-proxy test and a direct Coraza/CRS test so low production traffic does not prevent useful performance decisions.
 
 ## Build
@@ -95,7 +97,7 @@ Use legal TCP connect/close traffic to see whether accept/softirq/PPS becomes a 
 
 Add `--tls --server-name bench.local --insecure` to measure handshake pressure separately; plain TCP is the cleaner XDP/L4 baseline.
 
-## 5. XDP vs regex acceleration comparison
+## 5. Historical XDP vs regex comparison (not a current selection gate)
 
 ```bash
 ./bin/wafbench compare --http http-baseline.json --coraza coraza-baseline.json --l4 l4-baseline.json
@@ -104,6 +106,50 @@ Add `--tls --server-name bench.local --insecure` to measure handshake pressure s
 The tool uses a deliberately simple heuristic: the Coraza-share median is calculated from **clean GET + clean JSON scenarios only**; malicious scenarios are displayed as worst-case information but do not drive the baseline median. If direct Coraza CPU/request is at least ~35% of full waf-proxy CPU/request, regex/Coraza acceleration is the stronger next experiment. If Coraza share is lower while host softirq is >=5% and aggregate sampled packet rate is >=100k PPS, XDP is the stronger experiment. Otherwise it recommends profiling TLS/proxy/backend before a dataplane rewrite.
 
 This heuristic is a decision aid, not a benchmark claim. Use CPU profiles and representative traffic before committing to VectorScan/Hyperscan or XDP.
+
+## 6. Performance certification evidence
+
+`wafbench certify` binds **real full-proxy** benchmark JSON into a versioned,
+hash-bound certification report. It does not run traffic itself and it does not
+invent a throughput target.
+
+Collect the same `--scenario all` workload against the same WAF host, backend,
+concurrency and GOMAXPROCS under at least two configurations:
+
+```bash
+# 1. TLS reverse proxy with WAF rules disabled
+./bin/wafbench http ... --scenario all --format json --out proxy-baseline.json
+
+# 2. Same listener/backend with Coraza + production/representative CRS enabled
+./bin/wafbench http ... --scenario all --format json --out coraza-crs.json
+
+# 3. Optional: same Coraza/CRS config with validated VectorScan acceleration
+./bin/wafbench http ... --scenario all --format json --out vectorscan-assisted.json
+```
+
+Then bind the evidence to an approved target:
+
+```bash
+./bin/wafbench certify \
+  --proxy-baseline proxy-baseline.json \
+  --coraza-crs coraza-crs.json \
+  --vectorscan vectorscan-assisted.json \
+  --vectorscan-qualification phase1-qualification.json \
+  --target qualification/performance/target.example.json \
+  --source-sha256 <artifact-sha256> \
+  --out performance-certification.json
+```
+
+The command requires comparable recorded system identity and run shape
+(workers/concurrency, GOMAXPROCS and request/response workload sizes). If
+VectorScan evidence is supplied, certification is blocked unless the real Phase
+1 differential report proves zero observed false negatives. Without an explicit
+approved target, the report remains `NOT_RUN` even when benchmark evidence is
+complete.
+
+Use `--previous` to attach RPS and p99 deltas against a prior certification
+report. See `qualification/performance/README.md` for the evidence contract.
+
 
 ## Scaling matrix
 

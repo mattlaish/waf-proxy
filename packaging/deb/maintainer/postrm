@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+  remove|purge|abort-install|abort-upgrade|disappear)
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    ;;
+esac
+if [ "${1:-}" = purge ]; then
+  # Generated secret is configuration, so explicit dpkg purge removes it.
+  # Persistent security/learning state and operator-managed certs/CRS are not
+  # destroyed automatically; removal of those requires an explicit admin act.
+  rm -f /etc/waf/waf-proxy.env
+  echo 'waf-proxy: preserved /var/lib/waf-proxy and operator-managed /etc/waf/{certs,crs}'
+fi
+exit 0

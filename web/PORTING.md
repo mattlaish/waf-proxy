@@ -1,5 +1,7 @@
 # Experimental console migration: single-file → Vite + preact
 
+> **Documentation baseline — 2026-09-17.** This file documents a component or qualification path. Repository-wide release truth lives in [`DOCUMENTATION_INDEX.md`](../DOCUMENTATION_INDEX.md), [`SOURCE_BASELINE_GATE_RESULT.md`](../SOURCE_BASELINE_GATE_RESULT.md), and [`TESTING_RESULTS.md`](../TESTING_RESULTS.md). Component PASS evidence must not be promoted into a root-build, runtime, package-lifecycle, clean-host, or release PASS outside its stated scope.
+
 > **Status: experimental and non-shipping.** Do not deploy `static/app` or
 > replace `static/admin.html`. This tree is a partial migration reference until
 > every tab is ported, dependencies are made reproducible with a lockfile, and
@@ -41,7 +43,7 @@ const ai = cfg.ai || {};
 
 `set(key, partial)` shallow-merges into `cfg[key]`; pass an array to replace (e.g. `set("sites", nextSites)`).
 
-## Build into the binary
+## Experimental build only
 
 ```bash
 cd web && npm install && npm run build   # emits ../static/app/
@@ -56,3 +58,10 @@ remains fully functional and is what `admin.go` embeds today).
 `vite.config.js` uses the preset if present (Fast Refresh) and silently falls back
 without it. If `npm install` doesn't pull it, add it: `npm i -D @preact/preset-vite`,
 or remove the preset import and rely on the `react → preact/compat` alias alone.
+
+## Release boundary
+
+This migration is not part of the production release gate and must not replace
+`static/admin.html` merely because a local Vite build succeeds. Promotion
+requires a pinned/reproducible JavaScript dependency graph, complete feature
+parity, security review, and tests for the embedded/offline console path.

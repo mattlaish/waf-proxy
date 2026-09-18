@@ -18,12 +18,60 @@
       "version": "v0.3.2"
     },
     {
-      "bom-ref": "pkg:golang/github.com/magefile/mage@v1.15.1-0.20241126214340-bdc92f694516",
-      "name": "github.com/magefile/mage",
-      "purl": "pkg:golang/github.com/magefile/mage@v1.15.1-0.20241126214340-bdc92f694516",
+      "bom-ref": "pkg:golang/github.com/goccy/go-json@v0.10.5",
+      "name": "github.com/goccy/go-json",
+      "purl": "pkg:golang/github.com/goccy/go-json@v0.10.5",
       "scope": "required",
       "type": "library",
-      "version": "v1.15.1-0.20241126214340-bdc92f694516"
+      "version": "v0.10.5"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/goccy/go-yaml@v1.18.0",
+      "name": "github.com/goccy/go-yaml",
+      "purl": "pkg:golang/github.com/goccy/go-yaml@v1.18.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v1.18.0"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/gotnospirit/makeplural@v0.0.0-20180622080156-a5f48d94d976",
+      "name": "github.com/gotnospirit/makeplural",
+      "purl": "pkg:golang/github.com/gotnospirit/makeplural@v0.0.0-20180622080156-a5f48d94d976",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.0.0-20180622080156-a5f48d94d976"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/gotnospirit/messageformat@v0.0.0-20221001023931-dfe49f1eb092",
+      "name": "github.com/gotnospirit/messageformat",
+      "purl": "pkg:golang/github.com/gotnospirit/messageformat@v0.0.0-20221001023931-dfe49f1eb092",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.0.0-20221001023931-dfe49f1eb092"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/kaptinlin/go-i18n@v0.1.4",
+      "name": "github.com/kaptinlin/go-i18n",
+      "purl": "pkg:golang/github.com/kaptinlin/go-i18n@v0.1.4",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.1.4"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/kaptinlin/jsonschema@v0.4.6",
+      "name": "github.com/kaptinlin/jsonschema",
+      "purl": "pkg:golang/github.com/kaptinlin/jsonschema@v0.4.6",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.4.6"
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/magefile/mage@v1.17.0",
+      "name": "github.com/magefile/mage",
+      "purl": "pkg:golang/github.com/magefile/mage@v1.17.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v1.17.0"
     },
     {
       "bom-ref": "pkg:golang/github.com/petar-dambovaliev/aho-corasick@v0.0.0-20250424160509-463d218d4745",
@@ -82,6 +130,14 @@
       "version": "v0.20.0"
     },
     {
+      "bom-ref": "pkg:golang/golang.org/x/text@v0.35.0",
+      "name": "golang.org/x/text",
+      "purl": "pkg:golang/golang.org/x/text@v0.35.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.35.0"
+    },
+    {
       "bom-ref": "pkg:golang/google.golang.org/protobuf@v1.36.11",
       "name": "google.golang.org/protobuf",
       "purl": "pkg:golang/google.golang.org/protobuf@v1.36.11",
@@ -103,7 +159,13 @@
       "dependsOn": [
         "pkg:golang/github.com/corazawaf/coraza/v3@v3.7.0",
         "pkg:golang/github.com/corazawaf/libinjection-go@v0.3.2",
-        "pkg:golang/github.com/magefile/mage@v1.15.1-0.20241126214340-bdc92f694516",
+        "pkg:golang/github.com/goccy/go-json@v0.10.5",
+        "pkg:golang/github.com/goccy/go-yaml@v1.18.0",
+        "pkg:golang/github.com/gotnospirit/makeplural@v0.0.0-20180622080156-a5f48d94d976",
+        "pkg:golang/github.com/gotnospirit/messageformat@v0.0.0-20221001023931-dfe49f1eb092",
+        "pkg:golang/github.com/kaptinlin/go-i18n@v0.1.4",
+        "pkg:golang/github.com/kaptinlin/jsonschema@v0.4.6",
+        "pkg:golang/github.com/magefile/mage@v1.17.0",
         "pkg:golang/github.com/petar-dambovaliev/aho-corasick@v0.0.0-20250424160509-463d218d4745",
         "pkg:golang/github.com/tidwall/gjson@v1.18.0",
         "pkg:golang/github.com/tidwall/match@v1.1.1",
@@ -111,6 +173,7 @@
         "pkg:golang/github.com/valllabh/ocsf-schema-golang@v1.0.3",
         "pkg:golang/golang.org/x/net@v0.52.0",
         "pkg:golang/golang.org/x/sync@v0.20.0",
+        "pkg:golang/golang.org/x/text@v0.35.0",
         "pkg:golang/google.golang.org/protobuf@v1.36.11",
         "pkg:golang/rsc.io/binaryregexp@v0.2.0"
       ],
@@ -128,7 +191,7 @@
         }
       ],
       "type": "application",
-      "version": "phase3-truth-boundary-repair-2026-09-14"
+      "version": "openai-responses-structured-secrets-2026-09-18"
     },
     "tools": {
       "components": [
@@ -140,7 +203,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:8378bb20-7bc8-5859-bad6-75b084b31216",
+  "serialNumber": "urn:uuid:8fe2bb57-a5e7-59f3-8536-61b1344cf14f",
   "specVersion": "1.5",
   "version": 1
 }

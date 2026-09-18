@@ -353,6 +353,21 @@ func newDebugTransactionID() string {
 	return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
 }
 
+func tlsVersionName(version uint16) string {
+	switch version {
+	case tls.VersionTLS10:
+		return "TLS1.0"
+	case tls.VersionTLS11:
+		return "TLS1.1"
+	case tls.VersionTLS12:
+		return "TLS1.2"
+	case tls.VersionTLS13:
+		return "TLS1.3"
+	default:
+		return fmt.Sprintf("0x%04x", version)
+	}
+}
+
 func debugEvidenceWrap(store *DebugEvidenceStore, tenant string, next http.Handler) http.Handler {
 	if store == nil {
 		return next

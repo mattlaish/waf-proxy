@@ -107,9 +107,11 @@ func fetchCRLURL(ctx context.Context, raw string, roots *x509.CertPool) ([]byte,
 	}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{
-		Transport:     transport,
-		Timeout:       10 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: transport,
+		Timeout:   10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
@@ -301,8 +303,6 @@ func prepareCRLStore(ctx context.Context, c BackendTLSConfig, issuers []*x509.Ce
 		if store.mode == "hard" && (snap == nil || len(snap.Lists) == 0) {
 			return nil, fmt.Errorf("initial CRL URL refresh: %w", err)
 		}
-		// Soft mode keeps the static/empty last-known-good snapshot and exposes
-		// the fetch error via status; subsequent scheduled/manual refresh may heal it.
 	}
 	return store, nil
 }
@@ -408,7 +408,14 @@ func (s *crlStore) status() crlStatus {
 		return crlStatus{}
 	}
 	s.mu.Lock()
-	st := crlStatus{Mode: s.mode, Sources: len(s.cfg.CRLFiles) + len(s.cfg.CRLURLs), LastAttempt: s.lastAttempt, LastSuccess: s.lastSuccess, LastError: s.lastError, Refreshing: s.refreshing}
+	st := crlStatus{
+		Mode:        s.mode,
+		Sources:     len(s.cfg.CRLFiles) + len(s.cfg.CRLURLs),
+		LastAttempt: s.lastAttempt,
+		LastSuccess: s.lastSuccess,
+		LastError:   s.lastError,
+		Refreshing:  s.refreshing,
+	}
 	s.mu.Unlock()
 	if snap := s.current.Load(); snap != nil {
 		st.Lists = len(snap.Lists)

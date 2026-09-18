@@ -1,14 +1,101 @@
 # waf-proxy — install guide
 
+> **Documentation baseline — 2026-09-17.** This file documents a component or qualification path. Repository-wide release truth lives in [`DOCUMENTATION_INDEX.md`](DOCUMENTATION_INDEX.md), [`SOURCE_BASELINE_GATE_RESULT.md`](SOURCE_BASELINE_GATE_RESULT.md), and [`TESTING_RESULTS.md`](TESTING_RESULTS.md). Component PASS evidence must not be promoted into a root-build, runtime, package-lifecycle, clean-host, or release PASS outside its stated scope.
+
 Coraza-based reverse-proxy WAF with an embedded admin console. The console is compiled in (`go:embed`) with no CDN dependency. The portable Coraza-only build is pure Go; optional VectorScan acceleration uses CGO/libhs.
 
-> **Status — read this first.** The source is pinned to Coraza v3.7.0, which requires Go 1.25.0. Historical earlier-baseline portable Coraza-API-stub regression/vet/race and native libhs ABI compile/vet/race gates passed. The exact current baseline has not rerun the canonical Go suite on this packaging host because it has Go 1.23.2; release shell syntax is separately verified. The isolated packaging environment cannot execute a real Go 1.25 + Coraza v3.7.0 + real libvectorscan gate, so those remain **NOT_RUN release gates**. Do not treat the stub or ABI-only library as WAF correctness/performance evidence. Start first deployment in **DetectionOnly** and run `./build.sh` on the actual release host.
+> **Status — read this first.** Production package procedures are implemented,
+> but the current repaired root source has not yet passed its mandatory Go 1.25
+> buildability gate. Build real packages only from a commit whose exact bytes
+> passed the CI tidy/build/vet/test/race/real-Coraza sequence. Package fixtures
+> are packaging evidence only. PostgreSQL is **not** currently a WAF runtime
+> dependency; persistent state is filesystem-based. See `DOCUMENTATION_INDEX.md`
+> and `SOURCE_BASELINE_GATE_RESULT.md`.
 
 ---
 
+## Enterprise distribution paths
+
+For production Linux deployments, use the formal package path rather than the
+source installer whenever possible:
+
+### Debian / Ubuntu — `.deb`
+
+Build on the qualified release host:
+
+```bash
+SOURCE_DATE_EPOCH=<approved-epoch> \
+  packaging/deb/build-release-deb.sh --output-dir dist/deb
+```
+
+Install locally or from your approved internal repository:
+
+```bash
+sudo apt install ./dist/deb/waf-proxy_<version>_<arch>.deb
+```
+
+Package behavior is deliberately fail-safe:
+
+- `postinst` performs no network access and never fetches OWASP CRS;
+- `/etc/waf/config.json`, `/etc/waf/coraza.conf`, and
+  `/etc/waf/waf-tls-frontend.env` are dpkg conffiles;
+- an existing `/etc/waf/waf-proxy.env` admin token is never regenerated on
+  upgrade; a fresh install creates it once without printing the value to the
+  package-manager log;
+- `/var/lib/waf-proxy` is persistent state and is preserved across upgrades;
+- fresh install does **not** auto-start the WAF before CRS is provisioned;
+- package purge removes the generated admin token but intentionally leaves
+  operator-managed certificates/CRS and persistent state for explicit admin
+  cleanup.
+
+Provision CRS using `/usr/share/doc/waf-proxy/CRS-PROVISIONING.md`, then run:
+
+```bash
+sudo waf-doctor --check
+sudo systemctl enable --now waf-proxy
+```
+
+### RHEL family — `.rpm`
+
+Build on a qualified RHEL-family release host with `rpm-build`, `rpm`,
+`rpm2cpio`, `cpio`, `tar`, `python3`, `openssl`, and the normal Go prerequisites:
+
+```bash
+SOURCE_DATE_EPOCH=<approved-epoch> \
+  packaging/rpm/build-release-rpm.sh --output-dir dist/rpm
+```
+
+Install locally or from your approved internal repository:
+
+```bash
+sudo dnf install ./dist/rpm/waf-proxy-<version>-1.<arch>.rpm
+```
+
+Package behavior mirrors the DEB enterprise contract:
+
+- RPM scriptlets perform no network access and never fetch OWASP CRS;
+- `/etc/waf/config.json`, `/etc/waf/coraza.conf`, and
+  `/etc/waf/waf-tls-frontend.env` use `%config(noreplace)`;
+- an existing `/etc/waf/waf-proxy.env` admin token is never regenerated or
+  printed by an upgrade;
+- `/var/lib/waf-proxy` and operator-managed certificates/CRS remain persistent;
+- fresh install does **not** auto-start or preset the WAF before CRS provision;
+- active services are `try-restart`ed on upgrade, while inactive deployments
+  remain inactive;
+- package scriptlets never disable SELinux or synthesize local policy.
+
+Provision CRS using `/usr/share/doc/waf-proxy/CRS-PROVISIONING.md`, run
+`sudo waf-doctor --check`, then explicitly enable/start the service. Clean-host
+RHEL-family and enforcing-SELinux qualification remains Distribution Slice D.
+
+### Generic / development / recovery install
+
+The source `install.sh` path below is retained for development, recovery, and
+generic environments. It is not the primary enterprise distribution path.
+
 ## 1. Prerequisites
 
-- Debian 12 / Ubuntu 22.04+ (systemd), x86-64 or arm64
+- Debian 12 / Ubuntu 22.04+ or supported RHEL-family Linux (systemd), x86-64/x86_64 or arm64/aarch64 as appropriate to the package format
 - **Go ≥ 1.25.0** to build. Coraza v3.7.0 declares this minimum; distro Go may be too old, so install an upstream Go 1.25+ toolchain when necessary.
 - Network/module-cache access for Coraza v3.7.0 dependencies and to fetch OWASP CRS
 - `openssl` (token generation) and `curl`/`tar` (CRS fetch)
@@ -44,6 +131,64 @@ WAF_VECTORSCAN=off ./build.sh
 ```
 
 Production release gate: run the repository tests with real Coraza v3.7.0 and real libvectorscan on the target/release architecture. Use `./qualify-release-host.sh --preflight` first; it exits 3 when prerequisites are **BLOCKED** (for example, Go <1.25 or no verified real libvectorscan provenance). On a qualified host, run `./qualify-release-host.sh --core`; it requires native VectorScan rather than silently falling back, executes the real-Coraza DetectionOnly+nolog `MatchedRules()` gate and the native `hs_compile_multi`/`hs_scan` semantic gate, and checks that qualification did not drift `go.mod`/`go.sum`. A source-installed VectorScan build requires an explicit `WAF_VECTORSCAN_PROVENANCE_ACK` string so ABI-only shims cannot be mislabeled as real release evidence. The package's stub and ABI-only verification are compile/regression aids only. Learning state defaults to `/var/lib/waf-proxy/vector-learning.json`; preserve that path across restarts but expect rule/Coraza/VectorScan semantic fingerprint changes to force re-learning.
+
+
+## 2b. Optional external HSM / PKCS#11 TLS keys
+
+PKCS#11 support is independent from VectorScan and is opt-in at build time:
+
+```bash
+# Coraza + PKCS#11, no VectorScan dependency
+WAF_VECTORSCAN=off WAF_HSM_PKCS11=required ./build.sh
+
+# Or enable both native capabilities
+WAF_VECTORSCAN=required WAF_HSM_PKCS11=required ./build.sh
+```
+
+`WAF_HSM_PKCS11=off` is the default. `auto` enables the provider only when the
+host is Linux and a CGO compiler is available. A configured HSM site must use
+the built-in Go TLS path (`tls_acceleration.mode=go`); the external TLS frontend
+is rejected rather than falling back to a filesystem key.
+
+Keep the certificate chain on disk but leave `tls_key` empty. Configure
+`tls_key_provider` with the approved PKCS#11 module path, an exact slot and/or
+token label, an exact key label and/or CKA_ID, and a PIN **secret reference**.
+Never put the PIN itself in JSON or a command line. For production, prefer a
+root-protected `0600` secret file:
+
+```json
+"tls_cert": "/etc/waf/certs/site-chain.pem",
+"tls_key": "",
+"tls_key_provider": {
+  "provider": "pkcs11",
+  "module_path": "/opt/vendor/lib/libpkcs11.so",
+  "slot_id": 7,
+  "token_label": "prod-token",
+  "key_label": "waf-tls",
+  "key_id": "01",
+  "pin_secret_ref": "file:/run/secrets/waf-hsm-pin"
+}
+```
+
+Also restrict `hsm.allowed_module_dirs` to directories owned and managed by the
+operator. The module and its approved parent path must be root-owned and not
+group/world writable. Apply opens the token/session, resolves the secret,
+performs exact private-key lookup, and verifies certificate↔key association via
+a real signature before the runtime swap.
+
+Qualification paths:
+
+```bash
+# Software PKCS#11 path only; does not qualify production vendor hardware
+./qualification/hsm/run-softhsm-qualification.sh
+
+# Real vendor HSM/service only; run only on the actual production-class provider
+./qualification/hsm/run-vendor-hsm-qualification.sh
+```
+
+Both runners require `WAF_HSM_PIN_SECRET_REF=env:NAME` or
+`file:/absolute/path`; neither accepts a raw PIN argument. Until actually run,
+the checked-in SoftHSM and vendor reports remain `NOT_RUN`.
 
 ## 3. Install
 
@@ -483,3 +628,279 @@ sudo wafctl support bundle --output waf-support.zip
 ```
 
 Do not leave debug capture enabled unnecessarily. The server enforces a one-hour maximum capture window and bounded retention; diagnostic artifacts should still be handled as sensitive operational data.
+
+
+## Enterprise package upgrade / rollback qualification
+
+For release qualification, use a dedicated disposable VM rather than a live
+production node. Build or provide three artifacts of the same package format:
+Version N, Version N+1, and an intentional-failure fixture. The fixture builder
+creates package-semantics payloads only; production qualification should rerun
+the same harness with qualified Go 1.25 WAF packages.
+
+```bash
+# Debian / Ubuntu semantic fixtures
+SOURCE_DATE_EPOCH=1700000000 \
+  ./packaging/qualification/build-lifecycle-fixtures.sh \
+  --format deb --output-dir /tmp/waf-lifecycle-deb
+
+# Non-mutating package metadata/default-conflict preflight
+./packaging/qualification/run-package-lifecycle-qualification.sh \
+  --format deb \
+  --baseline /tmp/waf-lifecycle-deb/baseline/waf-proxy_*.deb \
+  --candidate /tmp/waf-lifecycle-deb/candidate/waf-proxy_*.deb \
+  --failure-fixture /tmp/waf-lifecycle-deb/failure/waf-proxy_*.deb \
+  --output /tmp/waf-deb-lifecycle.json
+```
+
+On a dedicated qualification VM, rerun with:
+
+```bash
+sudo ./packaging/qualification/run-package-lifecycle-qualification.sh ... \
+  --execute \
+  --ack I_UNDERSTAND_THIS_MUTATES_A_DEDICATED_HOST
+```
+
+Use `--format rpm` on RHEL, Rocky Linux, AlmaLinux or Oracle Linux. Dependencies
+must already be installed; the qualification runner intentionally does not use
+network dependency resolvers. A PASS from this runner covers package lifecycle
+only. Clean-host OS acceptance remains Distribution Slice D.
+
+## Clean-host distribution qualification
+
+Use a dedicated disposable VM/host for final distro acceptance. Do not run the
+mutating flow on a shared build machine or production node. Supply the real
+Version N and N+1 package files plus an already-approved **local** CRS tree; the
+runner never downloads dependencies or CRS.
+
+```bash
+# Non-mutating preflight
+./packaging/cleanhost/run-clean-host-qualification.sh \
+  --platform debian-12 \
+  --baseline /qualification/waf-proxy_N_amd64.deb \
+  --candidate /qualification/waf-proxy_Nplus1_amd64.deb \
+  --crs-dir /qualification/coreruleset \
+  --output /qualification/debian-12-clean-host.json
+
+# Real dedicated-host execution
+sudo ./packaging/cleanhost/run-clean-host-qualification.sh ... \
+  --execute \
+  --ack I_UNDERSTAND_THIS_MUTATES_A_DEDICATED_CLEAN_HOST
+```
+
+Supported platform IDs are `debian-12`, `ubuntu-22.04`, `ubuntu-24.04`,
+`rhel-9`, `rocky-9`, `almalinux-9`, and `oraclelinux-9`. RHEL-family acceptance
+requires SELinux to be `Enforcing`. The host must start with no installed
+`waf-proxy`, no `/etc/waf`, and no `/var/lib/waf-proxy`; otherwise the run is
+BLOCKED rather than pretending to be a clean-host result.
+
+## Project-local package build tool
+
+After modifying the WAF source, use the repository-local package builder rather
+than invoking low-level package scripts manually:
+
+```bash
+./waf-package doctor --format deb
+./waf-package deb --version 2026.09.16.1
+```
+
+For RHEL-family RPM:
+
+```bash
+./waf-package doctor --format rpm
+./waf-package rpm --version 2026.09.16.1 --rpm-release 1
+```
+
+To package one canonical build in both formats:
+
+```bash
+./waf-package all \
+  --version 2026.09.16.1 \
+  --deb-arch amd64 \
+  --rpm-arch x86_64
+```
+
+The tool does not install Go, RPM/DEB tooling, CRS, or native libraries. Go
+module access is offline by default (`GOPROXY=off`); use
+`--allow-module-network` only on a build host where module-proxy access is
+explicitly permitted. Complete operator documentation is in `PACKAGING_TOOL.md`.
+## 13. Production package operations checklist
+
+This section is the operator path for package-managed deployments. It complements
+the earlier source-install sections; production Debian/Ubuntu and RHEL-family
+installations should prefer DEB/RPM.
+
+### 13.1 Clean install and preflight
+
+1. Verify the package SHA-256 and native package metadata.
+2. Confirm the host is an intended/supported distro and architecture.
+3. Confirm ports/listener addresses are available and DNS/NTP are correct.
+4. Install the local package. Fresh package install must remain inactive before
+   CRS provisioning.
+5. Provision approved CRS content locally; package scriptlets must not fetch it.
+6. Install TLS certificates or configure the approved PKCS#11 provider.
+7. Configure management/data-plane binding and backend pools/sites.
+8. Run `sudo waf-doctor --check`. Resolve every blocking error before start.
+9. Start in `DetectionOnly`, then explicitly enable/start `waf-proxy`.
+10. Validate `/healthz`, backend traffic, WAF event generation, and first login.
+
+Debian/Ubuntu example:
+
+```bash
+sudo apt install ./waf-proxy_<version>_<arch>.deb
+sudo waf-doctor --check
+sudo systemctl enable --now waf-proxy
+```
+
+RHEL-family example:
+
+```bash
+sudo dnf install ./waf-proxy-<version>-1.<arch>.rpm
+sudo restorecon -RFv /etc/waf /var/lib/waf-proxy /var/log/waf 2>/dev/null || true
+sudo waf-doctor --check
+sudo systemctl enable --now waf-proxy
+```
+
+### 13.2 First setup
+
+The package owns the executable/service layout; the operator owns site/pool/TLS
+configuration. Preserve `/etc/waf/waf-proxy.env` as a root-only break-glass
+secret. Create normal named administrative users after the first authenticated
+login and retain the break-glass token outside normal daily workflows. Keep the
+WAF in `DetectionOnly` until representative traffic has been observed and false
+positives are tuned.
+
+### 13.3 PostgreSQL boundary
+
+There is currently **no PostgreSQL persistence backend** in waf-proxy. Do not
+create a WAF database, `DATABASE_URL`, `PGHOST`, `PGPASSWORD`, or PostgreSQL
+migrations as part of installation. Current authoritative state is:
+
+```text
+/etc/waf/            configuration, CRS and certificates
+/var/lib/waf-proxy/  persistent learner/security/runtime state
+/var/log/waf/        logs/audit data
+```
+
+A future PostgreSQL backend would require an explicit architecture/migration
+slice and cannot be created by documentation alone.
+
+### 13.4 TLS
+
+Admin access should remain loopback-only or on a dedicated management address.
+If the admin listener is exposed off-loopback, use TLS. Data-plane sites should
+use approved certificate/key paths or the PKCS#11 provider. HSM-backed sites
+must fail closed and must not silently fall back to filesystem keys. Go TLS is
+the default; the optional external TLS frontend is separately qualified.
+
+### 13.5 systemd
+
+Use package-installed units and local drop-ins rather than editing vendor unit
+files in place:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl status waf-proxy --no-pager
+sudo journalctl -u waf-proxy -n 200 --no-pager
+```
+
+Custom overrides belong under `/etc/systemd/system/waf-proxy.service.d/`. The
+persistent state contract requires `/var/lib/waf-proxy`; do not move learner or
+security state into transient directories.
+
+### 13.6 Host firewall
+
+Package installation deliberately does not rewrite the host firewall. Open only
+the required data listeners and restrict SSH/admin access to management sources.
+If the admin listener remains on loopback, do not expose its port at all. Always
+inspect the active ruleset before changing a remote host:
+
+```bash
+sudo ss -tlnp
+sudo nft list ruleset
+```
+
+Do not apply an unreviewed default-drop policy over a remote SSH session.
+
+### 13.7 SELinux on RHEL-family systems
+
+RHEL/Rocky/AlmaLinux/Oracle Linux clean-host acceptance requires SELinux
+`Enforcing`. RPM scriptlets must never call `setenforce 0`, synthesize
+`audit2allow` policy, or mutate permanent SELinux policy to make the product
+appear to work. Use standard paths and restore existing labels after manually
+copying operator files:
+
+```bash
+getenforce
+sudo restorecon -RFv /etc/waf /var/lib/waf-proxy /var/log/waf
+sudo ausearch -m AVC -ts recent
+```
+
+If a product-owned SELinux policy is truly required, implement, version, review,
+and qualify it explicitly rather than generating policy from transient AVCs.
+
+### 13.8 Backup and restore
+
+Before upgrade or rollback, capture `/etc/waf`, `/var/lib/waf-proxy`, relevant
+logs/evidence, systemd drop-ins, installed package version, and the exact old
+package artifact. Backups containing admin tokens, TLS keys, or API secrets must
+be access-controlled and encrypted. For a consistent filesystem snapshot, stop
+traffic/service first when the operational window permits.
+
+Example backup:
+
+```bash
+sudo install -d -m 0700 /var/backups/waf-proxy
+sudo systemctl stop waf-tls-frontend 2>/dev/null || true
+sudo systemctl stop waf-proxy
+sudo tar --acls --xattrs --numeric-owner -C / -czf \
+  /var/backups/waf-proxy/waf-$(date +%Y%m%d-%H%M%S).tar.gz \
+  etc/waf var/lib/waf-proxy var/log/waf
+sudo sha256sum /var/backups/waf-proxy/waf-*.tar.gz
+```
+
+Restore only to a compatible package/application version, then run
+`waf-doctor --check` before starting services. HSM private keys are outside this
+filesystem backup and must follow the HSM vendor backup/recovery procedure.
+
+### 13.9 Upgrade
+
+Use the native package manager for package deployments. Preserve operator
+configuration, generated admin secret, certificates/CRS, and
+`/var/lib/waf-proxy`. After upgrade run doctor, health, auth, TLS/backend traffic,
+and WAF event smoke tests. Inspect `.dpkg-dist/.dpkg-old` or `.rpmnew/.rpmsave`
+files rather than blindly replacing production configuration.
+
+### 13.10 Rollback
+
+Keep the previous signed/hashed package and a pre-upgrade filesystem backup. A
+package downgrade is not automatically an application-state rollback: if a new
+version changes persistent-state format, restore only through a version-qualified
+procedure. Real lifecycle behavior remains a Slice C qualification gate until
+executed on dedicated supported hosts.
+
+### 13.11 Uninstall
+
+Package removal should remove package-owned executables/units while preserving
+operator state according to DEB/RPM semantics. Never automate destructive
+removal of `/etc/waf/certs`, `/etc/waf/crs`, or `/var/lib/waf-proxy` without an
+explicit backup/cleanup decision. Source installs use the existing
+`uninstall.sh` path and are not the primary enterprise package workflow.
+
+### 13.12 Troubleshooting
+
+Start with:
+
+```bash
+sudo waf-doctor --check
+sudo systemctl status waf-proxy --no-pager
+sudo journalctl -u waf-proxy -n 200 --no-pager
+sudo ss -tlnp
+sudo ls -la /etc/waf /var/lib/waf-proxy /var/log/waf
+```
+
+Common classes are missing/unapproved CRS, listener conflicts, config/TLS
+validation errors, backend health failures, filesystem ownership, stale systemd
+drop-ins, and on RHEL-family systems SELinux AVCs. Do not "fix" startup by
+disabling SELinux, weakening file permissions, bypassing TLS validation, or
+silently falling back from HSM to a filesystem key.\n\n## 14. OpenAI Responses API credentials\n\nFor native OpenAI, configure `provider=openai`, `api_style=responses`, and use a secret reference rather than putting the key in `config.json`:\n\n```json\n"api_key_ref": "env:OPENAI_API_KEY"\n```\n\nThe packaged systemd unit already reads `/etc/waf/waf-proxy.env` before dropping privileges, so an operator may add the variable to that root-owned `0600` file without exposing it to the admin API:\n\n```bash\nsudo sh -c 'printf "\\nOPENAI_API_KEY=%s\\n" "YOUR_KEY" >> /etc/waf/waf-proxy.env'\nsudo chown root:root /etc/waf/waf-proxy.env\nsudo chmod 0600 /etc/waf/waf-proxy.env\nsudo systemctl restart waf-proxy\n```\n\nFor file references, use a dedicated absolute regular file such as `/etc/waf/secrets/openai.key`, mode `0600`, with no symlinked path component. The admin API never returns the key or stored reference. Existing historical inline `api_key` configs remain migration-compatible but should be replaced with `api_key_ref`. Native Responses requires HTTPS; self-hosted/OpenAI-compatible endpoints that still implement Chat Completions should use `api_style=chat_completions`.\n

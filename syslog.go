@@ -24,6 +24,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"waf-proxy/internal/hsm"
 )
 
 type SyslogConfig struct {
@@ -345,6 +347,25 @@ func (s *syslogEngine) forwardAudit(user, action, detail string) {
 		return
 	}
 	s.emitWithConfig(cfg, sylNotice, "AUDIT", kv("event", "audit", "user", user, "action", action, "detail", detail))
+}
+
+func (s *syslogEngine) forwardHSMAudit(e hsm.AuditEvent) {
+	if !s.auditEnabled.Load() {
+		return
+	}
+	cfg := s.snapshotCfg()
+	if !cfg.Enabled || !cfg.SendAudit {
+		return
+	}
+	// Deliberately limited to the approved HSM evidence fields.
+	s.emitWithConfig(cfg, sylNotice, "AUDIT", kv(
+		"event", "hsm",
+		"provider", e.Provider,
+		"slot", e.Slot,
+		"key_reference", e.KeyReference,
+		"operation", e.Operation,
+		"result", e.Result,
+	))
 }
 
 func (s *syslogEngine) forwardNotify(level, kind, title, body string) {

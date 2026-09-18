@@ -417,13 +417,19 @@
         <div class="field check"><input type="checkbox" id="ai_enabled"><label for="ai_enabled" style="margin:0">Enable AI analysis</label></div>
         <div class="row">
           <div class="field"><label>Provider</label><select id="ai_provider">
-            <option value="openai">OpenAI-compatible</option>
+            <option value="openai">OpenAI / OpenAI-compatible</option>
             <option value="anthropic">Anthropic</option></select></div>
-          <div class="field"><label>Model</label><input type="text" id="ai_model" spellcheck="false" placeholder="gpt-4o-mini"></div>
+          <div class="field" id="ai_style_wrap"><label>OpenAI API style</label><select id="ai_api_style">
+            <option value="responses">Responses API + Structured Outputs</option>
+            <option value="chat_completions">Chat Completions compatibility</option></select></div>
         </div>
-        <div class="field"><label>API base URL</label><input type="text" id="ai_base_url" spellcheck="false" placeholder="https://api.openai.com/v1"></div>
-        <div class="field"><label>API key <span id="ai_keyset" class="restart" style="border-color:var(--line);color:var(--mut)">not set</span></label>
-          <input type="password" id="ai_api_key" spellcheck="false" placeholder="leave blank to keep current key"></div>
+        <div class="row">
+          <div class="field"><label>Model</label><input type="text" id="ai_model" spellcheck="false" placeholder="gpt-4o-mini"></div>
+          <div class="field"><label>API base URL</label><input type="text" id="ai_base_url" spellcheck="false" placeholder="https://api.openai.com/v1"></div>
+        </div>
+        <div class="field"><label>API key reference <span id="ai_keyset" class="restart" style="border-color:var(--line);color:var(--mut)">not set</span></label>
+          <input type="text" id="ai_api_key_ref" spellcheck="false" placeholder="env:OPENAI_API_KEY or file:/etc/waf/secrets/openai.key">
+          <div class="hint">Secret values are not stored in or returned through this form. Leave blank to keep the current reference.</div></div>
         <div class="row3">
           <div class="field"><label>Timeout (s)</label><input type="number" id="ai_timeout_sec" min="1" max="60"></div>
           <div class="field"><label>Max tokens</label><input type="number" id="ai_max_tokens" min="1"></div>
@@ -2022,9 +2028,11 @@
     ai=ai||{};
     $("ai_enabled").checked=!!ai.enabled;
     $("ai_provider").value=ai.provider||"openai";
+    $("ai_api_style").value=ai.api_style||"responses";
+    $("ai_style_wrap").style.display=$("ai_provider").value==="openai"?"":"none";
     $("ai_model").value=ai.model||"";
     $("ai_base_url").value=ai.base_url||"";
-    $("ai_api_key").value="";
+    $("ai_api_key_ref").value="";
     $("ai_timeout_sec").value=ai.timeout_sec??8;
     $("ai_max_tokens").value=ai.max_tokens??300;
     $("ai_only_on_match").checked=ai.only_on_match!==false;
@@ -2041,9 +2049,10 @@
     return {
       enabled:$("ai_enabled").checked,
       provider:$("ai_provider").value,
+      api_style:$("ai_api_style").value,
       model:$("ai_model").value.trim(),
       base_url:$("ai_base_url").value.trim(),
-      api_key:$("ai_api_key").value,           // blank ⇒ server keeps current
+      api_key_ref:$("ai_api_key_ref").value.trim(), // blank ⇒ server keeps current
       timeout_sec:+$("ai_timeout_sec").value||8,
       max_tokens:+$("ai_max_tokens").value||300,
       only_on_match:$("ai_only_on_match").checked,
@@ -2056,6 +2065,7 @@
       workers:prev.workers||2, queue_size:prev.queue_size||512
     };
   }
+  $("ai_provider").onchange=()=>{$("ai_style_wrap").style.display=$("ai_provider").value==="openai"?"":"none";};
   $("ai_save").onclick=()=>saveConfig().then(()=>toast("AI settings — draft saved")).catch(e=>toast(e.message,"err"));
   $("ai_test").onclick=async()=>{
     try{ const v=await api("/api/ai/test",{method:"POST",body:"{}"});

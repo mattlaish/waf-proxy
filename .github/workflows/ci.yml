@@ -21,27 +21,28 @@ jobs:
           go-version: '1.25'
           check-latest: true
 
+      # Fail before compilation if committed module metadata is not canonical.
+      # -diff never mutates go.mod/go.sum and exits non-zero when tidy would.
+      - name: go.mod/go.sum tidy drift
+        run: GOTOOLCHAIN=local go mod tidy -diff
+
       # Portable Coraza-only path: GitHub runners have no libhs, which matches
       # build.sh's fallback when pkg-config/libhs is absent. The native
       # vectorscan+cgo path is qualified on a prepared host, not here.
-      # go build fails loudly if go.mod is out of sync with the source, which is
-      # the regression that once shipped build-broken to main.
       - name: go build
-        run: CGO_ENABLED=0 go build ./...
+        run: GOTOOLCHAIN=local CGO_ENABLED=0 go build ./...
 
       - name: go vet
-        run: CGO_ENABLED=0 go vet ./...
+        run: GOTOOLCHAIN=local CGO_ENABLED=0 go vet ./...
 
-      # Runs the whole suite, including TestReleaseScriptsAreLFAndBashSyntaxClean,
-      # which asserts every release script is LF-only and executable.
       - name: go test
-        run: CGO_ENABLED=0 go test ./...
+        run: GOTOOLCHAIN=local CGO_ENABLED=0 go test ./...
 
       - name: go test -race
-        run: CGO_ENABLED=1 go test -race ./...
+        run: GOTOOLCHAIN=local CGO_ENABLED=1 go test -race ./...
 
       - name: real Coraza transaction truth gate
-        run: CGO_ENABLED=1 go test -tags realcoraza -run 'TestRealCoraza' ./...
+        run: GOTOOLCHAIN=local CGO_ENABLED=1 go test -tags realcoraza -run 'TestRealCoraza' ./...
 
   govulncheck:
     name: dependency vulnerabilities
@@ -53,6 +54,6 @@ jobs:
           go-version: '1.25'
           check-latest: true
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: GOTOOLCHAIN=local govulncheck ./...

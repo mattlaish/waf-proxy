@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Project-local packaging entry point for WAF Reverse Proxy.
+#
+# This wrapper intentionally does not install Go, RPM tools, dependencies, CRS,
+# or any other network content. It delegates to the checked-in Python builder,
+# which performs fail-closed host/source preflight before invoking the canonical
+# build.sh and DEB/RPM package builders.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "$ROOT/tools/waf_package_builder.py" "$@"
