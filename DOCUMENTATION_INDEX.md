@@ -139,3 +139,8 @@ current handover files.
 - New credentials use `api_key_ref=env:NAME|file:/absolute/path`; legacy inline `api_key` is migration-only.
 - Isolated provider/secret tests, race, vet, and 16/16 source contract checks PASS.
 - Root Go 1.25 build/test remains BLOCKED; see `OPENAI_INTEGRATION_GATE_RESULT.md`.
+
+
+## API Security Roadmap
+
+See `API_SECURITY_ROADMAP.md` for the planned API-aware WAF evolution slices.

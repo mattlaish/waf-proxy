@@ -968,6 +968,9 @@ type server struct {
 	debug         *DebugEvidenceStore
 	hsmAudit      *hsm.AuditRing
 	l7Abuse       *l7AbuseController
+	apiOps        *apiOperationStore
+	schema        *schemaStore
+	contracts     *contractStore
 	ipmgr         *ipManager
 	listenMgr     *listenerManager
 	draining      atomic.Bool
@@ -1320,6 +1323,9 @@ func (s *server) observeRequest(site, method, path, rawQuery, contentType string
 	}
 	if s.signals != nil {
 		s.signals.noteRequestShape(site, path, method, rawQuery, contentType, fields)
+	}
+	if s.apiOps != nil {
+		s.apiOps.note(site, method, path, code)
 	}
 }
 
@@ -1825,6 +1831,7 @@ func main() {
 		syslog:        newSyslogEngine(log),
 		hosts:         newHostObserver(log),
 		metrics:       newMetrics(),
+		contracts:     newContractStore(),
 		debug:         NewDebugEvidenceStore(debugEvidenceMaxFromEnv(), debugEvidenceTTLFromEnv()),
 		hsmAudit:      hsm.NewAuditRing(500),
 		ipmgr:         newIPManager(log, *adminAddr, os.Getenv("WAF_DATA_INTERFACE")),

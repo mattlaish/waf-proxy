@@ -288,6 +288,12 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("POST /api/ha/sync", a.authRole(roleOperator, a.handleHASync))
 	mux.HandleFunc("GET /api/pagepolicy", a.auth(a.handlePagePolicies))
 	mux.HandleFunc("GET /api/forms", a.auth(a.handleDiscoveredForms))
+	mux.HandleFunc("GET /api/security/contracts", a.auth(a.handleContracts))
+	mux.HandleFunc("POST /api/security/contracts/import", a.authRole(roleOperator, a.handleContractImport))
+	mux.HandleFunc("GET /api/security/schema/candidates", a.auth(a.handleSchemaCandidates))
+	mux.HandleFunc("GET /api/security/contracts", a.auth(a.handleContracts))
+	mux.HandleFunc("POST /api/security/contracts/import", a.authRole(roleOperator, a.handleContractImport))
+	mux.HandleFunc("GET /api/security/schema/{id}", a.auth(a.handleSchemaDetail))
 	mux.HandleFunc("POST /api/pagepolicy/upsert", a.authRole(roleReviewer, a.handlePagePolicyUpsert))
 	mux.HandleFunc("POST /api/pagepolicy/delete", a.authRole(roleReviewer, a.handlePagePolicyDelete))
 	mux.HandleFunc("GET /api/profiles", a.auth(a.handleProfiles))
@@ -299,6 +305,7 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("POST /api/crawl", a.auth(a.handleCrawl))
 	mux.HandleFunc("POST /api/sitemap/clear", a.auth(a.handleSitemapClear))
 	mux.HandleFunc("GET /api/discovered", a.auth(a.handleDiscovered))
+	mux.HandleFunc("GET /api/security/operations", a.auth(a.handleAPIOperations))
 	mux.HandleFunc("GET /api/metrics", a.auth(a.handleMetrics))
 	mux.HandleFunc("GET /api/vector-acceleration", a.auth(a.handleVectorAcceleration))
 	mux.HandleFunc("POST /api/vector-acceleration/reset", a.authRole(roleReviewer, a.handleVectorAccelerationReset))
@@ -1535,4 +1542,12 @@ func (a *adminServer) handleSitemapClear(w http.ResponseWriter, r *http.Request)
 	a.srv.signals.clear(site)
 	a.srv.learn.clear(site)
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (a *adminServer) handleAPIOperations(w http.ResponseWriter, r *http.Request) {
+	if a == nil || a.srv == nil || a.srv.apiOps == nil {
+		writeJSON(w, []any{})
+		return
+	}
+	writeJSON(w, a.srv.apiOps.snapshot())
 }

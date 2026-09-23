@@ -1177,3 +1177,8 @@ and then invokes the existing format-specific builders/verifiers. Missing prereq
 requires explicit `--allow-module-network`; the utility never bootstraps a Go
 toolchain, OS packages, CRS, or native libraries. See `PACKAGING_TOOL.md` for
 host requirements and examples.
+
+
+## API Security Roadmap
+
+Future API-aware WAF evolution is documented in `API_SECURITY_ROADMAP.md`.

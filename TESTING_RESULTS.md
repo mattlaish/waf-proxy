@@ -910,3 +910,11 @@ Final delivery evidence after source freeze:
 - root `GOTOOLCHAIN=local go test ./...`: **BLOCKED** before compilation because host Go 1.23.2 is below required Go 1.25.0.
 
 Delivery-integrity PASS does not promote Source Buildability. Exact Go 1.25 root tidy/build/vet/test/race/real-Coraza and live provider acceptance remain required.
+
+
+## API-1 Hardening
+Status: IMPLEMENTED_TESTING_DEFERRED
+- Operation fingerprinting
+- Normalization confidence metadata
+- ULID/date normalization hardening
+- Regression coverage added

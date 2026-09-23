@@ -517,3 +517,16 @@ before `main` merge remains an operational prerequisite.
 **Status: IMPLEMENTED_TESTING_DEFERRED.**
 
 Implemented Responses API, strict Structured Outputs, secret references, and mock integration tests. Promotion requires the exact source bytes to pass the repository Go 1.25 root gates; live external-provider acceptance remains `NOT_RUN`.
+
+
+## Future API Security Product Line
+
+The API-aware WAF roadmap is documented in `API_SECURITY_ROADMAP.md`. Current status: all API Security slices are PLANNED and implementation has not started.
+
+
+## API-1 Hardening
+Status: IMPLEMENTED_TESTING_DEFERRED
+- Operation fingerprinting
+- Normalization confidence metadata
+- ULID/date normalization hardening
+- Regression coverage added

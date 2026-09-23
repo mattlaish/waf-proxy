@@ -1894,3 +1894,35 @@ Final delivery evidence after source freeze:
 - root `GOTOOLCHAIN=local go test ./...`: **BLOCKED** before compilation because host Go 1.23.2 is below required Go 1.25.0.
 
 Delivery-integrity PASS does not promote Source Buildability. Exact Go 1.25 root tidy/build/vet/test/race/real-Coraza and live provider acceptance remain required.
+
+
+## Future API Security Direction
+
+The next major product direction is API-aware WAF evolution. See `API_SECURITY_ROADMAP.md`. Existing discovery/profile capabilities are foundation only.
+
+
+## API-1 Hardening
+Status: IMPLEMENTED_TESTING_DEFERRED
+- Operation fingerprinting
+- Normalization confidence metadata
+- ULID/date normalization hardening
+- Regression coverage added
+
+
+## API Security Slice Continuity — 2026-09-22
+
+Current API Security baseline:
+- API-1 Operation Discovery + Normalization: IMPLEMENTED
+- API-2 Typed Schema Learning: IMPLEMENTATION COMPLETE
+
+Canonical roadmap:
+- API_SECURITY_ROADMAP.md
+- API_SECURITY_SLICE_IMPLEMENTATION_ROADMAP.md
+
+Next planned feature slice:
+API-3 OpenAPI Contract Management
+
+Important boundaries:
+- Do not claim API-2 runtime qualification unless executed.
+- Do not add enforcement authority into API-2.
+- Do not store raw credentials, tokens, or sensitive request values.
