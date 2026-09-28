@@ -19,3 +19,5 @@ Next planned implementation:
 API-2 Typed Schema Learning
 
 Before starting API-2, review API-1 data model and architecture boundaries.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

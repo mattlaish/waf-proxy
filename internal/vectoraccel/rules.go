@@ -138,12 +138,12 @@ func classifyRule(id int, vars, op, actions string) (RuleSpec, bool) {
 	}
 	transforms := []string{}
 	hasChain := false
-	for _, raw := range splitActions(actions) {
+	for _, raw := range shared.SplitActions(actions) {
 		a := strings.TrimSpace(raw)
-		name, value := splitActionForCapability(a)
+		name, value := shared.SplitAction(a)
 		switch strings.ToLower(name) {
 		case "t":
-			if v := strings.ToLower(trimQuotedActionValue(value)); v != "" {
+			if v := strings.ToLower(shared.TrimActionValue(value)); v != "" {
 				transforms = append(transforms, v)
 			}
 		case "chain":
@@ -183,107 +183,24 @@ func classifyRule(id int, vars, op, actions string) (RuleSpec, bool) {
 	return spec, true
 }
 
-func splitActionForCapability(s string) (string, string) {
-	if i := strings.IndexByte(s, ':'); i >= 0 {
-		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
-	}
-	return strings.TrimSpace(s), ""
-}
-
-func trimQuotedActionValue(s string) string {
-	s = strings.TrimSpace(s)
-	if len(s) >= 2 && ((s[0] == '\'' && s[len(s)-1] == '\'') || (s[0] == '"' && s[len(s)-1] == '"')) {
-		s = s[1 : len(s)-1]
-	}
-	return strings.TrimSpace(s)
-}
-
-func splitActions(s string) []string {
-	var out []string
-	start := 0
-	quote := byte(0)
-	esc := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if esc {
-			esc = false
-			continue
-		}
-		if c == '\\' {
-			esc = true
-			continue
-		}
-		if quote != 0 {
-			if c == quote {
-				quote = 0
-			}
-			continue
-		}
-		if c == '\'' || c == '"' {
-			quote = c
-			continue
-		}
-		if c == ',' {
-			out = append(out, s[start:i])
-			start = i + 1
-		}
-	}
-	out = append(out, s[start:])
-	return out
-}
-
 func splitSecRule(st string) (string, string, string, bool) {
 	s := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(st), "SecRule"))
 	if s == "" {
 		return "", "", "", false
 	}
-	vars, rest, ok := nextToken(s)
+	vars, rest, ok := shared.NextToken(s)
 	if !ok {
 		return "", "", "", false
 	}
-	op, rest, ok := nextToken(strings.TrimSpace(rest))
+	op, rest, ok := shared.NextToken(strings.TrimSpace(rest))
 	if !ok {
 		return "", "", "", false
 	}
-	actions, _, ok := nextToken(strings.TrimSpace(rest))
+	actions, _, ok := shared.NextToken(strings.TrimSpace(rest))
 	if !ok {
 		return "", "", "", false
 	}
 	return vars, op, actions, true
-}
-
-func nextToken(s string) (string, string, bool) {
-	if s == "" {
-		return "", "", false
-	}
-	if s[0] == '"' || s[0] == '\'' {
-		q := s[0]
-		var b strings.Builder
-		esc := false
-		for i := 1; i < len(s); i++ {
-			c := s[i]
-			if esc {
-				b.WriteByte(c)
-				esc = false
-				continue
-			}
-			if c == '\\' {
-				esc = true
-				b.WriteByte(c)
-				continue
-			}
-			if c == q {
-				return b.String(), s[i+1:], true
-			}
-			b.WriteByte(c)
-		}
-		return "", "", false
-	}
-	i := strings.IndexAny(s, " \t\r\n")
-	if i < 0 {
-		return s, "", true
-	}
-	return s[:i], s[i:], true
 }
 
 func loadStatements(path string) ([]string, error) {

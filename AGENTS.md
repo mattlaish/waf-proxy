@@ -61,3 +61,5 @@ Rules:
   synchronized after meaningful release/build/packaging changes.
 - Never use stale "next slice" text from a historical section when a newer
   canonical handover or roadmap entry exists.
+
+<!-- documentation-review: 2026-09-28; classification: repository policy; current-authority: DOCUMENTATION_INDEX.md -->

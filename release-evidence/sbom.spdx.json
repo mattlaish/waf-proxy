@@ -7,8 +7,8 @@
     ]
   },
   "dataLicense": "CC0-1.0",
-  "documentNamespace": "https://waf-proxy.invalid/spdx/f932bcc2-99d7-50c0-aea1-70e7c5c38ff4",
-  "name": "production-control-plane-hardening-2026-09-25-sbom",
+  "documentNamespace": "https://waf-proxy.invalid/spdx/82a581dc-a783-50c5-9099-9ed6fd525831",
+  "name": "code-duplication-consolidation-2026-09-28-sbom",
   "packages": [
     {
       "SPDXID": "SPDXRef-Package-WAF",
@@ -24,7 +24,7 @@
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
       "name": "waf-proxy",
-      "versionInfo": "production-control-plane-hardening-2026-09-25"
+      "versionInfo": "code-duplication-consolidation-2026-09-28"
     },
     {
       "SPDXID": "SPDXRef-GoModule-1",

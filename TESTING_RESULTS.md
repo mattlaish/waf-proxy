@@ -1,5 +1,34 @@
 # Testing Results and Qualification Ledger
 
+## Current canonical baseline — 2026-09-28
+
+The current source is the **Code Duplication Review and Consolidation** working
+baseline derived byte-for-byte from the Production Correctness & Control-Plane
+Hardening parent artifact (`90acc977db2998f4a3c1c4cacc07e19f0087f8bc033bce6b9934b83415957be8`)
+before the changes documented in `CODE_DUPLICATION_REVIEW.md`. Status remains
+**IMPLEMENTED_TESTING_DEFERRED**. No API-9 is defined.
+
+The review removed only source layers proven to be unwired, superseded or
+functionally duplicative, and consolidated the duplicated SecLang action/token
+parser into `internal/capability`. Distinct API-6/API-7/API-8 state machines,
+workers and authority boundaries remain separate. The shipping Console remains
+`static/admin.html` + `static/theme.css`; the previously removed experimental
+`web/` tree is not part of the current source.
+
+Current dependency-free evidence: API source gates
+**69/47/46/72/33/56/45/58/83/100/110/156/259/134/190 PASS**, code-duplication
+source gate **80/80 PASS with 139 unique Admin/update routes**, OpenAI source
+contract **16/16 PASS** plus isolated tests PASS, WAF package-source PASS,
+package-builder **9/9 PASS**, and root Go source-shape **95 files PASS**. An
+isolated dependency-free `internal/capability` test also passes. Canonical Go
+1.25 tidy/build/vet/test/race remains **BLOCKED_ENVIRONMENT / NOT_RUN** on this
+host; none of these static/source results promotes the product to TESTED or
+RELEASED.
+
+Dated sections below are retained as historical engineering/evidence records.
+When an older section conflicts with this section, `CODE_DUPLICATION_REVIEW.md`,
+`DOCUMENTATION_INDEX.md`, and the current source tree are authoritative.
+
 ## Build-integrity and L7 correction — 2026-09-23
 
 An external Go 1.25 CI audit of the previous API-1→API-3 delivery showed that archive integrity and isolated slice tests had not proved package buildability. The current working source repairs the package-level defects found in that audit and an additional duplicate symbol found during follow-up:
@@ -1108,3 +1137,15 @@ Current exact-source dependency-free results: API source gates 69/47/46/72/33/56
 
 Current implementation baseline adds the post-audit production/control-plane hardening described in `PRODUCTION_CONTROL_PLANE_HARDENING.md`. Status remains **IMPLEMENTED_TESTING_DEFERRED**. Exact-source source gates pass through API-8 plus post-audit and production-hardening gates (`190/190` for the new hardening gate), but canonical Go 1.25 build/test/race is still BLOCKED_ENVIRONMENT / NOT_RUN. No API-9 is defined and API-6/API-7 learned/inferred signals retain no direct enforcement authority. The source artifact has no `.git` metadata, so source identity is the parent artifact SHA/manifests rather than Git branch/commit provenance.
 
+## 2026-09-28 — Code Duplication Review results
+
+Dependency-free exact-source results after consolidation: API gates
+**69/47/46/72/33/56/45/58/83/100/110/156/259/134/190 PASS**; duplication
+review gate **80/80 PASS** with **139 unique Admin/update routes**; OpenAI source
+contract **16/16 PASS** plus isolated tests PASS; WAF package-source PASS;
+package-builder **9/9 PASS**; root Go source-shape **95 files PASS**. The
+new shared `internal/capability` package also passes an isolated dependency-free
+unit test under the host Go 1.23 toolchain; this is advisory only. Canonical Go
+1.25 repository qualification remains `BLOCKED_ENVIRONMENT / NOT_RUN`.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

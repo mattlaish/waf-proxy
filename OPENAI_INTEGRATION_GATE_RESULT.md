@@ -84,3 +84,5 @@ Buildability Gate.
 - Baseline-relative source patch reconstruction: **PASS — 273/273 source files byte + Unix-mode identical**.
 - Final artifact negative mutations: **12/12 rejected PASS**.
 - Root Go 1.25 buildability remains **BLOCKED** on this Go 1.23.2 host.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

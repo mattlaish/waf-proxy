@@ -1,5 +1,34 @@
 # WAF Project Package Builder
 
+## Current canonical baseline — 2026-09-28
+
+The current source is the **Code Duplication Review and Consolidation** working
+baseline derived byte-for-byte from the Production Correctness & Control-Plane
+Hardening parent artifact (`90acc977db2998f4a3c1c4cacc07e19f0087f8bc033bce6b9934b83415957be8`)
+before the changes documented in `CODE_DUPLICATION_REVIEW.md`. Status remains
+**IMPLEMENTED_TESTING_DEFERRED**. No API-9 is defined.
+
+The review removed only source layers proven to be unwired, superseded or
+functionally duplicative, and consolidated the duplicated SecLang action/token
+parser into `internal/capability`. Distinct API-6/API-7/API-8 state machines,
+workers and authority boundaries remain separate. The shipping Console remains
+`static/admin.html` + `static/theme.css`; the previously removed experimental
+`web/` tree is not part of the current source.
+
+Current dependency-free evidence: API source gates
+**69/47/46/72/33/56/45/58/83/100/110/156/259/134/190 PASS**, code-duplication
+source gate **80/80 PASS with 139 unique Admin/update routes**, OpenAI source
+contract **16/16 PASS** plus isolated tests PASS, WAF package-source PASS,
+package-builder **9/9 PASS**, and root Go source-shape **95 files PASS**. An
+isolated dependency-free `internal/capability` test also passes. Canonical Go
+1.25 tidy/build/vet/test/race remains **BLOCKED_ENVIRONMENT / NOT_RUN** on this
+host; none of these static/source results promotes the product to TESTED or
+RELEASED.
+
+Dated sections below are retained as historical engineering/evidence records.
+When an older section conflicts with this section, `CODE_DUPLICATION_REVIEW.md`,
+`DOCUMENTATION_INDEX.md`, and the current source tree are authoritative.
+
 > **Documentation baseline — 2026-09-17.** This file documents a component or qualification path. Repository-wide release truth lives in [`DOCUMENTATION_INDEX.md`](DOCUMENTATION_INDEX.md), [`SOURCE_BASELINE_GATE_RESULT.md`](SOURCE_BASELINE_GATE_RESULT.md), and [`TESTING_RESULTS.md`](TESTING_RESULTS.md). Component PASS evidence must not be promoted into a root-build, runtime, package-lifecycle, clean-host, or release PASS outside its stated scope.
 
 ## Current buildability precondition
@@ -196,3 +225,12 @@ PACKAGE_BUILD_BLOCKED: <reason>
 A canonical build/test/package command failure also stops the run. The tool does
 not downgrade Go/Coraza, skip tests, substitute fixture binaries, or manufacture
 PASS evidence.
+
+## 2026-09-28 source-gate addition
+
+The canonical source now includes the code-duplication review gate. Package
+builds must preserve and execute it alongside the existing API, production
+hardening, OpenAI, package-source and artifact-integrity gates. The cleanup does
+not create a second packaging path.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

@@ -12,6 +12,3 @@ func VectorScanDifferential(candidates []int, coraza []int) (falseNeg []int) {
 	}
 	return
 }
-func QualificationPassed(candidates []int, coraza []int) bool {
-	return len(VectorScanDifferential(candidates, coraza)) == 0
-}

@@ -78,3 +78,5 @@ Seven API-6.3 Go test functions are present for cold-start/mature unknown transi
 ## Next slice
 
 `API-6.4 Sequence Operations + Hardening` remains `PLANNED`.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

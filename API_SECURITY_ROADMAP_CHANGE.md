@@ -22,3 +22,5 @@ The original “feature implementation: NOT STARTED / all slices PLANNED” entr
 ## API-7.3 BOLA Detection implementation checkpoint — 2026-09-24
 
 API-7.3 moved from `PLANNED` to `IMPLEMENTED_TESTING_DEFERRED`. It adds bounded, non-enforcing BOLA candidate evidence over API-5/API-7.1/API-7.2 trusted/pseudonymous inputs. API-7.4 BOLA Policy/Evidence/Console is now the next `PLANNED` slice; API-8 remains `PLANNED`.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

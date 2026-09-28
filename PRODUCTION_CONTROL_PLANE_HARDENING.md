@@ -1,5 +1,34 @@
 # Production Correctness & Control-Plane Hardening
 
+## Current canonical baseline — 2026-09-28
+
+The current source is the **Code Duplication Review and Consolidation** working
+baseline derived byte-for-byte from the Production Correctness & Control-Plane
+Hardening parent artifact (`90acc977db2998f4a3c1c4cacc07e19f0087f8bc033bce6b9934b83415957be8`)
+before the changes documented in `CODE_DUPLICATION_REVIEW.md`. Status remains
+**IMPLEMENTED_TESTING_DEFERRED**. No API-9 is defined.
+
+The review removed only source layers proven to be unwired, superseded or
+functionally duplicative, and consolidated the duplicated SecLang action/token
+parser into `internal/capability`. Distinct API-6/API-7/API-8 state machines,
+workers and authority boundaries remain separate. The shipping Console remains
+`static/admin.html` + `static/theme.css`; the previously removed experimental
+`web/` tree is not part of the current source.
+
+Current dependency-free evidence: API source gates
+**69/47/46/72/33/56/45/58/83/100/110/156/259/134/190 PASS**, code-duplication
+source gate **80/80 PASS with 139 unique Admin/update routes**, OpenAI source
+contract **16/16 PASS** plus isolated tests PASS, WAF package-source PASS,
+package-builder **9/9 PASS**, and root Go source-shape **95 files PASS**. An
+isolated dependency-free `internal/capability` test also passes. Canonical Go
+1.25 tidy/build/vet/test/race remains **BLOCKED_ENVIRONMENT / NOT_RUN** on this
+host; none of these static/source results promotes the product to TESTED or
+RELEASED.
+
+Dated sections below are retained as historical engineering/evidence records.
+When an older section conflicts with this section, `CODE_DUPLICATION_REVIEW.md`,
+`DOCUMENTATION_INDEX.md`, and the current source tree are authoritative.
+
 Status: **IMPLEMENTED_TESTING_DEFERRED**  
 Date: 2026-09-25  
 Parent: `waf-proxy-api8-post-audit-hardening-2026-09-24.zip` (`e838ce6bd4f9cca6176cb809eb189978f312b194ae4b7c2f6f13f892a2d85f98`)
@@ -31,3 +60,14 @@ This hardening wave closes production correctness and control-plane findings dis
 Static/source gates and artifact gates can validate source structure, security contracts, syntax, packaging and clean extraction. Canonical Go 1.25 compile/test/race remains **BLOCKED_ENVIRONMENT / NOT_RUN** on this host because the installed Go is 1.23.2, `go.mod` requires 1.25.0, and external toolchain retrieval is unavailable. This baseline must not be promoted to TESTED or RELEASED on source-gate evidence alone.
 
 The supplied source archive has no `.git` metadata. Therefore branch creation, remote/main synchronization, commit identity and fresh-clone verification cannot be performed from this artifact. Parent ZIP SHA-256 and package manifests are the source identity for this handoff.
+
+## 2026-09-28 source-topology addendum
+
+The later Code Duplication Review and Consolidation removes superseded/unwired
+source layers and centralizes shared SecLang parsing. It does not roll back or
+replace the production-correctness behavior documented here. This file remains
+the authority for the 2026-09-25 control-plane hardening behavior;
+`CODE_DUPLICATION_REVIEW.md` is the authority for the later source-topology
+cleanup.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

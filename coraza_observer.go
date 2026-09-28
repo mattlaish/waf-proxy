@@ -105,9 +105,6 @@ func (t *observedCorazaTx) observe() {
 				})
 			}
 		}
-		if c := currentDebugEvidenceCapture(); c != nil {
-			c.Capture("coraza-tx", map[string]any{"matched_rules": ids, "source": "tx.MatchedRules-after-ProcessLogging"})
-		}
 	})
 }
 func (t *observedCorazaTx) ProcessLogging() { t.Transaction.ProcessLogging(); t.observe() }

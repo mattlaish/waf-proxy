@@ -1,5 +1,34 @@
 # Development Roadmap — WAF Proxy
 
+## Current canonical baseline — 2026-09-28
+
+The current source is the **Code Duplication Review and Consolidation** working
+baseline derived byte-for-byte from the Production Correctness & Control-Plane
+Hardening parent artifact (`90acc977db2998f4a3c1c4cacc07e19f0087f8bc033bce6b9934b83415957be8`)
+before the changes documented in `CODE_DUPLICATION_REVIEW.md`. Status remains
+**IMPLEMENTED_TESTING_DEFERRED**. No API-9 is defined.
+
+The review removed only source layers proven to be unwired, superseded or
+functionally duplicative, and consolidated the duplicated SecLang action/token
+parser into `internal/capability`. Distinct API-6/API-7/API-8 state machines,
+workers and authority boundaries remain separate. The shipping Console remains
+`static/admin.html` + `static/theme.css`; the previously removed experimental
+`web/` tree is not part of the current source.
+
+Current dependency-free evidence: API source gates
+**69/47/46/72/33/56/45/58/83/100/110/156/259/134/190 PASS**, code-duplication
+source gate **80/80 PASS with 139 unique Admin/update routes**, OpenAI source
+contract **16/16 PASS** plus isolated tests PASS, WAF package-source PASS,
+package-builder **9/9 PASS**, and root Go source-shape **95 files PASS**. An
+isolated dependency-free `internal/capability` test also passes. Canonical Go
+1.25 tidy/build/vet/test/race remains **BLOCKED_ENVIRONMENT / NOT_RUN** on this
+host; none of these static/source results promotes the product to TESTED or
+RELEASED.
+
+Dated sections below are retained as historical engineering/evidence records.
+When an older section conflicts with this section, `CODE_DUPLICATION_REVIEW.md`,
+`DOCUMENTATION_INDEX.md`, and the current source tree are authoritative.
+
 ## Build-integrity and L7 correction — 2026-09-23
 
 An external Go 1.25 CI audit of the previous API-1→API-3 delivery showed that archive integrity and isolated slice tests had not proved package buildability. The current working source repairs the package-level defects found in that audit and an additional duplicate symbol found during follow-up:
@@ -567,7 +596,7 @@ Implemented Responses API, strict Structured Outputs, secret references, and moc
 
 ## Future API Security Product Line
 
-The API-aware WAF roadmap is documented in `API_SECURITY_ROADMAP.md` and `API_SECURITY_SLICE_IMPLEMENTATION_ROADMAP.md`. Current source status: API-1 through API-5, API-6.1 through API-6.4, and API-7.1 through API-7.4 are IMPLEMENTED_TESTING_DEFERRED; API-8 is PLANNED. Go qualification remains deferred to the applicable gate.
+The API-aware WAF roadmap is documented in `API_SECURITY_ROADMAP.md` and `API_SECURITY_SLICE_IMPLEMENTATION_ROADMAP.md`. Current source status: API-1 through API-8 are `IMPLEMENTED_TESTING_DEFERRED`; no API-9 is defined. Go 1.25 qualification remains deferred to the applicable gate.
 
 
 ## API-1 Hardening
@@ -588,7 +617,7 @@ Status: IMPLEMENTED_TESTING_DEFERRED
 - API-6.2 Workflow Learning: `IMPLEMENTED_TESTING_DEFERRED`.
 - API-6.3 Sequence Anomaly Detection: `IMPLEMENTED_TESTING_DEFERRED`.
 - API-6.4 and API-7.1 through API-7.4: `IMPLEMENTED_TESTING_DEFERRED`.
-- API-8: `PLANNED`.
+- API-8: `IMPLEMENTED_TESTING_DEFERRED`; implementation roadmap complete through API-8, with Go 1.25 production qualification still required.
 
 API-3 source includes OpenAPI 3.0/3.1 parsing, local references, contract import/versioning, API-1 operation binding, version/schema comparison, and API-2 drift evidence. No enforcement is introduced. Go 1.25 build/test qualification is deferred to the final qualification gate.
 
@@ -628,3 +657,12 @@ The documented API-security implementation roadmap is now complete through API-8
 
 Current implementation baseline adds the post-audit production/control-plane hardening described in `PRODUCTION_CONTROL_PLANE_HARDENING.md`. Status remains **IMPLEMENTED_TESTING_DEFERRED**. Exact-source source gates pass through API-8 plus post-audit and production-hardening gates (`190/190` for the new hardening gate), but canonical Go 1.25 build/test/race is still BLOCKED_ENVIRONMENT / NOT_RUN. No API-9 is defined and API-6/API-7 learned/inferred signals retain no direct enforcement authority. The source artifact has no `.git` metadata, so source identity is the parent artifact SHA/manifests rather than Git branch/commit provenance.
 
+## 2026-09-28 — Maintenance consolidation checkpoint
+
+Production Correctness & Control-Plane Hardening remains the functional
+baseline; Code Duplication Review and Consolidation is a source-maintenance
+checkpoint on top of it. It removes superseded/unwired implementations and
+centralizes shared parsing without adding a product slice. API-1 through API-8
+remain `IMPLEMENTED_TESTING_DEFERRED`; no API-9 is defined.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

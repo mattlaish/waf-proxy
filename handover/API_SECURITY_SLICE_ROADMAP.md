@@ -43,3 +43,5 @@ PLANNED
 
 ### API-8 GraphQL Security
 PLANNED
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

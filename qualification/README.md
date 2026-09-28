@@ -26,3 +26,5 @@ traffic before using this as production qualification evidence.
 ## Phase 5 Slice A Runtime Qualification Framework
 
 `runtime_report.go` provides the evidence schema used by release-host qualification. It does not mark runtime gates as passed; reports must be populated by executed Go 1.25, Coraza v3.7.0, and libvectorscan release-host runs.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

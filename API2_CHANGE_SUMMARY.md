@@ -10,3 +10,5 @@ Added:
 The implementation intentionally keeps schema learning separate from request blocking.
 
 Qualification: NOT RUN.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

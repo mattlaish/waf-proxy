@@ -17,3 +17,5 @@ The source gate confirms the three foundation models, API-1 normalized operation
 | Go 1.25 real-dependency build/vet/full test | `NOT_RUN` | outside this API-6.1-only request and unavailable on this host |
 
 No blocked/not-run row is represented as PASS.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

@@ -1266,16 +1266,6 @@ func hasEnumOutside(observed, declared []string) bool {
 	return false
 }
 
-func nonAnonymousAuthSamples(m map[string]int64) int64 {
-	var n int64
-	for k, v := range m {
-		if k != "none" && k != "" {
-			n += v
-		}
-	}
-	return n
-}
-
 func authRequirementDrift(schemes map[string]map[string]any, reqs []ContractSecurityRequirement, observed map[string]int64) bool {
 	type groupState struct {
 		required    map[string]bool

@@ -58,6 +58,10 @@ jobs:
         run: python3 ./tools/tests/test-api8-post-audit-hardening-source.py
       - name: Production correctness and control-plane hardening source gate
         run: python3 ./tools/tests/test-production-control-plane-hardening-source.py
+      - name: Code duplication review source gate
+        run: python3 ./tools/tests/test-code-duplication-review-source.py
+      - name: Markdown review source gate
+        run: python3 ./tools/tests/test-markdown-review-source.py
 
       # Fail before compilation if committed module metadata is not canonical.
       # -diff never mutates go.mod/go.sum and exits non-zero when tidy would.

@@ -51,3 +51,5 @@ The runner writes `vendor-hsm-qualification.json` with
 `vendor_class=real_vendor_hsm`. Do not run this against SoftHSM or a mock. The
 checked-in file intentionally remains `NOT_RUN` until real production-class
 hardware/service infrastructure is exercised.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

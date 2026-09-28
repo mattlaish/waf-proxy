@@ -177,13 +177,6 @@ func PublicTLSListeners(sites []Site) map[string]bool {
 	return out
 }
 
-func ActualListenerKey(cfg AccelerationConfig, sites []Site, publicListen string) string {
-	if FrontendEnabled(cfg) && PublicTLSListeners(sites)[publicListen] {
-		return InternalListenerKey(publicListen)
-	}
-	return publicListen
-}
-
 func PublicListenForKey(cfg AccelerationConfig, sites []Site, key string) string {
 	if !FrontendEnabled(cfg) || !IsInternalListenerKey(key) {
 		return key

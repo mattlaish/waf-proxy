@@ -74,3 +74,5 @@ sudo ./packaging/cleanhost/run-clean-host-qualification.sh \
 Use the corresponding RPM packages on RHEL-family hosts. Slice C remains the
 more exhaustive rollback/failed-upgrade qualification; Slice D intentionally
 focuses on the end-to-end clean-machine operator experience.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

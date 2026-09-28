@@ -29,3 +29,5 @@ API-6.1 cannot influence API-1 through API-5 enforcement results.
 - `sequence_api61_test.go` contains five targeted tests for normalized/verified correlation, deterministic transitions, TTL/cardinality bounds, restart/privacy persistence and concurrent non-blocking snapshots.
 - The current host has no Go or gofmt executable. Targeted Go tests and `go test -race` are therefore `BLOCKED_ENVIRONMENT/NOT_RUN`, not PASS.
 - Repository-wide historical deferred gates were not rerun for this slice, per scope. Canonical Go 1.25 real-dependency qualification remains separate.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

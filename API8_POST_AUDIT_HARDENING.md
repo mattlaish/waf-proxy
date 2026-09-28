@@ -1,5 +1,34 @@
 # API-8 Post-Audit Hardening
 
+## Current canonical baseline — 2026-09-28
+
+The current source is the **Code Duplication Review and Consolidation** working
+baseline derived byte-for-byte from the Production Correctness & Control-Plane
+Hardening parent artifact (`90acc977db2998f4a3c1c4cacc07e19f0087f8bc033bce6b9934b83415957be8`)
+before the changes documented in `CODE_DUPLICATION_REVIEW.md`. Status remains
+**IMPLEMENTED_TESTING_DEFERRED**. No API-9 is defined.
+
+The review removed only source layers proven to be unwired, superseded or
+functionally duplicative, and consolidated the duplicated SecLang action/token
+parser into `internal/capability`. Distinct API-6/API-7/API-8 state machines,
+workers and authority boundaries remain separate. The shipping Console remains
+`static/admin.html` + `static/theme.css`; the previously removed experimental
+`web/` tree is not part of the current source.
+
+Current dependency-free evidence: API source gates
+**69/47/46/72/33/56/45/58/83/100/110/156/259/134/190 PASS**, code-duplication
+source gate **80/80 PASS with 139 unique Admin/update routes**, OpenAI source
+contract **16/16 PASS** plus isolated tests PASS, WAF package-source PASS,
+package-builder **9/9 PASS**, and root Go source-shape **95 files PASS**. An
+isolated dependency-free `internal/capability` test also passes. Canonical Go
+1.25 tidy/build/vet/test/race remains **BLOCKED_ENVIRONMENT / NOT_RUN** on this
+host; none of these static/source results promotes the product to TESTED or
+RELEASED.
+
+Dated sections below are retained as historical engineering/evidence records.
+When an older section conflicts with this section, `CODE_DUPLICATION_REVIEW.md`,
+`DOCUMENTATION_INDEX.md`, and the current source tree are authoritative.
+
 Status: **IMPLEMENTED_TESTING_DEFERRED**
 
 This hardening pass follows the API-8 GraphQL Security implementation. It does not define API-9 and does not change the API-6/API-7/API-8 authority model.
@@ -36,7 +65,7 @@ The following model-only files were removed because they had no runtime store/AP
 - `debug_lifecycle_v2.go`
 - `debug_retention_worker_v2.go`
 
-The real bounded debug implementation remains `debug_bundle.go`, `debug_evidence.go`, `support_api.go`, CLI integration and the SYSTEM Console. Phase 5 Slice D is therefore corrected to PLANNED / NOT IMPLEMENTED rather than claiming model-only structs as implementation.
+The real bounded debug implementation remains `debug_bundle.go`, shared `debug_sanitize.go`, `support_api.go`, CLI integration and the SYSTEM Console. The superseded `debug_evidence.go` compatibility layer was later removed by the 2026-09-28 duplication consolidation. Phase 5 Slice D is therefore corrected to PLANNED / NOT IMPLEMENTED rather than claiming model-only structs as implementation.
 
 ## Authority boundary
 
@@ -52,3 +81,13 @@ The real bounded debug implementation remains `debug_bundle.go`, `debug_evidence
 ## Qualification truth
 
 Dependency-free source/static/package gates pass on the exact hardening source. Canonical Go 1.25 `tidy/build/test/race` remains **BLOCKED_ENVIRONMENT / NOT_RUN** on the current host because only Go 1.23.2 is locally installed and external toolchain retrieval is unavailable. This hardening must not be promoted to TESTED or RELEASED from source/static evidence alone.
+
+## 2026-09-28 maintenance addendum
+
+The later duplication consolidation removes additional legacy/unwired helper
+layers identified by a whole-repository liveness/overlap review. The API-8
+post-audit functional behavior remains in force. Current debug sanitization is
+centralized in `debug_sanitize.go`; the old `debug_evidence.go` compatibility
+layer is no longer present.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

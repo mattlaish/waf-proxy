@@ -49,3 +49,5 @@ This document is scoped package/distribution evidence. The 2026-09-17 audit of
 not yet executed on Go 1.25 in this environment. Therefore no PASS in this file
 may be interpreted as a current production WAF binary/package or overall release
 PASS. See `SOURCE_BASELINE_GATE_RESULT.md` and `DOCUMENTATION_INDEX.md`.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

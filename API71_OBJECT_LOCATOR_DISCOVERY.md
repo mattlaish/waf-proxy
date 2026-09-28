@@ -72,3 +72,5 @@ The dedicated API-7.1 source gate and retained API-1→API-6.4 compatibility/sou
 ## Next slice
 
 `API-7.2 — Identity/Object Relationship` is the next `PLANNED` slice. API-7.3 BOLA Detection, API-7.4 BOLA Policy/Evidence/Console, and API-8 remain `PLANNED`.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

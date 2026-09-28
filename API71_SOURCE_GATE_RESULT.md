@@ -31,3 +31,5 @@ Canonical Go qualification attempt:
 - `GOTOOLCHAIN=local GOPROXY=off go test -race ./... -run '^TestAPI71' -count=1`: **BLOCKED_ENVIRONMENT / NOT_RUN** for the same prerequisite
 
 No downgraded-toolchain or stub result is used to promote API-7.1. Production/live qualification remains deferred.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

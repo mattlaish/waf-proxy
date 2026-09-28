@@ -73,3 +73,5 @@ Use `--format rpm` on RHEL/Rocky/AlmaLinux/Oracle Linux with the corresponding
 RPM fixture set. Real production package lifecycle qualification should rerun
 the same runner with qualified Go 1.25 packages; fixture PASS alone is not
 production distro acceptance.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

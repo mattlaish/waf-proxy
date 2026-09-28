@@ -115,3 +115,5 @@ Therefore API-7.3 remains `IMPLEMENTED_TESTING_DEFERRED` and is not `TESTED` or 
 ## Next slice
 
 API-7.4 — BOLA Policy/Evidence/Console.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

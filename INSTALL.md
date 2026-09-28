@@ -1,5 +1,34 @@
 # waf-proxy — install guide
 
+## Current canonical baseline — 2026-09-28
+
+The current source is the **Code Duplication Review and Consolidation** working
+baseline derived byte-for-byte from the Production Correctness & Control-Plane
+Hardening parent artifact (`90acc977db2998f4a3c1c4cacc07e19f0087f8bc033bce6b9934b83415957be8`)
+before the changes documented in `CODE_DUPLICATION_REVIEW.md`. Status remains
+**IMPLEMENTED_TESTING_DEFERRED**. No API-9 is defined.
+
+The review removed only source layers proven to be unwired, superseded or
+functionally duplicative, and consolidated the duplicated SecLang action/token
+parser into `internal/capability`. Distinct API-6/API-7/API-8 state machines,
+workers and authority boundaries remain separate. The shipping Console remains
+`static/admin.html` + `static/theme.css`; the previously removed experimental
+`web/` tree is not part of the current source.
+
+Current dependency-free evidence: API source gates
+**69/47/46/72/33/56/45/58/83/100/110/156/259/134/190 PASS**, code-duplication
+source gate **80/80 PASS with 139 unique Admin/update routes**, OpenAI source
+contract **16/16 PASS** plus isolated tests PASS, WAF package-source PASS,
+package-builder **9/9 PASS**, and root Go source-shape **95 files PASS**. An
+isolated dependency-free `internal/capability` test also passes. Canonical Go
+1.25 tidy/build/vet/test/race remains **BLOCKED_ENVIRONMENT / NOT_RUN** on this
+host; none of these static/source results promotes the product to TESTED or
+RELEASED.
+
+Dated sections below are retained as historical engineering/evidence records.
+When an older section conflicts with this section, `CODE_DUPLICATION_REVIEW.md`,
+`DOCUMENTATION_INDEX.md`, and the current source tree are authoritative.
+
 > **Documentation baseline — 2026-09-17.** This file documents a component or qualification path. Repository-wide release truth lives in [`DOCUMENTATION_INDEX.md`](DOCUMENTATION_INDEX.md), [`SOURCE_BASELINE_GATE_RESULT.md`](SOURCE_BASELINE_GATE_RESULT.md), and [`TESTING_RESULTS.md`](TESTING_RESULTS.md). Component PASS evidence must not be promoted into a root-build, runtime, package-lifecycle, clean-host, or release PASS outside its stated scope.
 
 Coraza-based reverse-proxy WAF with an embedded admin console. The console is compiled in (`go:embed`) with no CDN dependency. The portable Coraza-only build is pure Go; optional VectorScan acceleration uses CGO/libhs.
@@ -532,8 +561,8 @@ an IP you didn't expect = it's up, you're looking at the wrong address.
   failover is keepalived/VRRP or your LB reading `/healthz`.
 - **Fail-open when powered off requires bypass hardware.** Software can't do it;
   `WAF_WATCHDOG_DEVICE` only feeds/withholds a heartbeat for such hardware.
-- The `web/` Vite console is a **scaffold**, not a replacement; the shipping
-  console is the embedded single file.
+- The obsolete experimental `web/` Vite/Preact console has been removed. The
+  shipping and authoritative console is `static/admin.html` with `static/theme.css`.
 
 ## 11. Upgrading / replacing files
 
@@ -915,3 +944,13 @@ validation errors, backend health failures, filesystem ownership, stale systemd
 drop-ins, and on RHEL-family systems SELinux AVCs. Do not "fix" startup by
 disabling SELinux, weakening file permissions, bypassing TLS validation, or
 silently falling back from HSM to a filesystem key.\n\n## 14. OpenAI Responses API credentials\n\nFor native OpenAI, configure `provider=openai`, `api_style=responses`, and use a secret reference rather than putting the key in `config.json`:\n\n```json\n"api_key_ref": "env:OPENAI_API_KEY"\n```\n\nThe packaged systemd unit already reads `/etc/waf/waf-proxy.env` before dropping privileges, so an operator may add the variable to that root-owned `0600` file without exposing it to the admin API:\n\n```bash\nsudo sh -c 'printf "\\nOPENAI_API_KEY=%s\\n" "YOUR_KEY" >> /etc/waf/waf-proxy.env'\nsudo chown root:root /etc/waf/waf-proxy.env\nsudo chmod 0600 /etc/waf/waf-proxy.env\nsudo systemctl restart waf-proxy\n```\n\nFor file references, use a dedicated absolute regular file such as `/etc/waf/secrets/openai.key`, mode `0600`, with no symlinked path component. The admin API never returns the key or stored reference. Existing historical inline `api_key` configs remain migration-compatible but should be replaced with `api_key_ref`. Native Responses requires HTTPS; self-hosted/OpenAI-compatible endpoints that still implement Chat Completions should use `api_style=chat_completions`.\n
+
+## 2026-09-28 source-layout note
+
+The shipping UI has a single source: `static/admin.html` with
+`static/theme.css`. The old non-shipping `web/` migration scaffold is absent.
+The 2026-09-28 duplication consolidation does not change installation paths,
+persistent `/etc/waf`/state preservation requirements, or package lifecycle
+semantics.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

@@ -25,3 +25,5 @@ Those are deferred to the final qualification gate. This PASS must not be used t
 ## 2026-09-23 final closure refresh
 
 API-3 remains `IMPLEMENTED_TESTING_DEFERRED`. Closure hardening adds explicit external-`$ref` rejection, duplicate-normalized-operation rejection, multiple declared content types, OpenAPI security OR/AND/anonymous-alternative semantics, and matched site/host scoping for `UNDECLARED_ENDPOINT`. Current source gate is **47 checks PASS**. Exact-source compile-only PASSes with a minimal YAML shim, and four deterministic runtime/integration tests that do not require YAML behavior PASS. Real `goccy/go-yaml` runtime and repository-root Go 1.25 qualification remain BLOCKED/NOT_RUN on this host.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

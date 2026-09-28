@@ -3,6 +3,8 @@ package crs
 import (
 	"strconv"
 	"strings"
+
+	shared "waf-proxy/internal/capability"
 )
 
 // ParseRule preserves the Slice B API for focused callers.
@@ -19,15 +21,15 @@ func ParseRuleAt(statement, file string, line int) Rule {
 		return r
 	}
 	s = strings.TrimSpace(s[len("SecRule"):])
-	targets, rest, ok := nextToken(s)
+	targets, rest, ok := shared.NextToken(s)
 	if !ok {
 		return r
 	}
-	op, rest, ok := nextToken(strings.TrimSpace(rest))
+	op, rest, ok := shared.NextToken(strings.TrimSpace(rest))
 	if !ok {
 		return r
 	}
-	actions, _, ok := nextToken(strings.TrimSpace(rest))
+	actions, _, ok := shared.NextToken(strings.TrimSpace(rest))
 	if !ok {
 		return r
 	}
@@ -55,115 +57,34 @@ func ParseRuleAt(statement, file string, line int) Rule {
 		}
 	}
 
-	for _, rawAction := range splitActions(actions) {
+	for _, rawAction := range shared.SplitActions(actions) {
 		a := strings.TrimSpace(rawAction)
 		if a == "" {
 			continue
 		}
 		r.Actions = append(r.Actions, a)
-		name, value := splitAction(a)
+		name, value := shared.SplitAction(a)
 		switch strings.ToLower(name) {
 		case "id":
-			r.ID = trimActionValue(value)
+			r.ID = shared.TrimActionValue(value)
 		case "phase":
-			if n, err := strconv.Atoi(trimActionValue(value)); err == nil {
+			if n, err := strconv.Atoi(shared.TrimActionValue(value)); err == nil {
 				r.Phase = n
 			}
 		case "t":
-			v := strings.ToLower(trimActionValue(value))
+			v := strings.ToLower(shared.TrimActionValue(value))
 			if v != "" {
 				r.Transforms = append(r.Transforms, v)
 			}
 		case "tag":
-			if v := trimActionValue(value); v != "" {
+			if v := shared.TrimActionValue(value); v != "" {
 				r.Tags = append(r.Tags, v)
 			}
 		case "severity":
-			r.Severity = trimActionValue(value)
+			r.Severity = shared.TrimActionValue(value)
 		case "chain":
 			r.HasChain = true
 		}
 	}
 	return r
-}
-
-func nextToken(s string) (string, string, bool) {
-	if s == "" {
-		return "", "", false
-	}
-	if s[0] == '"' || s[0] == '\'' {
-		q := s[0]
-		var b strings.Builder
-		escaped := false
-		for i := 1; i < len(s); i++ {
-			c := s[i]
-			if escaped {
-				b.WriteByte(c)
-				escaped = false
-				continue
-			}
-			if c == '\\' {
-				escaped = true
-				b.WriteByte(c)
-				continue
-			}
-			if c == q {
-				return b.String(), s[i+1:], true
-			}
-			b.WriteByte(c)
-		}
-		return "", "", false
-	}
-	if i := strings.IndexAny(s, " \t\r\n"); i >= 0 {
-		return s[:i], s[i:], true
-	}
-	return s, "", true
-}
-
-func splitActions(s string) []string {
-	var out []string
-	start := 0
-	quote := byte(0)
-	escaped := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if c == '\\' {
-			escaped = true
-			continue
-		}
-		if quote != 0 {
-			if c == quote {
-				quote = 0
-			}
-			continue
-		}
-		if c == '\'' || c == '"' {
-			quote = c
-			continue
-		}
-		if c == ',' {
-			out = append(out, s[start:i])
-			start = i + 1
-		}
-	}
-	return append(out, s[start:])
-}
-
-func splitAction(s string) (string, string) {
-	if i := strings.IndexByte(s, ':'); i >= 0 {
-		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
-	}
-	return strings.TrimSpace(s), ""
-}
-
-func trimActionValue(s string) string {
-	s = strings.TrimSpace(s)
-	if len(s) >= 2 && ((s[0] == '\'' && s[len(s)-1] == '\'') || (s[0] == '"' && s[len(s)-1] == '"')) {
-		s = s[1 : len(s)-1]
-	}
-	return strings.TrimSpace(s)
 }

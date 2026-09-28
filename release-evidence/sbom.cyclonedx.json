@@ -191,7 +191,7 @@
         }
       ],
       "type": "application",
-      "version": "production-control-plane-hardening-2026-09-25"
+      "version": "code-duplication-consolidation-2026-09-28"
     },
     "tools": {
       "components": [
@@ -203,7 +203,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:f932bcc2-99d7-50c0-aea1-70e7c5c38ff4",
+  "serialNumber": "urn:uuid:82a581dc-a783-50c5-9099-9ed6fd525831",
   "specVersion": "1.5",
   "version": 1
 }

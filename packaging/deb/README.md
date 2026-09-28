@@ -49,3 +49,5 @@ sudo systemctl enable --now waf-proxy
 
 Upgrades preserve dpkg conffiles, `/etc/waf/waf-proxy.env`, certificates/CRS,
 and `/var/lib/waf-proxy`. No maintainer script performs network access.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

@@ -1,5 +1,34 @@
 # API-8 — GraphQL Security
 
+## Current canonical baseline — 2026-09-28
+
+The current source is the **Code Duplication Review and Consolidation** working
+baseline derived byte-for-byte from the Production Correctness & Control-Plane
+Hardening parent artifact (`90acc977db2998f4a3c1c4cacc07e19f0087f8bc033bce6b9934b83415957be8`)
+before the changes documented in `CODE_DUPLICATION_REVIEW.md`. Status remains
+**IMPLEMENTED_TESTING_DEFERRED**. No API-9 is defined.
+
+The review removed only source layers proven to be unwired, superseded or
+functionally duplicative, and consolidated the duplicated SecLang action/token
+parser into `internal/capability`. Distinct API-6/API-7/API-8 state machines,
+workers and authority boundaries remain separate. The shipping Console remains
+`static/admin.html` + `static/theme.css`; the previously removed experimental
+`web/` tree is not part of the current source.
+
+Current dependency-free evidence: API source gates
+**69/47/46/72/33/56/45/58/83/100/110/156/259/134/190 PASS**, code-duplication
+source gate **80/80 PASS with 139 unique Admin/update routes**, OpenAI source
+contract **16/16 PASS** plus isolated tests PASS, WAF package-source PASS,
+package-builder **9/9 PASS**, and root Go source-shape **95 files PASS**. An
+isolated dependency-free `internal/capability` test also passes. Canonical Go
+1.25 tidy/build/vet/test/race remains **BLOCKED_ENVIRONMENT / NOT_RUN** on this
+host; none of these static/source results promotes the product to TESTED or
+RELEASED.
+
+Dated sections below are retained as historical engineering/evidence records.
+When an older section conflicts with this section, `CODE_DUPLICATION_REVIEW.md`,
+`DOCUMENTATION_INDEX.md`, and the current source tree are authoritative.
+
 Status: `IMPLEMENTED_TESTING_DEFERRED`
 
 API-8 closes the documented API-security implementation roadmap with deterministic GraphQL security while preserving the authority boundaries established by API-1 through API-7.
@@ -78,3 +107,11 @@ Mutation bodies are bounded and strict-decoded. Mutations persist immediately an
 Exact-source source/static evidence is PASS through API-8. API-8 has 22 targeted Go test functions present and a 259-check source gate. Canonical Go 1.25 `go mod tidy -diff`, root build/test, targeted API-8 tests and race tests remain `BLOCKED_ENVIRONMENT/NOT_RUN` because the host has Go 1.23.2, `go.mod` requires Go 1.25.0, and external toolchain retrieval is unavailable.
 
 Therefore API-8 is not `TESTED` or `RELEASED`.
+
+## 2026-09-28 maintenance addendum
+
+The repository-wide duplicate-functionality cleanup does not change GraphQL
+policy semantics, persistence, variable privacy, API-7 evidence integration, or
+LEARN/DETECT/ENFORCE authority. API-8 remains `IMPLEMENTED_TESTING_DEFERRED`.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

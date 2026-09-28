@@ -72,3 +72,5 @@ Application throughput is payload throughput from `wafbench`; it is not Ethernet
 line rate. No throughput figure in this repository should be treated as a
 production sizing claim unless the corresponding certification report is bound
 to the tested artifact and approved target.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

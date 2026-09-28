@@ -128,3 +128,5 @@ Therefore API-7.4 remains `IMPLEMENTED_TESTING_DEFERRED`, not `TESTED` or `RELEA
 ## Next slice
 
 API-8 — GraphQL Security remains `PLANNED`.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

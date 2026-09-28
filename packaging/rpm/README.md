@@ -55,3 +55,5 @@ sudo systemctl enable --now waf-proxy
 not download packages, CRS, Git repositories, or other network content.
 
 See `SELINUX.md` for the enforcing-SELinux qualification boundary.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

@@ -49,3 +49,5 @@ Local source/static evidence for this slice includes the dedicated API-6.4 sourc
 ## Next slice
 
 API-6 is now complete at implementation level through API-6.4. The next roadmap slice is `API-7.1 Object Locator Discovery`, still `PLANNED`.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

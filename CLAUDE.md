@@ -18,3 +18,5 @@ Update the canonical documentation set after meaningful work:
 For local/terminal sessions, the user may handle Git operations manually. For
 cloud/web sessions, use an isolated branch and pull request. Never commit or
 merge development work directly to `main` merely to obtain CI evidence.
+
+<!-- documentation-review: 2026-09-28; classification: repository policy; current-authority: DOCUMENTATION_INDEX.md -->

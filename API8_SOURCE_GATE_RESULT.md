@@ -58,3 +58,5 @@ The local toolchain is Go 1.23.2 while `go.mod` requires Go 1.25.0. `GOTOOLCHAIN
 - downstream real-dependency/production qualification.
 
 Source/static PASS does not promote API-8 to `TESTED` or `RELEASED`.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

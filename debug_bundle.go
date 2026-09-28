@@ -321,53 +321,6 @@ func (s *DebugEvidenceStore) ExportIncident(tenant, txid string, out io.Writer) 
 	return nil
 }
 
-// TenantExport is kept for compatibility with the earlier foundation API. It
-// exports the newest incident for exactly one tenant and never includes another
-// tenant's evidence.
-func (s *DebugEvidenceStore) TenantExport(tenant string, out io.Writer) error {
-	items := s.List(tenant, 1)
-	if len(items) == 0 {
-		return fmt.Errorf("no evidence for tenant %q", tenant)
-	}
-	return s.ExportIncident(tenant, items[0].TransactionID, out)
-}
-
-type debugRequestContext struct {
-	Tenant        string
-	TransactionID string
-	Started       time.Time
-}
-
-type debugRequestContextKey struct{}
-
-func debugContextFrom(ctx context.Context) (debugRequestContext, bool) {
-	v, ok := ctx.Value(debugRequestContextKey{}).(debugRequestContext)
-	return v, ok
-}
-
-func newDebugTransactionID() string {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err == nil {
-		return hex.EncodeToString(b[:])
-	}
-	return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
-}
-
-func tlsVersionName(version uint16) string {
-	switch version {
-	case tls.VersionTLS10:
-		return "TLS1.0"
-	case tls.VersionTLS11:
-		return "TLS1.1"
-	case tls.VersionTLS12:
-		return "TLS1.2"
-	case tls.VersionTLS13:
-		return "TLS1.3"
-	default:
-		return fmt.Sprintf("0x%04x", version)
-	}
-}
-
 func debugEvidenceWrap(store *DebugEvidenceStore, tenant string, next http.Handler) http.Handler {
 	if store == nil {
 		return next

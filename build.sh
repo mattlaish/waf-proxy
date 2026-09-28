@@ -31,6 +31,8 @@ python3 ./tools/tests/test-api74-source.py
 python3 ./tools/tests/test-api8-source.py
 python3 ./tools/tests/test-api8-post-audit-hardening-source.py
 python3 ./tools/tests/test-production-control-plane-hardening-source.py
+python3 ./tools/tests/test-code-duplication-review-source.py
+python3 ./tools/tests/test-markdown-review-source.py
 
 VERSION="${VERSION:-$(date -u +%Y.%m.%d)}"
 COMMIT="${COMMIT:-unknown}"

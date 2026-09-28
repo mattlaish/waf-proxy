@@ -10,3 +10,5 @@ Current truth:
 - API-2 Typed Schema Learning: IMPLEMENTATION COMPLETE
 - Runtime qualification: NOT RUN
 - Release qualification: NOT CLAIMED
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

@@ -1,5 +1,34 @@
 # waf-proxy — package manifest
 
+## Current canonical baseline — 2026-09-28
+
+The current source is the **Code Duplication Review and Consolidation** working
+baseline derived byte-for-byte from the Production Correctness & Control-Plane
+Hardening parent artifact (`90acc977db2998f4a3c1c4cacc07e19f0087f8bc033bce6b9934b83415957be8`)
+before the changes documented in `CODE_DUPLICATION_REVIEW.md`. Status remains
+**IMPLEMENTED_TESTING_DEFERRED**. No API-9 is defined.
+
+The review removed only source layers proven to be unwired, superseded or
+functionally duplicative, and consolidated the duplicated SecLang action/token
+parser into `internal/capability`. Distinct API-6/API-7/API-8 state machines,
+workers and authority boundaries remain separate. The shipping Console remains
+`static/admin.html` + `static/theme.css`; the previously removed experimental
+`web/` tree is not part of the current source.
+
+Current dependency-free evidence: API source gates
+**69/47/46/72/33/56/45/58/83/100/110/156/259/134/190 PASS**, code-duplication
+source gate **80/80 PASS with 139 unique Admin/update routes**, OpenAI source
+contract **16/16 PASS** plus isolated tests PASS, WAF package-source PASS,
+package-builder **9/9 PASS**, and root Go source-shape **95 files PASS**. An
+isolated dependency-free `internal/capability` test also passes. Canonical Go
+1.25 tidy/build/vet/test/race remains **BLOCKED_ENVIRONMENT / NOT_RUN** on this
+host; none of these static/source results promotes the product to TESTED or
+RELEASED.
+
+Dated sections below are retained as historical engineering/evidence records.
+When an older section conflicts with this section, `CODE_DUPLICATION_REVIEW.md`,
+`DOCUMENTATION_INDEX.md`, and the current source tree are authoritative.
+
 ## API Security checkpoint — 2026-09-23
 
 The uploaded API-3 baseline was audited against source rather than roadmap labels, then repaired/closed through API-3. Current source truth:
@@ -15,7 +44,7 @@ The uploaded API-3 baseline was audited against source rather than roadmap label
 | API-6.1 Sequence Foundation | `IMPLEMENTED_TESTING_DEFERRED` | `sequence_api61.go`, targeted tests and source gate; Go execution blocked by missing toolchain |
 | API-6.2 Workflow Learning | `IMPLEMENTED_TESTING_DEFERRED` | LEARN-only workflow model; source gate 56 PASS; Go 1.25 targeted/race BLOCKED_ENVIRONMENT/NOT_RUN |
 | API-6.3 Sequence Anomaly Detection | `IMPLEMENTED_TESTING_DEFERRED` | DETECT-only bounded anomaly evidence; source gate 45 PASS; Go 1.25 targeted/race `BLOCKED_ENVIRONMENT/NOT_RUN` |
-| API-6.4 Sequence Operations + Hardening | `PLANNED` | mode controls, exception CRUD, reset/relearn and full operations console not started |
+| API-6.4 Sequence Operations + Hardening | `IMPLEMENTED_TESTING_DEFERRED` | explicit LEARN/DETECT controls, exception CRUD, reset/relearn, recent sessions and operations Console; source gate 58 PASS |
 | API-7.1 Object Locator Discovery | `IMPLEMENTED_TESTING_DEFERRED` | normalized locator discovery + bounded keyed evidence; source gate 83 PASS; Go 1.25 targeted/race BLOCKED_ENVIRONMENT/NOT_RUN |
 | API-7.2–7.4 BOLA Relationship/Detection/Policy | `IMPLEMENTED_TESTING_DEFERRED` | verified identity/object relationship, bounded BOLA detection, REVIEW/SUPPRESS evidence policy/workflow/console; source gates 100/110/156 PASS |
 | API-8 GraphQL Security | `IMPLEMENTED_TESTING_DEFERRED` | bounded GraphQL parsing/normalization, SDL contract binding, depth/complexity/field/mutation/subscription/introspection/APQ controls, verified-variable API-7 bridge, staged deterministic LEARN/DETECT/ENFORCE; source gate 259 PASS; Go 1.25 targeted/race `BLOCKED_ENVIRONMENT/NOT_RUN` |
@@ -121,7 +150,7 @@ Go source (module `waf-proxy`; Coraza plus optional native VectorScan/libhs)
 - `api_operations.go` / `api_operations_test.go` — API-1 operation normalization, metadata, controls and deterministic tests.
 - `api_security_persist.go` — durable API Security JSON state persistence/autosave through API-6.1.
 - `api_security_handlers.go` — API-1 control and API-2 review endpoints.
-- `schema_api2.go` / `schema_api2_continuation.go` / `schema_api2_test.go` — live typed schema learning, lifecycle, privacy and tests.
+- `schema_api2.go` / `schema_api2_test.go` — live typed schema learning, lifecycle, privacy and tests. The unused `schema_api2_continuation.go` helper layer was removed during the 2026-09-28 duplication consolidation.
 - `ai_schema_review.go` — advisory-only OpenAI SchemaCandidate review.
 - `api3_contract.go` / `api3_export.go` / `api3_contract_test.go` — OpenAPI contract intelligence, export, diff/drift and tests.
 - `api_security_integration_test.go` — deterministic API-1 → API-2 → API-3 live-learning/drift test.
@@ -244,7 +273,7 @@ Phase 4 Slice C source additions:
 Phase 4 Slice D artifacts:
 - block_response.go
 - correlation.go
-- security_event.go
+- `security_event.go` — removed 2026-09-28; the unused generic event placeholder duplicated the wired security-specific evidence paths.
 
 
 ## Phase 4 Slice E — Persistent Security State
@@ -254,9 +283,8 @@ Status: IMPLEMENTED_TESTING_DEFERRED
 Implemented foundation: security state models and in-memory persistence abstraction. Production database durability, HA replication, retention tuning, and external integrations remain deferred.
 
 
-Phase 4 Slice F additions:
-- pki_hardening.go
-- pki_hardening_test.go
+Phase 4 Slice F historical additions (superseded):
+- `pki_hardening.go` / `pki_hardening_test.go` were isolated helper/test files and were removed 2026-09-28. The current CRL URL hardening authority is `pki.go` + `pki_url.go`.
 
 
 ## Phase 5 Slice A — Runtime Qualification Closure
@@ -429,8 +457,8 @@ Repair-relevant source:
 - `pki.go` / `pki_url.go` — matched CRL URL refresh/store implementation;
 - `pki_url_phase4_test.go` — URL/SSRF/LKG/concurrency/cache regression coverage;
 - `debug_bundle.go` — current evidence model plus TLS version naming helper;
-- `debug_evidence_ops_v2.go` — current store API/model mapping;
-- `debug_evidence_ops_v2_test.go` — integration regression tests.
+- `debug_bundle.go` / `debug_sanitize.go` — current bounded debug evidence store, export model and sanitization authority.
+- The superseded `debug_evidence_ops_v2.go` compatibility wrapper and its test were removed 2026-09-28.
 
 ## OpenAI connector hardening files
 
@@ -455,7 +483,7 @@ Local executable evidence for this checkpoint is captured in `TESTING_RESULTS.md
 ## API Security API-1 → API-3 closure files (2026-09-23)
 
 - `api_operations.go` / `api_operations_test.go` — durable API operation discovery, normalization, metadata, controls, and atomic-persistence coverage.
-- `schema_api2.go` / `schema_api2_continuation.go` / `schema_api2_test.go` — live typed schema learning, bounded aggregates, privacy/lifecycle logic, persistence evidence, and deterministic tests.
+- `schema_api2.go` / `schema_api2_test.go` — live typed schema learning, bounded aggregates, privacy/lifecycle logic, persistence evidence, and deterministic tests; the unused continuation helper was removed 2026-09-28.
 - `api_security_persist.go` — versioned API-1/API-2/API-3 state persistence with unique same-directory temp files, fsync, and atomic rename.
 - `api_security_handlers.go` / `api_security_handlers_test.go` — API-1/API-2 control-plane handlers and lifecycle checks.
 - `ai_schema_review.go` — advisory-only OpenAI SchemaCandidate review using existing Responses API Structured Outputs.
@@ -465,7 +493,7 @@ Local executable evidence for this checkpoint is captured in `TESTING_RESULTS.md
 - `tools/tests/test-api3-source.py` — 47-check API-3 source/wiring/security gate.
 - `API_SECURITY_CLOSURE_RESULT.md`, `TESTING_RESULTS.md`, `SOURCE_BASELINE_GATE_RESULT.md` — current source closure truth and qualification evidence.
 
-API-4 Positive Schema Enforcement is implemented with testing deferred; API-5 is implemented with testing deferred; API-6.1 through API-6.3 are implemented with testing deferred; API-6.4, API-7 and API-8 are not implemented in this package. Repository-root Go 1.25 qualification remains BLOCKED/NOT_RUN as documented; no release-readiness claim is made.
+API-1 through API-8 are implemented in source and remain `IMPLEMENTED_TESTING_DEFERRED`. API-6 learned sequence and API-7 inferred BOLA evidence remain non-enforcing; API-8 blocks only under explicit deterministic ENFORCE policy. Repository-root Go 1.25 qualification remains BLOCKED/NOT_RUN as documented; no release-readiness claim is made.
 
 ## API-4 Positive Schema Enforcement files
 
@@ -483,7 +511,7 @@ API-4 Positive Schema Enforcement is implemented with testing deferred; API-5 is
 - `admin.go` / `static/admin.html` — trusted issuer, JWKS refresh, operation policy, DETECT/ENFORCE and violation workflow.
 - `main.go` / `api_security_persist.go` — data-plane middleware, startup restore and autosave integration.
 
-API-1 through API-5 and API-6.1 through API-6.3 are `IMPLEMENTED_TESTING_DEFERRED`; API-6.4, API-7 and API-8 remain `PLANNED`. Canonical Go 1.25 real-dependency qualification remains `BLOCKED_ENVIRONMENT/NOT_RUN`.
+API-1 through API-8 are `IMPLEMENTED_TESTING_DEFERRED`; no API-9 is defined. Canonical Go 1.25 real-dependency qualification remains `BLOCKED_ENVIRONMENT/NOT_RUN`.
 
 - `sequence_api62.go` / `sequence_api62_test.go` — API-6.2 LEARN-only workflow cohorts, confidence/maturity, cold-start, absolute session lifetime, bounded entry/terminal/depth learning, v1->v2 durable migration and seven targeted tests.
 - `tools/tests/test-api62-source.py` — 56-check API-6.2 source/authority/privacy/bounded-state gate retained by build and CI.
@@ -563,3 +591,18 @@ Removed as non-runtime/misleading debt: `web/`, `investigation.go`, `security_ti
 
 Current implementation baseline adds the post-audit production/control-plane hardening described in `PRODUCTION_CONTROL_PLANE_HARDENING.md`. Status remains **IMPLEMENTED_TESTING_DEFERRED**. Exact-source source gates pass through API-8 plus post-audit and production-hardening gates (`190/190` for the new hardening gate), but canonical Go 1.25 build/test/race is still BLOCKED_ENVIRONMENT / NOT_RUN. No API-9 is defined and API-6/API-7 learned/inferred signals retain no direct enforcement authority. The source artifact has no `.git` metadata, so source identity is the parent artifact SHA/manifests rather than Git branch/commit provenance.
 
+## 2026-09-28 — Duplication consolidation inventory delta
+
+Removed confirmed superseded/unwired source: legacy debug-evidence compatibility
+files, generic `security_state.go`/`security_event.go`, standalone
+`deployment_readiness.go`/`reliability.go`, root VectorScan placeholder
+qualification/audit files, `schema_api2_continuation.go`, the isolated
+`pki_hardening.go` helper pair, and legacy `internal/coverage/report.go`.
+
+Added `debug_sanitize.go`, `internal/capability/seclang.go` plus its test,
+`tools/tests/test-code-duplication-review-source.py`,
+`CODE_DUPLICATION_REVIEW.md`, and
+`CODE_DUPLICATION_REVIEW_SOURCE_GATE_RESULT.md`. Root Go source-shape is now
+**95 files** after intentional cleanup.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

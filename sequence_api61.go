@@ -440,11 +440,6 @@ func (s *sequenceStore) digest(material string) string {
 	return hex.EncodeToString(h.Sum(nil)[:20])
 }
 
-func sequenceTransitionID(site, from, to string) string {
-	h := sha256.Sum256([]byte(site + "\x00" + from + "\x00" + to))
-	return hex.EncodeToString(h[:20])
-}
-
 func sequenceWorkflowTransitionID(site, workflowID, from, to string) string {
 	h := sha256.Sum256([]byte(site + "\x00" + workflowID + "\x00" + from + "\x00" + to))
 	return hex.EncodeToString(h[:20])

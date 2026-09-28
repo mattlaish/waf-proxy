@@ -18,3 +18,5 @@ This is deliberate:
 The systemd units continue to use capability bounding and filesystem sandboxing.
 Any RHEL-family AVC observed during Slice D is release evidence and must be
 resolved before that distribution is promoted from NOT_RUN/DEFERRED.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

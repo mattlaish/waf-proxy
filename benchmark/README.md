@@ -168,3 +168,5 @@ For the full proxy, combine `GOMAXPROCS`/CPU affinity on the waf-proxy process w
 ## Safety / test-environment boundary
 
 The hostile corpus is intended for a dedicated benchmark WAF/site and deterministic backend. Do not point this suite at a production application unless you explicitly intend to generate SQLi/XSS/traversal requests against it. The L4 mode uses ordinary TCP connections only; it does not spoof addresses or emit raw SYN floods.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

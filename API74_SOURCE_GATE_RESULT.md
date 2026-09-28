@@ -28,3 +28,5 @@ Date: 2026-09-24
 Historical API-7.3 source-gate semantics were updated additively: API-7.4 is allowed to add BOLA mutation routes to the shared router, while the API-7.3 detector source itself is still required to have no policy/evidence mutation handlers. API-7.3 remains 110/110 PASS.
 
 Canonical Go 1.25 test/race execution is not represented by this static/source gate.
+
+<!-- documentation-review: 2026-09-28; classification: historical evidence; current-authority: DOCUMENTATION_INDEX.md; historical-evidence-preserved: true -->

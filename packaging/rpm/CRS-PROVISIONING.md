@@ -27,3 +27,5 @@ sudo systemctl enable --now waf-proxy
 ```
 
 Do not treat successful RPM installation as WAF readiness when CRS is absent.
+
+<!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->
