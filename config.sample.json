@@ -6,6 +6,17 @@
   "backend_timeout_sec": 30,
   "passive_discovery_enabled": true,
   "trusted_proxy_cidrs": [],
+  "l7_abuse": {
+    "enabled": false,
+    "requests_per_window": 0,
+    "window_seconds": 60,
+    "max_concurrent_connections": 0,
+    "tls_handshake_per_window": 0
+  },
+  "cidr_policy": {
+    "enabled": false,
+    "rules": []
+  },
   "hsm": {
     "allowed_module_dirs": [
       "/usr/lib",

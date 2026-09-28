@@ -22,16 +22,21 @@ import (
 )
 
 type siteMapsFile struct {
-	Saved time.Time      `json:"saved"`
-	Sites []siteMapJSON  `json:"sites"`
+	Saved time.Time     `json:"saved"`
+	Sites []siteMapJSON `json:"sites"`
 }
 
 func (m *siteMaps) statePath(configPath string) string {
 	return filepath.Join(filepath.Dir(configPath), "sitemap.json")
 }
 
-// save writes every site's tree to disk atomically.
+// save writes every site's tree to disk atomically. Persistence is serialized
+// independently from the hot-path tree mutex so periodic autosave and explicit
+// operator clears cannot race on the same state file or temporary path.
 func (m *siteMaps) save(configPath string) error {
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
+
 	m.mu.Lock()
 	names := make([]string, 0, len(m.byName))
 	for n := range m.byName {
@@ -48,12 +53,58 @@ func (m *siteMaps) save(configPath string) error {
 	if err != nil {
 		return err
 	}
-	path := m.statePath(configPath)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o640); err != nil {
+	return writeSiteMapsFile(m.statePath(configPath), b)
+}
+
+func writeSiteMapsFile(path string, b []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".sitemap.json.tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmpName := tmp.Name()
+	keep := false
+	defer func() {
+		_ = tmp.Close()
+		if !keep {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if err := tmp.Chmod(0o640); err != nil {
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	keep = true
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
+// restoreSnapshot reinstates one site map after a failed destructive persistence
+// operation. It is intentionally narrow: clear handlers use it to avoid leaving
+// in-memory state cleared when the authoritative snapshot could not be updated.
+func (m *siteMaps) restoreSnapshot(sj siteMapJSON) {
+	sm := &siteMap{root: newNode("", "/")}
+	sm.nodes = sj.Nodes
+	sm.crawl = sj.Crawl
+	fromJSON(sm.root, sj.Tree)
+	m.mu.Lock()
+	m.byName[sj.Site] = sm
+	m.mu.Unlock()
 }
 
 // load rebuilds site maps from disk. Missing file is not an error.

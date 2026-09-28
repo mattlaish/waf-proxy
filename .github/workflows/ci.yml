@@ -21,6 +21,44 @@ jobs:
           go-version: '1.25'
           check-latest: true
 
+      - name: dependency-free root source-shape gate
+        run: ./tools/tests/test-go-root-shape.sh
+
+      - name: API-1/API-2 source gate
+        run: python3 ./tools/tests/test-api12-source.py
+
+      - name: API-3 OpenAPI source gate
+        run: python3 ./tools/tests/test-api3-source.py
+
+      - name: API-4 positive-schema source gate
+        run: python3 ./tools/tests/test-api4-source.py
+
+      - name: API-5 JWT identity source gate
+        run: python3 ./tools/tests/test-api5-source.py
+
+      - name: API-6.1 sequence foundation source gate
+        run: python3 ./tools/tests/test-api61-source.py
+      - name: API-6.2 workflow learning source gate
+        run: python3 ./tools/tests/test-api62-source.py
+      - name: API-6.3 sequence anomaly detection source gate
+        run: python3 ./tools/tests/test-api63-source.py
+      - name: API-6.4 sequence operations hardening source gate
+        run: python3 ./tools/tests/test-api64-source.py
+      - name: API-7.1 object locator discovery source gate
+        run: python3 ./tools/tests/test-api71-source.py
+      - name: API-7.2 identity/object relationship source gate
+        run: python3 ./tools/tests/test-api72-source.py
+      - name: API-7.3 BOLA detection source gate
+        run: python3 ./tools/tests/test-api73-source.py
+      - name: API-7.4 BOLA policy/evidence/console source gate
+        run: python3 ./tools/tests/test-api74-source.py
+      - name: API-8 GraphQL security source gate
+        run: python3 ./tools/tests/test-api8-source.py
+      - name: API-8 post-audit hardening source gate
+        run: python3 ./tools/tests/test-api8-post-audit-hardening-source.py
+      - name: Production correctness and control-plane hardening source gate
+        run: python3 ./tools/tests/test-production-control-plane-hardening-source.py
+
       # Fail before compilation if committed module metadata is not canonical.
       # -diff never mutates go.mod/go.sum and exits non-zero when tidy would.
       - name: go.mod/go.sum tidy drift

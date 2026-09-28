@@ -164,16 +164,20 @@ func (r *accessRing) snapshot(limit int) []accessRec {
 // ── admin server ────────────────────────────────────────────────────────
 
 type adminServer struct {
-	srv      *server
-	token    string
-	sessions *sessionStore
-	audit    *auditLog
-	staged   stagedUpdate
-	log      *slog.Logger
-	started  time.Time
+	srv               *server
+	token             string
+	haPeerToken       string
+	haPeerTokenPinned bool
+	sessions          *sessionStore
+	loginLimiter      *loginAttemptLimiter
+	audit             *auditLog
+	staged            stagedUpdate
+	log               *slog.Logger
+	started           time.Time
 }
 
-func newAdminServer(s *server, token string, log *slog.Logger) *adminServer {
+func newAdminServer(s *server, token, haPeerToken string, log *slog.Logger) *adminServer {
+	haPeerToken = strings.TrimSpace(haPeerToken)
 	if token == "" {
 		b := make([]byte, 24)
 		if _, err := rand.Read(b); err != nil {
@@ -184,8 +188,17 @@ func newAdminServer(s *server, token string, log *slog.Logger) *adminServer {
 		// Printed once at startup; not logged again.
 		fmt.Fprintf(os.Stderr, "\n  admin token: %s\n  (set WAF_ADMIN_TOKEN or -admin-token to pin one)\n\n", token)
 	}
-	as := &adminServer{srv: s, token: token, sessions: newSessionStore(), audit: newAuditLog(), log: log, started: time.Now()}
+	as := &adminServer{srv: s, token: token, haPeerToken: haPeerToken, haPeerTokenPinned: haPeerToken != "", sessions: newSessionStore(), loginLimiter: newLoginAttemptLimiter(), audit: newAuditLog(), log: log, started: time.Now()}
 	as.audit.sink = s.syslog.forwardAudit // fan audit entries out to syslog
+	auditPath := strings.TrimSpace(os.Getenv("WAF_ADMIN_AUDIT_FILE"))
+	if auditPath == "" && s.configPath != "" {
+		auditPath = filepath.Join(filepath.Dir(s.configPath), "admin-audit.jsonl")
+	}
+	if auditPath != "" {
+		if err := as.audit.configurePersistence(auditPath, log); err != nil {
+			log.Error("admin audit persistence unavailable", "path", auditPath, "err", err)
+		}
+	}
 	return as
 }
 
@@ -203,6 +216,30 @@ const identityKey identityCtxKey = 1
 // the request context for handlers and the audit log.
 func (a *adminServer) auth(next http.HandlerFunc) http.HandlerFunc {
 	return a.authRole("", next)
+}
+
+// haPeerAuth is intentionally narrower than normal admin authentication. HA
+// config replication must use the receiver's break-glass peer token and the
+// dedicated sync protocol marker; browser/admin sessions cannot masquerade as
+// replication traffic merely by setting a header.
+func (a *adminServer) haPeerAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !a.haPeerTokenPinned {
+			http.Error(w, "HA config sync requires WAF_HA_PEER_TOKEN or -ha-peer-token", http.StatusServiceUnavailable)
+			return
+		}
+		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(a.haPeerToken)) != 1 {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Header.Get("X-WAF-HA-Sync") != "v1" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		id := identity{user: "(ha-peer)", role: roleAdmin}
+		next(w, r.WithContext(context.WithValue(r.Context(), identityKey, id)))
+	}
 }
 
 // authRole is auth plus a minimum-role requirement ("" = any authenticated).
@@ -225,7 +262,19 @@ func (a *adminServer) authRole(minRole string, next http.HandlerFunc) http.Handl
 			http.Error(w, "forbidden: requires "+minRole, http.StatusForbidden)
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), identityKey, id)))
+		r = r.WithContext(context.WithValue(r.Context(), identityKey, id))
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+			next(w, r)
+			return
+		}
+		aw := &mutationAuditWriter{ResponseWriter: w}
+		next(aw, r)
+		if aw.status == 0 {
+			aw.status = http.StatusOK
+		}
+		if aw.status < 400 {
+			a.audit.add(id.user, "http.mutation", r.Method+" "+r.URL.Path)
+		}
 	}
 }
 
@@ -259,21 +308,22 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("GET /api/config", a.auth(a.handleGetConfig))
 	mux.HandleFunc("GET /api/interfaces", a.auth(a.handleInterfaces))
 	mux.HandleFunc("PUT /api/config", a.authRole(roleOperator, a.handlePutConfig))
-	mux.HandleFunc("POST /api/reload", a.auth(a.handleReload))
+	mux.HandleFunc("POST /api/reload", a.authRole(roleOperator, a.handleReload))
 	mux.HandleFunc("GET /api/matches", a.auth(a.handleMatches))
 	mux.HandleFunc("GET /api/access", a.auth(a.handleAccess))
 	mux.HandleFunc("GET /api/pools", a.auth(a.handlePools))
 	mux.HandleFunc("GET /api/ai/verdicts", a.auth(a.handleAIVerdicts))
 	mux.HandleFunc("GET /api/ai/blocklist", a.auth(a.handleAIBlocklist))
-	mux.HandleFunc("POST /api/ai/unblock", a.auth(a.handleAIUnblock))
-	mux.HandleFunc("POST /api/ai/test", a.auth(a.handleAITest))
+	mux.HandleFunc("POST /api/ai/unblock", a.authRole(roleOperator, a.handleAIUnblock))
+	mux.HandleFunc("POST /api/ai/test", a.authRole(roleOperator, a.handleAITest))
 	mux.HandleFunc("POST /api/syslog/test", a.authRole(roleOperator, a.handleSyslogTest))
 	mux.HandleFunc("GET /api/learn", a.auth(a.handleLearn))
 	mux.HandleFunc("POST /api/learn/apply", a.authRole(roleReviewer, a.handleLearnApply))
-	mux.HandleFunc("POST /api/learn/clear", a.auth(a.handleLearnClear))
+	mux.HandleFunc("POST /api/learn/clear", a.authRole(roleReviewer, a.handleLearnClear))
 	mux.HandleFunc("GET /api/notifications", a.auth(a.handleNotifications))
-	mux.HandleFunc("POST /api/notifications/read", a.auth(a.handleNotifyRead))
-	mux.HandleFunc("POST /api/notifications/dismiss", a.auth(a.handleNotifyDismiss))
+	mux.HandleFunc("POST /api/notifications/read", a.authRole(roleReviewer, a.handleNotifyRead))
+	mux.HandleFunc("POST /api/notifications/dismiss", a.authRole(roleReviewer, a.handleNotifyDismiss))
+	mux.HandleFunc("DELETE /api/notifications/webhook", a.authRole(roleOperator, a.handleNotifyWebhookClear))
 	mux.HandleFunc("POST /api/notifications/apply", a.authRole(roleReviewer, a.handleNotifyApply))
 	mux.HandleFunc("POST /api/login", a.handleLogin) // unauthenticated
 	mux.HandleFunc("POST /api/logout", a.auth(a.handleLogout))
@@ -286,14 +336,77 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("GET /api/audit", a.auth(a.handleAudit))
 	mux.HandleFunc("GET /api/ha", a.auth(a.handleHA))
 	mux.HandleFunc("POST /api/ha/sync", a.authRole(roleOperator, a.handleHASync))
+	mux.HandleFunc("PUT /api/ha/peer-config", a.haPeerAuth(a.handleHAPeerConfig))
 	mux.HandleFunc("GET /api/pagepolicy", a.auth(a.handlePagePolicies))
 	mux.HandleFunc("GET /api/forms", a.auth(a.handleDiscoveredForms))
 	mux.HandleFunc("GET /api/security/contracts", a.auth(a.handleContracts))
 	mux.HandleFunc("POST /api/security/contracts/import", a.authRole(roleOperator, a.handleContractImport))
+	mux.HandleFunc("GET /api/security/contracts/{id}", a.auth(a.handleContractDetail))
+	mux.HandleFunc("GET /api/security/contracts/{id}/versions", a.auth(a.handleContractVersions))
+	mux.HandleFunc("POST /api/security/contracts/{id}/match", a.authRole(roleReviewer, a.handleContractMatch))
+	mux.HandleFunc("GET /api/security/contracts/{id}/bindings", a.auth(a.handleContractBindings))
+	mux.HandleFunc("POST /api/security/contracts/{id}/compare", a.authRole(roleReviewer, a.handleContractCompare))
+	mux.HandleFunc("GET /api/security/contracts/{id}/diffs", a.auth(a.handleContractDiffs))
+	mux.HandleFunc("GET /api/security/contracts/{id}/drift", a.auth(a.handleContractDrift))
+	mux.HandleFunc("GET /api/security/contracts/{id}/export", a.auth(a.handleContractExport))
 	mux.HandleFunc("GET /api/security/schema/candidates", a.auth(a.handleSchemaCandidates))
-	mux.HandleFunc("GET /api/security/contracts", a.auth(a.handleContracts))
-	mux.HandleFunc("POST /api/security/contracts/import", a.authRole(roleOperator, a.handleContractImport))
+	mux.HandleFunc("GET /api/security/schema/enforcement", a.auth(a.handlePositiveSchemaList))
+	mux.HandleFunc("GET /api/security/schema/enforcement/violations", a.authRole(roleReviewer, a.handlePositiveSchemaViolations))
+	mux.HandleFunc("GET /api/security/schema/enforcement/{operation_id}", a.auth(a.handlePositiveSchemaDetail))
+	mux.HandleFunc("POST /api/security/schema/enforcement/{operation_id}/mode", a.authRole(roleReviewer, a.handlePositiveSchemaMode))
+	mux.HandleFunc("POST /api/security/schema/enforcement/{operation_id}/activate", a.authRole(roleReviewer, a.handlePositiveSchemaActivate))
+	mux.HandleFunc("POST /api/security/schema/enforcement/{operation_id}/rollback", a.authRole(roleReviewer, a.handlePositiveSchemaRollback))
+	mux.HandleFunc("POST /api/security/schema/enforcement/{operation_id}/exceptions", a.authRole(roleReviewer, a.handlePositiveSchemaExceptionCreate))
+	mux.HandleFunc("POST /api/security/schema/enforcement/exceptions/{exception_id}", a.authRole(roleReviewer, a.handlePositiveSchemaExceptionToggle))
 	mux.HandleFunc("GET /api/security/schema/{id}", a.auth(a.handleSchemaDetail))
+	mux.HandleFunc("POST /api/security/schema/{id}/review", a.authRole(roleReviewer, a.handleSchemaReview))
+	mux.HandleFunc("POST /api/security/schema/{id}/ai-review", a.authRole(roleReviewer, a.handleSchemaAIReview))
+	mux.HandleFunc("POST /api/security/schema/{id}/enforcement", a.authRole(roleReviewer, a.handlePositiveSchemaPromote))
+	mux.HandleFunc("GET /api/security/identity/issuers", a.auth(a.handleIdentityIssuers))
+	mux.HandleFunc("POST /api/security/identity/issuers", a.authRole(roleReviewer, a.handleIdentityIssuerUpsert))
+	mux.HandleFunc("POST /api/security/identity/issuers/{issuer_id}/refresh", a.authRole(roleReviewer, a.handleIdentityIssuerRefresh))
+	mux.HandleFunc("GET /api/security/identity/policies", a.auth(a.handleIdentityPolicies))
+	mux.HandleFunc("POST /api/security/identity/policies/{operation_id}", a.authRole(roleReviewer, a.handleIdentityPolicyUpsert))
+	mux.HandleFunc("POST /api/security/identity/policies/{operation_id}/mode", a.authRole(roleReviewer, a.handleIdentityPolicyMode))
+	mux.HandleFunc("DELETE /api/security/identity/policies/{operation_id}", a.authRole(roleReviewer, a.handleIdentityPolicyDelete))
+	mux.HandleFunc("GET /api/security/identity/violations", a.authRole(roleReviewer, a.handleIdentityViolations))
+	mux.HandleFunc("GET /api/security/sequence/model", a.auth(a.handleSequenceModel))
+	mux.HandleFunc("GET /api/security/sequence/sessions", a.authRole(roleReviewer, a.handleSequenceSessions))
+	mux.HandleFunc("GET /api/security/sequence/transitions", a.authRole(roleReviewer, a.handleSequenceTransitions))
+	mux.HandleFunc("GET /api/security/sequence/workflows", a.authRole(roleReviewer, a.handleSequenceWorkflows))
+	mux.HandleFunc("GET /api/security/sequence/violations", a.authRole(roleReviewer, a.handleSequenceViolations))
+	mux.HandleFunc("GET /api/security/sequence/recent-sessions", a.authRole(roleReviewer, a.handleSequenceRecentSessions))
+	mux.HandleFunc("GET /api/security/sequence/exceptions", a.authRole(roleReviewer, a.handleSequenceExceptions))
+	mux.HandleFunc("GET /api/security/sequence/learning-state", a.authRole(roleReviewer, a.handleSequenceLearningState))
+	mux.HandleFunc("POST /api/security/sequence/mode", a.authRole(roleReviewer, a.handleSequenceMode))
+	mux.HandleFunc("POST /api/security/sequence/relearn", a.authRole(roleReviewer, a.handleSequenceRelearn))
+	mux.HandleFunc("POST /api/security/sequence/exceptions", a.authRole(roleReviewer, a.handleSequenceExceptionCreate))
+	mux.HandleFunc("DELETE /api/security/sequence/exceptions/{exception_id}", a.authRole(roleReviewer, a.handleSequenceExceptionDelete))
+	mux.HandleFunc("GET /api/security/object-locators", a.authRole(roleReviewer, a.handleObjectLocators))
+	mux.HandleFunc("GET /api/security/object-locators/overrides", a.authRole(roleReviewer, a.handleObjectLocatorOverrides))
+	mux.HandleFunc("POST /api/security/object-locators/overrides", a.authRole(roleReviewer, a.handleObjectLocatorOverrideUpsert))
+	mux.HandleFunc("DELETE /api/security/object-locators/overrides/{override_id}", a.authRole(roleReviewer, a.handleObjectLocatorOverrideDelete))
+	mux.HandleFunc("GET /api/security/object-relationships", a.authRole(roleReviewer, a.handleObjectRelationships))
+	mux.HandleFunc("GET /api/security/object-relationships/status", a.authRole(roleReviewer, a.handleObjectRelationshipStatus))
+	mux.HandleFunc("GET /api/security/bola/candidates", a.authRole(roleReviewer, a.handleBOLACandidates))
+	mux.HandleFunc("GET /api/security/bola/status", a.authRole(roleReviewer, a.handleBOLAStatus))
+	mux.HandleFunc("GET /api/security/bola/evidence", a.authRole(roleReviewer, a.handleBOLAEvidence))
+	mux.HandleFunc("POST /api/security/bola/evidence/{candidate_id}/workflow", a.authRole(roleReviewer, a.handleBOLAEvidenceWorkflow))
+	mux.HandleFunc("GET /api/security/bola/policies", a.authRole(roleReviewer, a.handleBOLAPolicies))
+	mux.HandleFunc("POST /api/security/bola/policies", a.authRole(roleReviewer, a.handleBOLAPolicyUpsert))
+	mux.HandleFunc("DELETE /api/security/bola/policies/{policy_id}", a.authRole(roleReviewer, a.handleBOLAPolicyDelete))
+	mux.HandleFunc("GET /api/security/bola/policy-status", a.authRole(roleReviewer, a.handleBOLAPolicyStatus))
+	mux.HandleFunc("GET /api/security/graphql/operations", a.authRole(roleReviewer, a.handleGraphQLOperations))
+	mux.HandleFunc("GET /api/security/graphql/persisted-queries", a.authRole(roleReviewer, a.handleGraphQLPersisted))
+	mux.HandleFunc("GET /api/security/graphql/schema-contracts", a.authRole(roleReviewer, a.handleGraphQLSchemaContracts))
+	mux.HandleFunc("POST /api/security/graphql/schema-contracts", a.authRole(roleReviewer, a.handleGraphQLSchemaContractImport))
+	mux.HandleFunc("DELETE /api/security/graphql/schema-contracts/{contract_id}", a.authRole(roleReviewer, a.handleGraphQLSchemaContractDelete))
+	mux.HandleFunc("GET /api/security/graphql/policies", a.authRole(roleReviewer, a.handleGraphQLPolicies))
+	mux.HandleFunc("POST /api/security/graphql/policies", a.authRole(roleReviewer, a.handleGraphQLPolicyUpsert))
+	mux.HandleFunc("POST /api/security/graphql/policies/{policy_id}/mode", a.authRole(roleReviewer, a.handleGraphQLPolicyMode))
+	mux.HandleFunc("DELETE /api/security/graphql/policies/{policy_id}", a.authRole(roleReviewer, a.handleGraphQLPolicyDelete))
+	mux.HandleFunc("GET /api/security/graphql/violations", a.authRole(roleReviewer, a.handleGraphQLViolations))
+	mux.HandleFunc("GET /api/security/graphql/status", a.authRole(roleReviewer, a.handleGraphQLStatus))
 	mux.HandleFunc("POST /api/pagepolicy/upsert", a.authRole(roleReviewer, a.handlePagePolicyUpsert))
 	mux.HandleFunc("POST /api/pagepolicy/delete", a.authRole(roleReviewer, a.handlePagePolicyDelete))
 	mux.HandleFunc("GET /api/profiles", a.auth(a.handleProfiles))
@@ -302,10 +415,13 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("POST /api/profiles/auto", a.authRole(roleReviewer, a.handleProfileAuto))
 	mux.HandleFunc("GET /api/fs", a.auth(a.handleFS))
 	mux.HandleFunc("GET /api/sitemap", a.auth(a.handleSitemap))
-	mux.HandleFunc("POST /api/crawl", a.auth(a.handleCrawl))
-	mux.HandleFunc("POST /api/sitemap/clear", a.auth(a.handleSitemapClear))
+	mux.HandleFunc("POST /api/crawl", a.authRole(roleOperator, a.handleCrawl))
+	mux.HandleFunc("POST /api/sitemap/clear", a.authRole(roleReviewer, a.handleSitemapClear))
 	mux.HandleFunc("GET /api/discovered", a.auth(a.handleDiscovered))
 	mux.HandleFunc("GET /api/security/operations", a.auth(a.handleAPIOperations))
+	mux.HandleFunc("GET /api/security/operations/{id}", a.auth(a.handleAPIOperationDetail))
+	mux.HandleFunc("POST /api/security/operations/{id}/ignore", a.authRole(roleReviewer, a.handleAPIOperationIgnore))
+	mux.HandleFunc("POST /api/security/operations/reclassify", a.authRole(roleReviewer, a.handleAPIOperationReclassify))
 	mux.HandleFunc("GET /api/metrics", a.auth(a.handleMetrics))
 	mux.HandleFunc("GET /api/vector-acceleration", a.auth(a.handleVectorAcceleration))
 	mux.HandleFunc("POST /api/vector-acceleration/reset", a.authRole(roleReviewer, a.handleVectorAccelerationReset))
@@ -321,8 +437,15 @@ func (a *adminServer) handler() http.Handler {
 	return mux
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
+func setJSONSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	setJSONSecurityHeaders(w)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
@@ -438,13 +561,31 @@ func (a *adminServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
+	now := time.Now()
+	keys := loginAttemptKeys(r, req.Username)
+	if ok, retry := a.loginLimiter.allow(keys, now); !ok {
+		secs := int(retry.Seconds())
+		if secs < 1 {
+			secs = 1
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+		a.audit.add("(login)", "login.throttled", "remote="+adminRemoteHost(r))
+		http.Error(w, "too many login attempts", http.StatusTooManyRequests)
+		return
+	}
 	cfg := a.srv.rt.Load().cfg
 	for _, u := range cfg.Users {
 		if strings.EqualFold(u.Username, req.Username) {
 			if u.Disabled || !verifyPassword(req.Password, u.PasswordHash) {
 				break
 			}
-			tok := a.sessions.create(u.Username, u.Role)
+			tok, err := a.sessions.createWithError(u.Username, u.Role)
+			if err != nil {
+				a.log.Error("session token generation failed", "err", err)
+				http.Error(w, "login unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			a.loginLimiter.success(keys)
 			a.audit.add(u.Username, "login", "")
 			writeJSON(w, map[string]any{"token": tok, "user": u.Username, "role": u.Role})
 			return
@@ -452,6 +593,8 @@ func (a *adminServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	// constant-ish: run a verify against a dummy to blunt user enumeration timing
 	verifyPassword(req.Password, "pbkdf2$sha256$210000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	a.loginLimiter.failure(keys, now)
+	a.audit.add("(login)", "login.failed", "remote="+adminRemoteHost(r))
 	http.Error(w, "invalid credentials", http.StatusUnauthorized)
 }
 
@@ -481,18 +624,22 @@ func (a *adminServer) handleUsers(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, out)
 }
 
-// mutateUsers applies a mutation to a copy of the user list, then apply+save.
+// mutateUsers derives the change from the newest runtime under the server's
+// config transaction lock so simultaneous page-policy/config operations cannot
+// be overwritten by a stale user snapshot.
 func (a *adminServer) mutateUsers(fn func(users []UserConfig) ([]UserConfig, error)) error {
-	cfg := a.srv.rt.Load().cfg
-	next, err := fn(append([]UserConfig(nil), cfg.Users...))
+	_, err := a.srv.mutatePersisted(false, func(cfg *Config) error {
+		next, err := fn(append([]UserConfig(nil), cfg.Users...))
+		if err != nil {
+			return err
+		}
+		cfg.Users = next
+		return nil
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("apply/persist failed: %w", err)
 	}
-	cfg.Users = next
-	if err := a.srv.apply(cfg); err != nil {
-		return fmt.Errorf("apply failed: %w", err)
-	}
-	return saveConfig(a.srv.configPath, cfg)
+	return nil
 }
 
 func (a *adminServer) handleUserCreate(w http.ResponseWriter, r *http.Request) {
@@ -647,8 +794,9 @@ func (a *adminServer) handleNotifications(w http.ResponseWriter, r *http.Request
 		limit = 100
 	}
 	writeJSON(w, map[string]any{
-		"unread": a.srv.notify.unreadCount(),
-		"items":  a.srv.notify.list(limit),
+		"unread":           a.srv.notify.unreadCount(),
+		"items":            a.srv.notify.list(limit),
+		"webhook_delivery": a.srv.notify.webhookDeliveryStats(),
 	})
 }
 
@@ -670,6 +818,7 @@ func (a *adminServer) handleNotifyRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.srv.notify.markRead(id, all)
+	a.audit.add(who(r).user, "notification.read", fmt.Sprintf("id=%d all=%t", id, all))
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -679,11 +828,24 @@ func (a *adminServer) handleNotifyDismiss(w http.ResponseWriter, r *http.Request
 		return
 	}
 	a.srv.notify.dismiss(id, all)
+	a.audit.add(who(r).user, "notification.dismiss", fmt.Sprintf("id=%d all=%t", id, all))
 	writeJSON(w, map[string]any{"ok": true})
 }
 
 // handleNotifyApply executes a notification's attached action (currently only
 // apply_exclusion, which writes a learned exclusion into the site's policy).
+func (a *adminServer) handleNotifyWebhookClear(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.srv.mutatePersisted(false, func(cfg *Config) error {
+		cfg.Notify.WebhookURL = ""
+		return nil
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	a.audit.add(who(r).user, "notification.webhook_clear", "")
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 func (a *adminServer) handleNotifyApply(w http.ResponseWriter, r *http.Request) {
 	id, _, ok := decodeIDReq(w, r)
 	if !ok {
@@ -738,12 +900,38 @@ func (a *adminServer) handleHA(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, a.srv.ha.status())
 }
 
-func (a *adminServer) handleHASync(w http.ResponseWriter, _ *http.Request) {
+func (a *adminServer) handleHASync(w http.ResponseWriter, r *http.Request) {
 	if !a.srv.ha.snapshotCfg().Enabled {
 		http.Error(w, "HA is disabled", http.StatusBadRequest)
 		return
 	}
 	a.srv.ha.pushConfig(a.srv.rt.Load().cfg)
+	a.audit.add(who(r).user, "ha.sync_requested", "")
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (a *adminServer) handleHAPeerConfig(w http.ResponseWriter, r *http.Request) {
+	var env haSyncEnvelope
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&env); err != nil {
+		http.Error(w, "bad peer config: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if env.Version != haSyncEnvelopeVersion {
+		http.Error(w, "unsupported HA sync version", http.StatusConflict)
+		return
+	}
+	next, err := a.srv.mutatePersisted(true, func(local *Config) error {
+		merged := mergePeerConfig(*local, env.Config)
+		*local = merged
+		return nil
+	})
+	if err != nil {
+		http.Error(w, "peer apply/persist failed: "+err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	a.audit.add("(ha-peer)", "ha.peer_config_applied", fmt.Sprintf("%d sites, %d pools, %d policies", len(next.Sites), len(next.Pools), len(next.Policies)))
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -769,6 +957,7 @@ func (a *adminServer) handleLearnClear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.srv.learn.clear(site)
+	a.audit.add(who(r).user, "learner.clear", "site="+site)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -823,41 +1012,40 @@ func (a *adminServer) savePagePolicy(siteName string, pp PagePolicy, mergeExclus
 	if pp.Match == "" {
 		pp.Match = "prefix"
 	}
-	cfg := a.srv.rt.Load().cfg // copy
-	si := -1
-	for i := range cfg.Sites {
-		if cfg.Sites[i].Name == siteName {
-			si = i
-			break
+	_, err := a.srv.mutatePersisted(false, func(cfg *Config) error {
+		si := -1
+		for i := range cfg.Sites {
+			if cfg.Sites[i].Name == siteName {
+				si = i
+				break
+			}
 		}
-	}
-	if si < 0 {
-		return fmt.Errorf("unknown site: %s", siteName)
-	}
-	found := -1
-	for i, e := range cfg.Sites[si].PagePolicies {
-		if e.Path == pp.Path && (e.Match == pp.Match || (e.Match == "" && pp.Match == "prefix")) {
-			found = i
-			break
+		if si < 0 {
+			return fmt.Errorf("unknown site: %s", siteName)
 		}
-	}
-	if found >= 0 && mergeExclusions {
-		cfg.Sites[si].PagePolicies[found].ExcludeRuleIDs = unionInts(
-			cfg.Sites[si].PagePolicies[found].ExcludeRuleIDs, pp.ExcludeRuleIDs)
-		if pp.Note != "" {
-			cfg.Sites[si].PagePolicies[found].Note = pp.Note
+		found := -1
+		for i, e := range cfg.Sites[si].PagePolicies {
+			if e.Path == pp.Path && (e.Match == pp.Match || (e.Match == "" && pp.Match == "prefix")) {
+				found = i
+				break
+			}
 		}
-	} else if found >= 0 {
-		pp.Source = firstNonEmpty(pp.Source, cfg.Sites[si].PagePolicies[found].Source)
-		cfg.Sites[si].PagePolicies[found] = pp
-	} else {
-		cfg.Sites[si].PagePolicies = append(cfg.Sites[si].PagePolicies, pp)
-	}
-	if err := a.srv.apply(cfg); err != nil {
-		return fmt.Errorf("apply failed: %w", err)
-	}
-	if err := saveConfig(a.srv.configPath, cfg); err != nil {
-		return fmt.Errorf("applied but not persisted: %w", err)
+		if found >= 0 && mergeExclusions {
+			cfg.Sites[si].PagePolicies[found].ExcludeRuleIDs = unionInts(
+				cfg.Sites[si].PagePolicies[found].ExcludeRuleIDs, pp.ExcludeRuleIDs)
+			if pp.Note != "" {
+				cfg.Sites[si].PagePolicies[found].Note = pp.Note
+			}
+		} else if found >= 0 {
+			pp.Source = firstNonEmpty(pp.Source, cfg.Sites[si].PagePolicies[found].Source)
+			cfg.Sites[si].PagePolicies[found] = pp
+		} else {
+			cfg.Sites[si].PagePolicies = append(cfg.Sites[si].PagePolicies, pp)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("apply/persist failed: %w", err)
 	}
 	a.log.Info("page policy saved", "site", siteName, "path", pp.Path)
 	return nil
@@ -1066,34 +1254,35 @@ func (a *adminServer) handlePagePolicyDelete(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	cfg := a.srv.rt.Load().cfg
-	si := -1
-	for i := range cfg.Sites {
-		if cfg.Sites[i].Name == req.Site {
-			si = i
-			break
+	if _, err := a.srv.mutatePersisted(false, func(cfg *Config) error {
+		si := -1
+		for i := range cfg.Sites {
+			if cfg.Sites[i].Name == req.Site {
+				si = i
+				break
+			}
 		}
-	}
-	if si < 0 {
-		http.Error(w, "unknown site", http.StatusNotFound)
-		return
-	}
-	out := cfg.Sites[si].PagePolicies[:0]
-	for _, e := range cfg.Sites[si].PagePolicies {
-		if e.Path == req.Path {
-			continue
+		if si < 0 {
+			return fmt.Errorf("unknown site")
 		}
-		out = append(out, e)
-	}
-	cfg.Sites[si].PagePolicies = out
-	if err := a.srv.apply(cfg); err != nil {
-		http.Error(w, "apply failed: "+err.Error(), http.StatusUnprocessableEntity)
+		out := make([]PagePolicy, 0, len(cfg.Sites[si].PagePolicies))
+		for _, e := range cfg.Sites[si].PagePolicies {
+			if e.Path == req.Path && (req.Match == "" || e.Match == req.Match) {
+				continue
+			}
+			out = append(out, e)
+		}
+		cfg.Sites[si].PagePolicies = out
+		return nil
+	}); err != nil {
+		if strings.Contains(err.Error(), "unknown site") {
+			http.Error(w, "unknown site", http.StatusNotFound)
+		} else {
+			http.Error(w, "apply/persist failed: "+err.Error(), http.StatusUnprocessableEntity)
+		}
 		return
 	}
-	if err := saveConfig(a.srv.configPath, cfg); err != nil {
-		http.Error(w, "applied but not persisted: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	a.audit.add(who(r).user, "pagepolicy.delete", "site="+req.Site+" path="+req.Path)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -1122,6 +1311,7 @@ func (a *adminServer) handleAIUnblock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.srv.ai.unblock(req.Site, req.IP)
+	a.audit.add(who(r).user, "ai.unblock", "site="+req.Site)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -1139,6 +1329,7 @@ func (a *adminServer) handleAITest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	a.audit.add(who(r).user, "ai.connector_test", "")
 	writeJSON(w, v)
 }
 
@@ -1170,19 +1361,30 @@ func (a *adminServer) handleFS(w http.ResponseWriter, r *http.Request) {
 	if root == "" {
 		root = "/etc"
 	}
+	root = filepath.Clean(root)
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		http.Error(w, "cannot resolve browse root: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	p := r.URL.Query().Get("path")
 	if p == "" {
-		p = root
+		p = resolvedRoot
 	}
 	if !filepath.IsAbs(p) {
-		p = filepath.Join(root, p)
+		p = filepath.Join(resolvedRoot, p)
 	}
 	p = filepath.Clean(p)
-
-	// Clamp inside root: reject anything that resolves above it.
-	if rel, err := filepath.Rel(root, p); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		p = root
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		http.Error(w, "cannot resolve path: "+err.Error(), http.StatusBadRequest)
+		return
 	}
+	if rel, err := filepath.Rel(resolvedRoot, resolved); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		http.Error(w, "path escapes browse root", http.StatusForbidden)
+		return
+	}
+	p = resolved
 
 	info, err := os.Stat(p)
 	if err != nil {
@@ -1235,10 +1437,28 @@ func (a *adminServer) handleFS(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *adminServer) handleGetConfig(w http.ResponseWriter, _ *http.Request) {
-	c := redactAISecrets(a.srv.rt.Load().cfg)
+func (a *adminServer) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	rt := a.srv.rt.Load()
+	if rt == nil {
+		http.Error(w, "runtime unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	c := rt.cfg
+	if r.URL.Query().Get("draft") == "1" {
+		if draft, ok, err := loadDraftConfig(a.srv.configPath); err != nil {
+			http.Error(w, "load draft: "+err.Error(), http.StatusInternalServerError)
+			return
+		} else if ok {
+			c = draft
+			w.Header().Set("X-WAF-Config-Source", "draft")
+		} else {
+			w.Header().Set("X-WAF-Config-Source", "live")
+		}
+	}
+	c = redactAISecrets(c)
 	c.HA.PeerToken = ""
 	c = redactHSMSecretRefs(c)
+	c = redactNotifySecrets(c)
 	users := make([]UserConfig, len(c.Users)) // copy with hashes blanked
 	for i, u := range c.Users {
 		u.PasswordHash = ""
@@ -1287,36 +1507,80 @@ func (a *adminServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	// Preserve the historical passive-discovery behavior for older API clients
 	// that submit a full config without the newly added toggle.
 	c := Config{PassiveDiscoveryEnabled: true}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&c); err != nil {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&c); err != nil {
 		http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	migrateTrustedProxyConfig(&c)
-	// Blank secrets on submit mean "keep the current ones" — the UI never
-	// receives stored secrets, so it can't echo them back.
-	cur := a.srv.rt.Load().cfg
-	preserveAISecrets(cur, &c)
-	if c.HA.PeerToken == "" {
-		c.HA.PeerToken = cur.HA.PeerToken
-	}
-	preserveHSMSecretRefs(cur, &c)
-	// Users are managed only via the dedicated user endpoints; a general config
-	// save never touches them (the console can't see the hashes anyway).
-	c.Users = cur.Users
+	draft := r.URL.Query().Get("draft") == "1"
 
-	// Draft save: persist work-in-progress to disk WITHOUT applying it to the
-	// live engine. Lets you build a config incrementally (add a node, save; add
-	// a pool, save) without every intermediate state being fully consistent.
-	// The running WAF keeps serving the last APPLIED config untouched.
-	if r.URL.Query().Get("draft") == "1" {
-		if err := c.validateDraft(); err != nil {
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-			return
+	// Full-config submissions still contain redacted secret fields and no user
+	// password hashes. Preserve those node-local values from the newest runtime
+	// while holding applyMu, then validate and persist in the same transaction.
+	// This prevents a concurrent user/secret mutation from being lost between a
+	// stale GET /api/config snapshot and this PUT.
+	errKind := ""
+	txnErr := func() error {
+		a.srv.applyMu.Lock()
+		defer a.srv.applyMu.Unlock()
+		rt := a.srv.rt.Load()
+		if rt == nil {
+			errKind = "runtime"
+			return errors.New("runtime unavailable")
 		}
-		if err := saveConfig(a.srv.configPath, c); err != nil {
-			http.Error(w, "not persisted: "+err.Error(), http.StatusInternalServerError)
-			return
+		cur := rt.cfg
+		preserveAISecrets(cur, &c)
+		preserveNotifySecrets(cur, &c)
+		if c.HA.PeerToken == "" {
+			c.HA.PeerToken = cur.HA.PeerToken
 		}
+		preserveHSMSecretRefs(cur, &c)
+		// Users are managed only through the dedicated user endpoints; a general
+		// config save can never replace password hashes with redacted UI data.
+		c.Users = append([]UserConfig(nil), cur.Users...)
+		if c.HA.Enabled && c.HA.SyncConfig && !a.haPeerTokenPinned {
+			errKind = "validation"
+			return errors.New("HA config sync requires a dedicated WAF_HA_PEER_TOKEN or -ha-peer-token before enabling sync")
+		}
+		if draft {
+			if err := c.validateDraft(); err != nil {
+				errKind = "validation"
+				return err
+			}
+			// A draft is durable operator work-in-progress, not startup authority.
+			// Persist it separately so a restart cannot silently promote an
+			// unapplied Console draft to live traffic.
+			if err := saveConfig(draftConfigPath(a.srv.configPath), c); err != nil {
+				errKind = "persist"
+				return err
+			}
+			return nil
+		}
+		if err := c.validate(); err != nil {
+			errKind = "validation"
+			return err
+		}
+		if err := a.srv.applyPersistedLocked(c, false); err != nil {
+			errKind = "apply"
+			return err
+		}
+		return nil
+	}()
+	if txnErr != nil {
+		switch errKind {
+		case "runtime":
+			http.Error(w, txnErr.Error(), http.StatusServiceUnavailable)
+		case "persist":
+			http.Error(w, "not persisted: "+txnErr.Error(), http.StatusInternalServerError)
+		default:
+			http.Error(w, txnErr.Error(), http.StatusUnprocessableEntity)
+		}
+		return
+	}
+
+	if draft {
 		a.audit.add(who(r).user, "config.draft_saved", fmt.Sprintf("%d sites, %d pools, %d nodes", len(c.Sites), len(c.Pools), len(c.Nodes)))
 		applyErr := ""
 		if err := c.validate(); err != nil {
@@ -1325,46 +1589,38 @@ func (a *adminServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		resp := redactAISecrets(c)
 		resp.HA.PeerToken = ""
 		resp = redactHSMSecretRefs(resp)
+		resp = redactNotifySecrets(resp)
 		writeJSON(w, map[string]any{"config": resp, "draft": true, "apply_ready": applyErr == "", "apply_error": applyErr})
 		return
 	}
 
-	if err := c.validate(); err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-		return
+	draftCleanupWarning := ""
+	if err := removeConfigFileDurable(draftConfigPath(a.srv.configPath)); err != nil {
+		draftCleanupWarning = err.Error()
+		a.log.Warn("applied config but stale draft cleanup failed", "err", err)
 	}
-	// A PUT carrying X-WAF-Sync came from the HA peer: apply without pushing
-	// it back (loop guard).
-	fromSync := r.Header.Get("X-WAF-Sync") == "1"
-	if err := a.srv.applyEx(c, fromSync); err != nil {
-		http.Error(w, "apply failed: "+err.Error(), http.StatusUnprocessableEntity)
-		return
-	}
-	if err := saveConfig(a.srv.configPath, c); err != nil {
-		http.Error(w, "applied but not persisted: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	a.log.Info("config applied via admin API", "engine_mode", c.EngineMode, "sites", len(c.Sites), "from_sync", fromSync)
-	if !fromSync {
-		a.audit.add(who(r).user, "config.apply", fmt.Sprintf("%d sites, %d pools, %d policies", len(c.Sites), len(c.Pools), len(c.Policies)))
-	}
+	a.log.Info("config applied via admin API", "engine_mode", c.EngineMode, "sites", len(c.Sites))
+	a.audit.add(who(r).user, "config.apply", fmt.Sprintf("%d sites, %d pools, %d policies", len(c.Sites), len(c.Pools), len(c.Policies)))
 	resp := redactAISecrets(c)
 	resp.HA.PeerToken = ""
 	resp = redactHSMSecretRefs(resp)
+	resp = redactNotifySecrets(resp)
 	writeJSON(w, map[string]any{
-		"config":           resp,
-		"applied":          true,
-		"restart_required": a.srv.restartPending(c),
+		"config":                resp,
+		"applied":               true,
+		"restart_required":      a.srv.restartPending(c),
+		"draft_cleanup_warning": draftCleanupWarning,
 	})
 }
 
-func (a *adminServer) handleReload(w http.ResponseWriter, _ *http.Request) {
+func (a *adminServer) handleReload(w http.ResponseWriter, r *http.Request) {
 	cfg := a.srv.rt.Load().cfg
 	if err := a.srv.apply(cfg); err != nil {
 		http.Error(w, "reload failed: "+err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	a.log.Info("rules reloaded via admin API", "rules", cfg.Rules)
+	a.audit.add(who(r).user, "config.reload", "rules="+cfg.Rules)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -1528,6 +1784,7 @@ func (a *adminServer) handleCrawl(w http.ResponseWriter, r *http.Request) {
 	}
 	a.log.Info("crawl started", "site", site.Name, "backend", backend.String(),
 		"max_pages", opts.maxPages, "max_depth", opts.maxDepth)
+	a.audit.add(who(r).user, "sitemap.crawl", fmt.Sprintf("site=%s max_pages=%d max_depth=%d", site.Name, opts.maxPages, opts.maxDepth))
 	writeJSON(w, map[string]any{"started": true, "site": site.Name})
 }
 
@@ -1537,10 +1794,22 @@ func (a *adminServer) handleSitemapClear(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "site query param required", http.StatusBadRequest)
 		return
 	}
+	before := a.srv.maps.snapshot(site)
+	if before.Crawl.Running {
+		http.Error(w, "cannot clear site map while crawl is running", http.StatusConflict)
+		return
+	}
 	a.srv.maps.clear(site)
-	_ = a.srv.maps.save(a.srv.configPath) // persist the cleared state
+	if err := a.srv.maps.save(a.srv.configPath); err != nil {
+		a.srv.maps.restoreSnapshot(before)
+		http.Error(w, "clear not persisted; in-memory map restored: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Only clear dependent in-memory learning after the authoritative map
+	// snapshot has durably accepted the destructive change.
 	a.srv.signals.clear(site)
 	a.srv.learn.clear(site)
+	a.audit.add(who(r).user, "sitemap.clear", "site="+site)
 	writeJSON(w, map[string]any{"ok": true})
 }
 

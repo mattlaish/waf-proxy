@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"waf-proxy/internal/sigupdate"
@@ -57,13 +58,34 @@ func catalogURL() string {
 	return CatalogURL
 }
 
-// updateInstallDir is the directory holding the running binary.
+// updateInstallDir is used for package inspection. Direct in-process writes
+// are disabled by default for systemd/DEB/RPM deployments; operators must use
+// the package manager or explicitly opt a standalone/dev install into a
+// dedicated writable directory with WAF_UPDATE_INSTALL_DIR.
 func updateInstallDir() string {
+	if dir := strings.TrimSpace(os.Getenv("WAF_UPDATE_INSTALL_DIR")); dir != "" && filepath.IsAbs(dir) {
+		return filepath.Clean(dir)
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return "."
 	}
 	return filepath.Dir(exe)
+}
+
+func directUpdateInstallEnabled() bool {
+	dir := strings.TrimSpace(os.Getenv("WAF_UPDATE_INSTALL_DIR"))
+	if dir == "" || !filepath.IsAbs(dir) {
+		return false
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	// ReExec restarts the current executable path. Treat a different writable
+	// directory as unsupported rather than reporting a successful install that
+	// would restart into the old binary.
+	return filepath.Clean(filepath.Dir(exe)) == filepath.Clean(dir)
 }
 
 func (a *adminServer) updateConfig() *sigupdate.Config {
@@ -128,13 +150,15 @@ func (a *adminServer) handleUpdateStatus(w http.ResponseWriter, _ *http.Request)
 	}
 	a.staged.mu.Unlock()
 	writeJSON(w, map[string]any{
-		"enabled":         cfg.Enabled(),
-		"key_fingerprint": fp,
-		"catalog_url":     cfg.CatalogURL,
-		"extension":       wafUpdateExtension,
-		"has_backup":      cfg.HasBackup(),
-		"staged":          staged,
-		"current_version": buildVersion,
+		"enabled":           cfg.Enabled(),
+		"install_supported": directUpdateInstallEnabled(),
+		"install_mode":      map[bool]string{true: "explicit_standalone_directory", false: "external_package_manager"}[directUpdateInstallEnabled()],
+		"key_fingerprint":   fp,
+		"catalog_url":       cfg.CatalogURL,
+		"extension":         wafUpdateExtension,
+		"has_backup":        cfg.HasBackup(),
+		"staged":            staged,
+		"current_version":   buildVersion,
 	})
 }
 
@@ -189,6 +213,10 @@ func (a *adminServer) handleUpdateDownload(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *adminServer) handleUpdateInstall(w http.ResponseWriter, r *http.Request) {
+	if !directUpdateInstallEnabled() {
+		writeJSONCode(w, http.StatusConflict, map[string]string{"error": "direct in-process install is disabled for packaged/systemd deployments; use the OS package manager or set WAF_UPDATE_INSTALL_DIR for a standalone writable install"})
+		return
+	}
 	cfg := a.updateConfig()
 	a.staged.mu.Lock()
 	m, payloads := a.staged.manifest, a.staged.payload
@@ -215,6 +243,10 @@ func (a *adminServer) handleUpdateDiscard(w http.ResponseWriter, _ *http.Request
 }
 
 func (a *adminServer) handleUpdateRollback(w http.ResponseWriter, r *http.Request) {
+	if !directUpdateInstallEnabled() {
+		writeJSONCode(w, http.StatusConflict, map[string]string{"error": "direct rollback is disabled for packaged/systemd deployments; use the OS package manager"})
+		return
+	}
 	cfg := a.updateConfig()
 	restored, err := cfg.Rollback()
 	if err != nil {
@@ -265,6 +297,11 @@ func (a *adminServer) stagedSummary(cfg *sigupdate.Config, m *sigupdate.Manifest
 }
 
 func updateLocalhost(r *http.Request) bool {
+	// A local reverse proxy makes RemoteAddr loopback even for remote callers.
+	// Refuse forwarded requests so localhost-only cannot be silently weakened.
+	if r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("X-Real-IP") != "" {
+		return false
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
@@ -275,7 +312,7 @@ func updateLocalhost(r *http.Request) bool {
 
 // writeJSONCode is writeJSON with an explicit status code.
 func writeJSONCode(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
+	setJSONSecurityHeaders(w)
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }

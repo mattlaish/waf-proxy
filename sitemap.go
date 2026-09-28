@@ -74,9 +74,10 @@ type crawlState struct {
 }
 
 type siteMaps struct {
-	mu       sync.Mutex
-	byName   map[string]*siteMap
-	maxNodes int
+	mu        sync.Mutex
+	persistMu sync.Mutex
+	byName    map[string]*siteMap
+	maxNodes  int
 }
 
 func newSiteMaps(maxNodes int) *siteMaps {

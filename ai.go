@@ -1077,7 +1077,6 @@ func (e *aiEngine) reviewProfile(ctx context.Context, path, summary, profile str
 		`Respond with ONLY JSON: {"agree":true|false,"confidence":0-100,"reason":"one sentence"}.`
 	user := "path: " + path + "\nsignals: " + summary + "\nproposed_profile: " + profile
 	var txt string
-	var err error
 	if cfg.Provider == "openai" && cfg.effectiveOpenAIAPIStyle() == "responses" {
 		txt, err = e.callOpenAIResponses(ctx, cfg, sys, user, "waf_profile_review", profileReviewSchema())
 	} else {

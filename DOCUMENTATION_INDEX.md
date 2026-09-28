@@ -1,6 +1,49 @@
 # Documentation Index and Current Project Truth
 
-> **Canonical documentation baseline: 2026-09-17 (Asia/Taipei).**
+## Build-integrity and L7 correction — 2026-09-23
+
+An external Go 1.25 CI audit of the previous API-1→API-3 delivery showed that archive integrity and isolated slice tests had not proved package buildability. The current working source repairs the package-level defects found in that audit and an additional duplicate symbol found during follow-up:
+
+- removed the named-result `err` redeclaration in `ai.go`;
+- removed the duplicate `testAIEngineWithoutWorkers` test helper;
+- consolidated the duplicate root-package `normalizeHost` helper;
+- retained the correct two-argument `writeJSON` / three-argument `writeJSONCode` split and added a dependency-free root source-shape gate to reject wrong-arity `writeJSON`, duplicate top-level declarations, and named-result `var` redeclarations;
+- corrected the client-identity proxy test so the normal XFF path and the fail-closed conflicting-XFF/X-Real-IP path are tested separately.
+
+Phase 4 Slice B L7 abuse control is no longer a fixed-window/global-lock implementation. It now uses a continuous token bucket keyed by site + trusted client identity, 64 state shards, per-entry locking, bounded state (1024 entries/shard), amortized idle pruning/idle eviction, and deferred active-request release so downstream panic cannot leak concurrency state. The existing configuration remains global; per-site/per-page limit overrides and TLS-handshake-rate enforcement are still not implemented and must not be claimed.
+
+Current local evidence is deliberately split by scope: the dependency-free root source-shape gate passes; a temporary local external-dependency stub harness makes the whole repository pass `go build ./...` and `go test -run '^$' ./...` type/test-binary compilation; targeted client-identity/L7/AI/API tests pass there; L7 isolated unit + race tests pass; and the local 5-worker limiter microbenchmark is 162.5–179.7 ns/op versus 330.6–337.3 ns/op for the previous global-lock implementation. The benchmark is a control-path microbenchmark, not production proxy throughput evidence.
+
+**Source Buildability remains BLOCKED, not PASS.** The canonical Go 1.25 real-dependency `go mod tidy -diff`, build, vet, full tests, race, and real-Coraza gates have not run on these exact bytes in this environment. The prior external CI also reported committed module metadata drift; no guessed `go.mod` edit is accepted as a substitute for the exact Go 1.25 tidy result.
+
+## API Security checkpoint — 2026-09-23
+
+The uploaded API-3 baseline was audited against source rather than roadmap labels, then repaired/closed through API-3. Current source truth:
+
+| Slice | State | Current evidence |
+|---|---|---|
+| API-1 Discovery + Operation Normalization | `IMPLEMENTED_TESTING_DEFERRED` | durable operation inventory, metadata, controls/UI; 5/5 exact-source isolated tests PASS |
+| API-2 Typed Schema Learning | `IMPLEMENTED_TESTING_DEFERRED` | live typed collector, lifecycle, privacy controls, persistence; 8/8 exact-source isolated tests PASS |
+| OpenAI SchemaCandidate review | `IMPLEMENTED_TESTING_DEFERRED` | Responses API Structured Outputs, advisory-only; OpenAI source/isolated gates PASS |
+| API-3 OpenAPI Contract Management | `IMPLEMENTED_TESTING_DEFERRED` | persistence, import/export, params/enums/security, scoped drift; 47-check source gate + deterministic isolated/integration tests PASS |
+| API-4 Positive Schema Enforcement | `IMPLEMENTED_TESTING_DEFERRED` | reviewed immutable profiles; LEARN/DETECT/ENFORCE, exceptions, rollback, bounded violation evidence; local API-4 gates PASS |
+| API-5 JWT + Identity-aware Policy | `IMPLEMENTED_TESTING_DEFERRED` | verified JWT/JWKS identity context, DETECT/ENFORCE operation policy, bounded durable evidence; API-5 17-test + race + 72-check source gate PASS |
+| API-6.1 Sequence Foundation | `IMPLEMENTED_TESTING_DEFERRED` | bounded async session/transition state, verified/keyed-private correlation, TTL/caps, atomic snapshots, persistence/admin visibility; 33-check source gate PASS; Go tests/race blocked by missing Go toolchain |
+| API-6.2 Workflow Learning | `IMPLEMENTED_TESTING_DEFERRED` | LEARN-only workflow model; source gate 58 PASS; Go 1.25 targeted/race BLOCKED_ENVIRONMENT/NOT_RUN |
+| API-6.3 Sequence Anomaly Detection | `IMPLEMENTED_TESTING_DEFERRED` | DETECT-only bounded anomaly evidence; source gate 45 PASS; Go 1.25 targeted/race `BLOCKED_ENVIRONMENT/NOT_RUN` |
+| API-6.4 Sequence Operations + Hardening | `IMPLEMENTED_TESTING_DEFERRED` | explicit bounded LEARN/DETECT controls, exception CRUD, reset/relearn, recent sessions and full operations console; source gate 58 PASS; Go 1.25 targeted/race `BLOCKED_ENVIRONMENT/NOT_RUN` |
+| API-7.1 Object Locator Discovery | `IMPLEMENTED_TESTING_DEFERRED` | normalized locator discovery + bounded keyed evidence; source gate 83 PASS; Go 1.25 targeted/race BLOCKED_ENVIRONMENT/NOT_RUN |
+| API-7.2 Identity/Object Relationship | `IMPLEMENTED_TESTING_DEFERRED` | verified identity pseudonym ↔ keyed object relationship evidence; source gate 100 PASS; Go 1.25 targeted/race `BLOCKED_ENVIRONMENT/NOT_RUN` |
+| API-7.3 BOLA Detection | `IMPLEMENTED_TESTING_DEFERRED` | bounded DETECT-only identity/object divergence, tenant divergence and enumeration candidate evidence; source gate 110 PASS; Go 1.25 targeted/race `BLOCKED_ENVIRONMENT/NOT_RUN` |
+| API-7.4 BOLA Policy/Evidence/Console | `IMPLEMENTED_TESTING_DEFERRED` | bounded REVIEW/SUPPRESS evidence policy, structured evidence workflow, recurrence reopen and complete console; source gate 156 PASS; Go 1.25 targeted/race `BLOCKED_ENVIRONMENT/NOT_RUN` |
+| API-8 GraphQL Security | `IMPLEMENTED_TESTING_DEFERRED` | bounded GraphQL parsing/normalization, SDL contract binding, depth/complexity/field/mutation/subscription/introspection/APQ controls, verified-variable API-7 bridge, staged deterministic LEARN/DETECT/ENFORCE; source gate 259 PASS; Go 1.25 targeted/race `BLOCKED_ENVIRONMENT/NOT_RUN` |
+
+API-1 → API-2 → API-3 deterministic end-to-end learning/drift evidence is PASS. The repository-wide Source Buildability Gate remains **BLOCKED**, not PASS: this host has Go 1.23.2 while `go.mod` requires Go 1.25.0, and network/toolchain acquisition is unavailable. Required Go 1.25 `tidy/build/vet/test/race/real-Coraza` qualification remains `NOT_RUN/BLOCKED`. See `API_SECURITY_CLOSURE_RESULT.md`.
+
+This working baseline came from the user-supplied source archive and contains no `.git` metadata; therefore no new branch/commit/push claim is made for this checkpoint.
+
+
+> **Canonical documentation baseline: 2026-09-23 (Asia/Taipei).**
 >
 > This file is the starting point for operators, developers, release engineers,
 > and future AI sessions. Historical ledgers remain valuable evidence, but when
@@ -25,6 +68,15 @@
   Branch protection/rulesets requiring CI before merge are REQUIRED but were
   not applied by the connected integration because GitHub write/ref operations
   returned HTTP 403.
+
+## API Security closure evidence
+
+- `API8_GRAPHQL_SECURITY.md` — API-8 implementation/authority/privacy/resource-boundary truth.
+- `API8_SOURCE_GATE_RESULT.md` — API-8 259-check exact-source gate and deferred Go 1.25 qualification truth.
+
+- `API_SECURITY_CLOSURE_RESULT.md` — authoritative API-1 → API-3 source-closure scope and boundary.
+- `TESTING_RESULTS.md` — current executable scoped PASS evidence.
+- `SOURCE_BASELINE_GATE_RESULT.md` — exact root Go 1.25 blocker evidence.
 
 ## Status vocabulary
 
@@ -76,8 +128,7 @@ Evidence state uses `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`, and where applicable
 - **PostgreSQL is not a current runtime dependency or supported persistence
   backend.** Do not invent `DATABASE_URL`, PostgreSQL migrations, or a database
   provisioning requirement in deployment instructions.
-- The shipping admin console remains embedded `static/admin.html`; `web/` is an
-  experimental non-shipping migration tree.
+- The shipping admin console is the single authoritative UI: embedded `static/admin.html` plus `static/theme.css`. The obsolete experimental `web/` migration tree was removed during API-8 post-audit hardening.
 
 ## Canonical documents
 
@@ -120,7 +171,6 @@ promote the Source Buildability Gate or overall release status.
 - `packaging/cleanhost/README.md` — clean-host distro acceptance.
 - `qualification/README.md` and subdirectory READMEs — runtime, corpus, HSM,
   and performance qualification.
-- `web/PORTING.md` — experimental console migration only.
 
 ## Documentation maintenance rule
 
@@ -144,3 +194,83 @@ current handover files.
 ## API Security Roadmap
 
 See `API_SECURITY_ROADMAP.md` for the planned API-aware WAF evolution slices.
+
+## API Security implementation documents — current
+
+- `API_SECURITY_ROADMAP.md` — API-1 through API-8 product sequence and current statuses.
+- `API_SECURITY_SLICE_IMPLEMENTATION_ROADMAP.md` — canonical detailed slice blueprint.
+- `API3_OPENAPI_CONTRACT_IMPLEMENTATION.md` — current API-3 source architecture and security boundary.
+- `API3_TEST_MATRIX.md` / `API3_ACCEPTANCE_CRITERIA.md` — API-3 final qualification plan.
+- `API3_SOURCE_GATE_RESULT.md` — current executed API-3 source/static evidence.
+
+- `API62_WORKFLOW_LEARNING.md` — API-6.2 Workflow Learning scope, architecture, privacy/cardinality and authority boundary.
+- `API62_SOURCE_GATE_RESULT.md` — API-6.2 source-gate and blocked-environment evidence.
+
+### API-6.3 Sequence Anomaly Detection
+
+- `API63_SEQUENCE_ANOMALY_DETECTION.md` — anomaly semantics, maturity safeguards, privacy/resource/authority boundaries and next-slice truth.
+- `API63_SOURCE_GATE_RESULT.md` — 45-check API-6.3 source gate plus retained prerequisite/static and blocked-environment evidence.
+
+
+### API-6.4 Sequence Operations + Hardening
+
+- `API64_SEQUENCE_OPERATIONS_HARDENING.md` — implementation boundary, controls, evidence privacy and console.
+- `API64_SOURCE_GATE_RESULT.md` — 58-check source-gate result and qualification boundary.
+
+
+## API-7.1 Object Locator Discovery checkpoint — 2026-09-24
+
+API-7.1 is implemented and remains `IMPLEMENTED_TESTING_DEFERRED`. It adds bounded `ObjectLocator` discovery from API-1 normalized path parameters, API-2 typed path/query/body evidence, matched API-3 OpenAPI contracts, and explicit Reviewer-gated operator INCLUDE/SUPPRESS configuration. Locators are keyed by normalized API-1 operation ID plus location/field; raw object values are transient only and durable value evidence is bounded HMAC-SHA256 fingerprint data protected by a separate mode-0600 key. Client-supplied ownership/tenant headers are not authority, and GraphQL `variables.*` discovery is deferred to API-8.
+
+API-7.1 has no identity/object relationship verdict, tenant-boundary verdict, `BOLA_CANDIDATE`, ownership verdict, BLOCK/DENY/403 path, or ENFORCE authority. OpenAI is absent from the locator authority path. State is bounded by global/per-operation/fingerprint/override caps, 30-day learned TTL, versioned restart validation, existing non-blocking observation-plane ingestion, immediate mutation persistence, RBAC and audit.
+
+Executed exact-source evidence: API gates **69/47/46/72/33/56/45/58/83 PASS** from API-1/2 through API-7.1; API-7.1 has **9 targeted test functions present**; OpenAI source contract **16/16 PASS** plus isolated tests PASS; package-source PASS; root Go shape **107 files PASS**; package-builder **9/9 PASS**; changed-file gofmt, Admin JavaScript and primary shell syntax PASS. Canonical Go 1.25 targeted/race remains `BLOCKED_ENVIRONMENT/NOT_RUN` because the host has Go 1.23.2 and external toolchain retrieval is unavailable. Next slice: **API-7.2 Identity/Object Relationship**. API-7.3/API-7.4 and API-8 remain `PLANNED`.
+
+### API-7.1 current slice documents
+
+- `API71_OBJECT_LOCATOR_DISCOVERY.md` — API-7.1 architecture, privacy/resource boundaries, admin surface and authority limits.
+- `API71_SOURCE_GATE_RESULT.md` — exact-source/static evidence and blocked Go 1.25 qualification truth.
+
+## API-7.2 Identity/Object Relationship
+
+- `API72_IDENTITY_OBJECT_RELATIONSHIP.md` — implementation boundary, privacy model, async architecture, resource limits, persistence, operator visibility and non-authority semantics.
+- `API72_SOURCE_GATE_RESULT.md` — API-7.2 100-check source gate, retained compatibility gates and deferred Go 1.25 runtime/race truth.
+- `API72_TEST_SUMMARY.txt` — concise API-7.2 executed/deferred qualification summary used by source-artifact packaging.
+
+
+## API-7.3 BOLA Detection checkpoint — 2026-09-24
+
+API-7.3 is implemented and remains `IMPLEMENTED_TESTING_DEFERRED`. The detector consumes only API-5 cryptographically verified identity pseudonyms, ACTIVE/non-suppressed API-7.1 keyed object locators/fingerprints, and API-7.2 relationship history. It emits bounded evidence-only candidates for `IDENTITY_OBJECT_DIVERGENCE`, `TENANT_OBJECT_DIVERGENCE`, and `OBJECT_ENUMERATION`. A novel object alone is not a candidate; cross-identity and cross-tenant evidence requires repeated historical baseline, while enumeration requires 20 recent distinct keyed objects under the same locator within 10 minutes.
+
+Candidate state persists only pseudonymous/keyed evidence, is capped at 4,096 total / 256 per identity / 128 per object-locator, expires after seven days, is versioned/revalidated on restart, and is saved by the API security autosave/final-flush path. Detection runs inside the API-7.2 background processing plane before current relationship merge. Reviewer-only candidate/status reads are audited. There is no ownership verdict, tenant-boundary verdict, policy mutation API, `BLOCK`, `DENY`, request-path `403`, or `ENFORCE` authority; OpenAI is absent from the detector authority path.
+
+Executed exact-source evidence: API gates **69/47/46/72/33/56/45/58/83/100/110 PASS** from API-1/2 through API-7.3; API-7.3 has **9 targeted Go test functions present**; OpenAI source contract **16/16 PASS** plus isolated tests PASS; package-source PASS; root Go source shape **111 files PASS**; package-builder **9/9 PASS**; changed Go `gofmt`, Admin embedded JavaScript and primary shell/Python syntax PASS. Canonical Go 1.25 `go mod tidy -diff`, root build, API-7.3 targeted tests and API-7.3 race tests remain `BLOCKED_ENVIRONMENT/NOT_RUN` because this host has Go 1.23.2 and external toolchain retrieval is unavailable. Next slice: **API-7.4 BOLA Policy/Evidence/Console**; API-8 remains `PLANNED`.
+
+
+## API-7.4 BOLA Policy/Evidence/Console checkpoint — 2026-09-24
+
+API-7.4 is implemented and remains `IMPLEMENTED_TESTING_DEFERRED`. It adds bounded evidence-routing policy with only `REVIEW` and `SUPPRESS`, structured `OPEN` / `ACKNOWLEDGED` / `DISMISSED` / `RESOLVED` review workflow, recurrence-driven reopen behavior, Reviewer RBAC/audit, restart-safe bounded persistence, and the complete BOLA evidence/policy console. Inferred API-7.3 BOLA candidates remain non-enforcing and are never deleted or converted into ownership truth by policy handling.
+
+Primary API-7.4 files are `bola_policy_api74.go`, `bola_policy_api74_test.go`, `tools/tests/test-api74-source.py`, `API74_BOLA_POLICY_EVIDENCE_CONSOLE.md`, `API74_SOURCE_GATE_RESULT.md`, and `API74_TEST_SUMMARY.txt`, plus lifecycle/admin/persistence/console/build/CI integration. Exact-source evidence is API gates **69/47/46/72/33/56/45/58/83/100/110/156 PASS**, **10 API-7.4 targeted Go test functions present**, OpenAI source contract **16/16 PASS** plus isolated package tests, package-source PASS, root Go source shape **113 files PASS**, package-builder **9/9 PASS**, and gofmt/Admin-JS/shell/Python syntax PASS. Canonical Go 1.25 tidy/build/targeted/race qualification remains `BLOCKED_ENVIRONMENT/NOT_RUN`. API-8 GraphQL Security is the next `PLANNED` slice.
+
+## API-8 GraphQL Security checkpoint — 2026-09-24
+
+API-8 is implemented across parsing/normalization, SDL contract binding, deterministic complexity/field/mutation/subscription/introspection policy, Apollo persisted-query support, verified GraphQL-variable integration into API-7 evidence, and Reviewer-gated `LEARN` / `DETECT` / `ENFORCE` policy plus Admin Console. Any policy edit or bound contract content change returns the policy to `LEARN`; a referenced schema contract cannot be deleted. Only explicit deterministic GraphQL policy in `ENFORCE` may reject traffic. API-6/API-7 learned or inferred evidence and OpenAI cannot promote, mutate or bypass GraphQL enforcement.
+
+Durable GraphQL state excludes raw query documents, literals, raw variable values, Authorization/Cookie/JWT data and unverified claims. SDL is reduced to a digest plus normalized topology; GraphQL object values use API-7 keyed fingerprints and API-5 verified identity only. State and parser resources are bounded, versioned, restart-revalidated, autosaved/final-flushed, and strict mutation APIs are Reviewer-gated and audited.
+
+Executed exact-source evidence: API gates **69/47/46/72/33/56/45/58/83/100/110/156/259 PASS** through API-8; **22 targeted API-8 Go test functions are present**; OpenAI source contract **16/16 PASS** plus isolated tests PASS; package-source PASS; package-builder **9/9 PASS**; root Go source shape **115 files PASS**; changed API-8 Go files `gofmt`, Admin embedded JavaScript, relevant shell and Python syntax PASS. Canonical Go 1.25 `go mod tidy -diff`, root build/vet/test, API-8 targeted tests and race tests remain `BLOCKED_ENVIRONMENT/NOT_RUN` because the host has Go 1.23.2 and external toolchain retrieval is unavailable. API-8 remains `IMPLEMENTED_TESTING_DEFERRED`, not `TESTED` or `RELEASED`.
+
+The documented API-security implementation roadmap is now complete through API-8. No API-9 is defined. Next gate: canonical Go 1.25 qualification of the exact source/artifact, followed by release promotion only if all required gates pass.
+
+
+## API-8 post-audit hardening
+
+- `API8_POST_AUDIT_HARDENING.md` — runtime correctness, Console exposure closure, debt cleanup and authority boundaries.
+- `API8_POST_AUDIT_HARDENING_SOURCE_GATE_RESULT.md` — dependency-free 134-check hardening source gate.
+- `API8_POST_AUDIT_HARDENING_TEST_SUMMARY.txt` — exact-source qualification summary and canonical Go blocker truth.
+
+## 2026-09-25 — Production Correctness & Control-Plane Hardening
+
+Current implementation baseline adds the post-audit production/control-plane hardening described in `PRODUCTION_CONTROL_PLANE_HARDENING.md`. Status remains **IMPLEMENTED_TESTING_DEFERRED**. Exact-source source gates pass through API-8 plus post-audit and production-hardening gates (`190/190` for the new hardening gate), but canonical Go 1.25 build/test/race is still BLOCKED_ENVIRONMENT / NOT_RUN. No API-9 is defined and API-6/API-7 learned/inferred signals retain no direct enforcement authority. The source artifact has no `.git` metadata, so source identity is the parent artifact SHA/manifests rather than Git branch/commit provenance.
+

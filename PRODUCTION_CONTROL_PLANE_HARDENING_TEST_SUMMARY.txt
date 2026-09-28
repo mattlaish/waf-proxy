@@ -1,0 +1,39 @@
+PRODUCTION CORRECTNESS & CONTROL-PLANE HARDENING TEST SUMMARY
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Exact-source source gates:
+API-1/2 69 PASS
+API-3 47 PASS
+API-4 46 PASS
+API-5 72 PASS
+API-6.1 33 PASS
+API-6.2 56 PASS
+API-6.3 45 PASS
+API-6.4 58 PASS
+API-7.1 83 PASS
+API-7.2 100 PASS
+API-7.3 110 PASS
+API-7.4 156 PASS
+API-8 259 PASS
+API-8 post-audit hardening 134 PASS
+Production control-plane hardening 190 PASS
+
+Additional exact-source gates:
+OpenAI source contract 16/16 PASS
+OpenAI isolated tests PASS
+WAF package-source PASS
+WAF package-builder 9/9 PASS
+Root Go source shape 112 files PASS
+Changed Go gofmt PASS
+Admin embedded JavaScript syntax PASS
+Shell syntax PASS
+Python syntax PASS
+Runtime-junk hygiene after validation: 0
+Production targeted Go test functions present: 22
+
+Canonical Go 1.25 qualification:
+go mod tidy -diff: BLOCKED_ENVIRONMENT / NOT_RUN
+go build ./...: BLOCKED_ENVIRONMENT / NOT_RUN
+go test -run '^TestProduction': BLOCKED_ENVIRONMENT / NOT_RUN
+go test -race -run '^TestProduction': BLOCKED_ENVIRONMENT / NOT_RUN
+Reason: go.mod requires Go >=1.25.0; host is Go 1.23.2; external toolchain retrieval unavailable.

@@ -1,0 +1,34 @@
+API-8 POST-AUDIT HARDENING — LOCAL EVIDENCE
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+API-1/API-2 source gate: 69 PASS
+API-3 source gate: 47 PASS
+API-4 source gate: 46 PASS
+API-5 source gate: 72 PASS
+API-6.1 source gate: 33 PASS
+API-6.2 source gate: 56 PASS
+API-6.3 source gate: 45 PASS
+API-6.4 source gate: 58 PASS
+API-7.1 source gate: 83 PASS
+API-7.2 source gate: 100 PASS
+API-7.3 source gate: 110 PASS
+API-7.4 source gate: 156 PASS
+API-8 source gate: 259 PASS
+API-8 post-audit hardening source gate: 134 PASS
+OpenAI source contract: 16/16 PASS
+OpenAI isolated tests: PASS
+WAF package-source gate: PASS
+Package-builder tests: 9/9 PASS
+Root Go source-shape: 110 files PASS
+
+New focused Go test functions present:
+- TestCIDRPolicyExpiryRFC3339IsApplied
+- TestCIDRPolicyExpiredRuleIsSkipped
+- TestCIDRPolicyRejectsInvalidExpiry
+- TestCIDRPolicyDisabledDoesNotMatch
+- TestL7TLSHandshakeBucketEnforcesAndRefills
+- TestL7TLSHandshakeBucketsAreListenerScoped
+- TestL7TLSHandshakeValidationRejectsExternalFrontend
+
+Canonical Go 1.25 tidy/build/targeted/race: BLOCKED_ENVIRONMENT / NOT_RUN
+Host: Go 1.23.2; go.mod requires 1.25.0; external toolchain retrieval unavailable.

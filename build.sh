@@ -14,6 +14,24 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+echo "==> dependency-free root source-shape gate"
+./tools/tests/test-go-root-shape.sh
+python3 ./tools/tests/test-api12-source.py
+python3 ./tools/tests/test-api3-source.py
+python3 ./tools/tests/test-api4-source.py
+python3 ./tools/tests/test-api5-source.py
+python3 ./tools/tests/test-api61-source.py
+python3 ./tools/tests/test-api62-source.py
+python3 ./tools/tests/test-api63-source.py
+python3 ./tools/tests/test-api64-source.py
+python3 ./tools/tests/test-api71-source.py
+python3 ./tools/tests/test-api72-source.py
+python3 ./tools/tests/test-api73-source.py
+python3 ./tools/tests/test-api74-source.py
+python3 ./tools/tests/test-api8-source.py
+python3 ./tools/tests/test-api8-post-audit-hardening-source.py
+python3 ./tools/tests/test-production-control-plane-hardening-source.py
+
 VERSION="${VERSION:-$(date -u +%Y.%m.%d)}"
 COMMIT="${COMMIT:-unknown}"
 VECTOR_MODE="${WAF_VECTORSCAN:-auto}"

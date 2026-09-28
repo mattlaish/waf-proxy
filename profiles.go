@@ -508,6 +508,7 @@ func skipJSONValue(body []byte, i int) (int, bool) {
 
 type requestCapture struct {
 	bodyPrefix    []byte
+	bodyTruncated bool
 	passiveFields []DiscoveredField
 }
 
@@ -525,25 +526,34 @@ func passiveRequestSupported(r *http.Request) bool {
 	return strings.Contains(ct, "application/x-www-form-urlencoded") ||
 		strings.Contains(ct, "application/json") ||
 		strings.Contains(ct, "application/merge-patch+json") ||
+		strings.Contains(ct, "application/graphql") ||
+		strings.Contains(ct, "application/graphql+json") ||
 		strings.Contains(ct, "multipart/form-data")
 }
 
 // requestBodyPrefixWrap reads at most one bounded prefix for request consumers
-// that need it. Passive discovery and AI share the same []byte via context, so
-// the body is restored only once before Coraza/backend processing.
-func requestBodyPrefixWrap(captureForAI, captureForPassive bool, next http.Handler) http.Handler {
-	if !captureForAI && !captureForPassive {
+// that need it. Passive discovery, API schema learning, and AI share the same
+// []byte via context, so the body is restored only once before Coraza/backend
+// processing. API schema learning is an independent consumer: disabling passive
+// discovery or AI must not silently disable typed body learning.
+func requestBodyPrefixWrap(captureForAI, captureForPassive, captureForSchema bool, next http.Handler) http.Handler {
+	if !captureForAI && !captureForPassive && !captureForSchema {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		needPrefix := captureForAI || (captureForPassive && passiveRequestSupported(r))
+		needPrefix := captureForAI || ((captureForPassive || captureForSchema) && passiveRequestSupported(r))
 		if !needPrefix || r.Body == nil {
 			next.ServeHTTP(w, r)
 			return
 		}
-		prefix, _ := io.ReadAll(io.LimitReader(r.Body, passiveBodyLimit))
-		r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(prefix), r.Body))
-		capture := &requestCapture{bodyPrefix: prefix}
+		read, _ := io.ReadAll(io.LimitReader(r.Body, passiveBodyLimit+1))
+		r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(read), r.Body))
+		truncated := len(read) > passiveBodyLimit
+		prefix := read
+		if truncated {
+			prefix = read[:passiveBodyLimit]
+		}
+		capture := &requestCapture{bodyPrefix: prefix, bodyTruncated: truncated}
 		r = r.WithContext(context.WithValue(r.Context(), requestCaptureContextKey{}, capture))
 		next.ServeHTTP(w, r)
 	})
@@ -562,6 +572,13 @@ func requestBodyPrefixFromRequest(r *http.Request) []byte {
 		return capture.bodyPrefix
 	}
 	return nil
+}
+
+func requestBodyTruncatedFromRequest(r *http.Request) bool {
+	if capture := requestCaptureFromRequest(r); capture != nil {
+		return capture.bodyTruncated
+	}
+	return false
 }
 
 // passiveDiscoveryWrap parses the shared bounded request prefix and attaches

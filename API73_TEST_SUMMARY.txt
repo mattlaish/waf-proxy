@@ -1,0 +1,28 @@
+API-7.3 BOLA Detection
+Status: IMPLEMENTED_TESTING_DEFERRED
+Date: 2026-09-24
+
+Exact-source local gates:
+API-1/2 source: 69 PASS
+API-3 source: 47 PASS
+API-4 source: 46 PASS
+API-5 source: 72 PASS
+API-6.1 source: 33 PASS
+API-6.2 source: 56 PASS
+API-6.3 source: 45 PASS
+API-6.4 source: 58 PASS
+API-7.1 source: 83 PASS
+API-7.2 source: 100 PASS
+API-7.3 source: 110 PASS
+API-7.3 targeted test functions present: 9
+OpenAI source contract: 16/16 PASS
+OpenAI isolated tests: PASS
+Package source: PASS
+Package builder: 9/9 PASS
+Root Go source-shape: 111 files PASS
+Admin JS syntax: PASS
+Changed Go gofmt: PASS
+
+Canonical Go 1.25 tidy/build/targeted/race: BLOCKED_ENVIRONMENT / NOT_RUN
+Host Go: 1.23.2
+Required by go.mod: 1.25.0

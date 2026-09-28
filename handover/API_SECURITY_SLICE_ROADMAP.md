@@ -30,7 +30,7 @@ PLANNED
 PLANNED
 
 ### API-4 Positive Schema Enforcement
-PLANNED
+IMPLEMENTED_TESTING_DEFERRED
 
 ### API-5 JWT + Identity-aware API Security
 PLANNED

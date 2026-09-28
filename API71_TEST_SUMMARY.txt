@@ -1,0 +1,22 @@
+Status: IMPLEMENTED_TESTING_DEFERRED
+API-1/API-2 source gate: 69 PASS
+API-3 source gate: 47 PASS
+API-4 source gate: 46 PASS
+API-5 source gate: 72 PASS
+API-6.1 source gate: 33 PASS
+API-6.2 source gate: 56 PASS
+API-6.3 source gate: 45 PASS
+API-6.4 source gate: 58 PASS
+API-7.1 source gate: 83 PASS
+API-7.1 targeted Go test functions present: 9
+OpenAI source contract: 16/16 PASS
+OpenAI isolated tests: PASS
+Package source gate: PASS
+Root Go source-shape: PASS (107 files)
+Package builder: 9/9 PASS
+Changed Go files gofmt: PASS
+Admin Console JavaScript syntax: PASS
+Primary shell syntax: PASS
+Canonical Go 1.25 API-7.1 targeted tests: BLOCKED_ENVIRONMENT / NOT_RUN (host Go 1.23.2)
+Canonical Go 1.25 API-7.1 race tests: BLOCKED_ENVIRONMENT / NOT_RUN (host Go 1.23.2)
+Repository-wide Go 1.25 build/vet/test/race and real dependency qualification: BLOCKED_ENVIRONMENT / NOT_RUN

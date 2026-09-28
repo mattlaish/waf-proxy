@@ -22,16 +22,18 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
 
 type HAConfig struct {
-	Enabled   bool   `json:"enabled"`
-	Role      string `json:"role"`       // primary | secondary — tie-breaker for split-brain
-	PeerURL   string `json:"peer_url"`   // e.g. https://10.0.0.6:9090
-	PeerToken string `json:"peer_token"` // admin bearer token of the peer (masked on read)
-	SyncConfig bool  `json:"sync_config"`
+	Enabled    bool   `json:"enabled"`
+	Role       string `json:"role"`       // primary | secondary — tie-breaker for split-brain
+	PeerURL    string `json:"peer_url"`   // e.g. https://10.0.0.6:9090
+	PeerToken  string `json:"peer_token"` // admin bearer token of the peer (masked on read)
+	SyncConfig bool   `json:"sync_config"`
 }
 
 func defaultHAConfig() HAConfig {
@@ -47,6 +49,13 @@ func (c HAConfig) validate() error {
 	}
 	if c.PeerURL == "" {
 		return fmt.Errorf("ha: peer_url is required when enabled")
+	}
+	u, err := url.Parse(c.PeerURL)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return fmt.Errorf("ha: peer_url must be an https origin without userinfo, query, fragment, or path")
+	}
+	if c.SyncConfig && strings.TrimSpace(c.PeerToken) == "" {
+		return fmt.Errorf("ha: peer_token is required when sync_config is enabled")
 	}
 	return nil
 }
@@ -67,7 +76,15 @@ type haEngine struct {
 	log    *slog.Logger
 	notify *notifier
 
-	syncGate gate
+	syncMu      sync.Mutex
+	syncRunning bool
+	syncPending *haSyncJob
+}
+
+type haSyncJob struct {
+	peerURL   string
+	peerToken string
+	body      []byte
 }
 
 func newHAEngine(log *slog.Logger, n *notifier) *haEngine {
@@ -162,44 +179,105 @@ func (h *haEngine) pingPeer(ctx context.Context, cfg HAConfig) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-// pushConfig sends the given config to the peer's admin API. Called after a
-// successful local apply. Best-effort: a peer error is surfaced, not fatal.
+type haSyncEnvelope struct {
+	Version int    `json:"version"`
+	Config  Config `json:"config"`
+}
+
+const haSyncEnvelopeVersion = 1
+
+// sharedConfigForPeer removes node-local control-plane identity and secret
+// material before HA synchronization. The receiver always merges its own HA
+// identity, users and secret references back in before validation/apply.
+func sharedConfigForPeer(cfg Config) Config {
+	out := cfg
+	out.HA = HAConfig{}
+	out.Users = nil
+	out = redactAISecrets(out)
+	out = redactHSMSecretRefs(out)
+	out = redactNotifySecrets(out)
+	return out
+}
+
+func mergePeerConfig(local, incoming Config) Config {
+	incoming.HA = local.HA
+	incoming.Users = local.Users
+	preserveAISecrets(local, &incoming)
+	preserveNotifySecrets(local, &incoming)
+	preserveHSMSecretRefs(local, &incoming)
+	return incoming
+}
+
+// pushConfig sends the given config to the peer's dedicated replication API.
+// There is at most one network request in flight. If more local Applies commit
+// while it is running, they replace a single pending slot so the peer always
+// converges to the newest committed shared config without an unbounded queue.
 func (h *haEngine) pushConfig(cfg Config) {
 	hc := h.snapshotCfg()
 	if !hc.Enabled || !hc.SyncConfig || hc.PeerURL == "" {
 		return
 	}
-	if !h.syncGate.enter() {
-		return // a sync is already in flight
+	payload := haSyncEnvelope{Version: haSyncEnvelopeVersion, Config: sharedConfigForPeer(cfg)}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		h.recordSync("error: encode peer config: "+err.Error(), true)
+		return
 	}
-	go func() {
-		defer h.syncGate.leave()
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer cancel()
+	job := haSyncJob{peerURL: hc.PeerURL, peerToken: hc.PeerToken, body: body}
 
-		// Mark the payload so the peer doesn't echo it back to us (loop guard).
-		body, _ := json.Marshal(cfg)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPut,
-			trimSlash(hc.PeerURL)+"/api/config", bytes.NewReader(body))
-		if err != nil {
-			h.recordSync("error: "+err.Error(), true)
-			return
+	h.syncMu.Lock()
+	if h.syncRunning {
+		// Latest wins: older unsent pending state is obsolete once a newer local
+		// config has durably committed.
+		pending := job
+		h.syncPending = &pending
+		h.syncMu.Unlock()
+		return
+	}
+	h.syncRunning = true
+	h.syncMu.Unlock()
+	go h.runSyncLoop(job)
+}
+
+func (h *haEngine) runSyncLoop(job haSyncJob) {
+	for {
+		h.sendSyncJob(job)
+		h.syncMu.Lock()
+		if h.syncPending != nil {
+			job = *h.syncPending
+			h.syncPending = nil
+			h.syncMu.Unlock()
+			continue
 		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+hc.PeerToken)
-		req.Header.Set("X-WAF-Sync", "1") // peer treats this as a sync, won't re-push
-		resp, err := h.client.Do(req)
-		if err != nil {
-			h.recordSync("error: "+err.Error(), true)
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			h.recordSync(fmt.Sprintf("peer http %d", resp.StatusCode), true)
-			return
-		}
-		h.recordSync("ok "+time.Now().Format("15:04:05"), false)
-	}()
+		h.syncRunning = false
+		h.syncMu.Unlock()
+		return
+	}
+}
+
+func (h *haEngine) sendSyncJob(job haSyncJob) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		trimSlash(job.peerURL)+"/api/ha/peer-config", bytes.NewReader(job.body))
+	if err != nil {
+		h.recordSync("error: "+err.Error(), true)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+job.peerToken)
+	req.Header.Set("X-WAF-HA-Sync", "v1")
+	resp, err := h.client.Do(req)
+	if err != nil {
+		h.recordSync("error: "+err.Error(), true)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		h.recordSync(fmt.Sprintf("peer http %d", resp.StatusCode), true)
+		return
+	}
+	h.recordSync("ok "+time.Now().Format("15:04:05"), false)
 }
 
 func (h *haEngine) recordSync(text string, isErr bool) {

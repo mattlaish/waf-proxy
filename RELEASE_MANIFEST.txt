@@ -1,148 +1,151 @@
-Version: openai-responses-structured-secrets-2026-09-18
-Build Timestamp: 2026-09-18T00:00:00Z
+Version: production-control-plane-hardening-2026-09-25
+Build Timestamp: 2026-09-25T13:30:00Z
 Build Variant: source
 Reproducible Metadata: true
 Signing: NOT_CONFIGURED
-Packaged File Count Before Manifest: 278
+Packaged File Count Before Manifest: 371
 
 Tests:
-  # Testing Results and Qualification Ledger
+  PRODUCTION CORRECTNESS & CONTROL-PLANE HARDENING TEST SUMMARY
+  Status: IMPLEMENTED_TESTING_DEFERRED
   
-  ## Current canonical status — 2026-09-17
+  Exact-source source gates:
+  API-1/2 69 PASS
+  API-3 47 PASS
+  API-4 46 PASS
+  API-5 72 PASS
+  API-6.1 33 PASS
+  API-6.2 56 PASS
+  API-6.3 45 PASS
+  API-6.4 58 PASS
+  API-7.1 83 PASS
+  API-7.2 100 PASS
+  API-7.3 110 PASS
+  API-7.4 156 PASS
+  API-8 259 PASS
+  API-8 post-audit hardening 134 PASS
+  Production control-plane hardening 190 PASS
   
-  The audited GitHub `main@1d52d65a73a802e32f02994e51f0a07beb240177`
-  was found non-buildable. A root-build-integrity repair is implemented, but the
-  exact repaired bytes have not executed the mandatory Go 1.25 dependency-drift
-  and root-build gates in this environment. Current source state is therefore
-  `IMPLEMENTED_TESTING_DEFERRED` and the Source Buildability Gate is `BLOCKED`.
+  Additional exact-source gates:
+  OpenAI source contract 16/16 PASS
+  OpenAI isolated tests PASS
+  WAF package-source PASS
+  WAF package-builder 9/9 PASS
+  Root Go source shape 112 files PASS
+  Changed Go gofmt PASS
+  Admin embedded JavaScript syntax PASS
+  Shell syntax PASS
+  Python syntax PASS
+  Runtime-junk hygiene after validation: 0
+  Production targeted Go test functions present: 22
   
-  Artifact integrity, source reconstruction, package fixtures, and component
-  source checks retain their separately scoped PASS evidence. They do not promote
-  root buildability or release readiness. Read `DOCUMENTATION_INDEX.md` and
-  `SOURCE_BASELINE_GATE_RESULT.md` before relying on older historical sections in
-  this ledger.
-  
-  Handover checkpoint: 2026-09-07 (Asia/Taipei)
-  
-  This file separates **real execution**, **stub/API integration**, **ABI-only native checks**, **component benchmarks**, and **NOT_RUN release gates**. Do not promote one evidence class into another.
-  
-  ## Final packaged baseline
-  
-  - Source artifact: `waf-proxy-vectorscan-learning-coraza37-2026-09-04.zip`
-  - SHA-256: `64dc3034865d20aedaa38e10af5459da844ae6f6d92960e224223ec0ed359b22`
-  - Size: 342,234 bytes
-  - Patch artifact: `waf-proxy-vectorscan-learning-coraza37-2026-09-04.patch`
-  - SHA-256: `a24645a911caaa986c310509103093ba0cdc5e7bdcd4801251ccadd4e17a8398`
-  - Size: 77,830 bytes
-  - Patch baseline: TLS Acceleration / modern-NGINX release line
-  
-  Previous packaging verification already completed:
-  
-  - ZIP integrity test: PASS
-  - ZIP re-extract vs source: 106 files, byte-for-byte identical, file modes identical
-  - patch reconstruction from TLS/modern-NGINX baseline: byte-for-byte/file-mode identical to final source
-  - diff hygiene: 20 expected files changed for the VectorScan/Coraza phase; unrelated TLS/AI/LB files did not drift
-  
-  ## Real host evidence already obtained
-  
-  ### TLS frontend / modern NGINX
-  
-  Host evidence previously recorded:
-  
-  - NGINX 1.26.3
-  - OpenSSL 3.5.5
-  - modern syntax generated as `listen ... ssl;` + `http2 on;`
-  - `nginx -t`: PASS with no deprecated `listen ... http2` warning
-  - HTTPS -> NGINX -> private Unix socket -> WAF-side endpoint smoke: PASS
-  - curl negotiated HTTP/2: PASS
-  - forged Internet-side internal forwarding/private TLS headers were overwritten/cleared: PASS
-  - kTLS auto detection fell back to software TLS on the available host because kernel kTLS was not available
-  - QAT auto detection fell back to software TLS because `qatprovider` was unavailable
-  
-  This proves frontend/fallback behavior on that host. It does **not** prove real QAT hardware acceleration or active kTLS.
-  
-  ## Portable Coraza API-stub regression
-  
-  Purpose: validate project control flow, compile compatibility with the intended Coraza API surface, Go logic, and race behavior when the real module cannot be downloaded. It is **not** real Coraza correctness evidence.
-  
-  Final VectorScan/Coraza integration round:
-  
-  - full repository `go test`: PASS
-  - `go vet ./...`: PASS
-  - bounded `go test -race` groups: PASS
-    - root package: PASS (~14.4 s in the recorded run)
-    - `internal/vectoraccel`: PASS (~1.1 s)
-    - `internal/tlsfront`: PASS (~1.17 s)
-    - `internal/sigupdate`: PASS (~4.6 s)
-    - `cmd/wafbench`: PASS (~1.15 s)
-  
-  A single all-packages race invocation exceeded the execution runner timeout; no race detector report was produced. The bounded package runs are the recorded PASS evidence.
-  
-  ## Native libhs ABI-only gate
-  
-  Purpose: compile/link/exercise the actual CGO adapter shape without claiming real VectorScan regex behavior.
-  
-  Using a local ABI-compatible libhs test library:
-  
-  - vectorscan build-tag compile: PASS
-  - vectorscan-tag tests: PASS
-  - vectorscan-tag `go vet`: PASS
-  - vectorscan root race: PASS
-  - scan/close lifecycle paths compiled and ran
-  
-  This gate found and caused removal of an unsafe `cgo.Handle` integer -> `unsafe.Pointer` bridge. The final adapter uses C-owned context storage carrying `uintptr_t` handle data instead.
-  
-  **Evidence boundary:** this does not prove `hs_compile_multi`/`hs_scan` correctness, pattern compatibility, performance, SIMD behavior, or real libvectorscan lifecycle.
-  
-  ## Coraza transaction-truth integration
-  
-  Implemented and covered by project tests/stub API integration:
-  
-  - Learning truth source is transaction-final `tx.MatchedRules()` after `ProcessLogging()`;
-  - ErrorCallback remains available for existing match logging/AI/syslog but is not a Learning truth source;
-  - same transaction/group rule IDs are de-duplicated before Learning counters are updated;
-  - request-context transaction correlation replaces client/URI correlation, avoiding HTTP/2 identical-request ambiguity;
-  - semantic fingerprints include rule/adapter/Coraza/native version inputs and force re-Learning on drift;
-  - false negative or native scan failure moves the group to `FAILSAFE` and Coraza-only processing;
-  - no-hit skipping is permitted only for an `ACCELERATED` group and verification samples still execute full Coraza.
+  Canonical Go 1.25 qualification:
+  go mod tidy -diff: BLOCKED_ENVIRONMENT / NOT_RUN
+  go build ./...: BLOCKED_ENVIRONMENT / NOT_RUN
+  go test -run '^TestProduction': BLOCKED_ENVIRONMENT / NOT_RUN
+  go test -race -run '^TestProduction': BLOCKED_ENVIRONMENT / NOT_RUN
+  Reason: go.mod requires Go >=1.25.0; host is Go 1.23.2; external toolchain retrieval unavailable.
 
 Files:
-e3a29faaceecfac71cc7dee5e5897396d48f716b1aafc694f146dd0871b91608  .github/workflows/ci.yml
+266cd04b3cd25e60398753417e0cb2879dee5112de518df7f194cefe0ce6306a  .github/workflows/ci.yml
 671fb5004c3aa4002c3858d4fc197bf7e9dfc665d13484ee4dd1442277fa72a3  AGENTS.md
-6049075ab8f44979a5933903b97d8f1a6428413d4a8e87963e37156c55604890  AI_HANDOFF.md
+17ee98056f095dbaf225986e773614448dc62e0c41668d36054944e38d991029  AI_HANDOFF.md
+ced874dd3486a2b33a9a00a4d1df88a72108de485e38d9cc9adf996dc3fa17fa  API1_FINAL_QUALIFICATION_REPORT.md
+1efd1b20e3d472a5cf1f3b507e8571581b64723c76246a83e82ccd0490d69852  API1_HARDENING_RESULT.md
+ae0877582e158470910aea095dd7ab454591ef8fa98131f7959568bca1e0fbc1  API2_CHANGE_SUMMARY.md
+391774de708e549bd18e27639fc15d3d67ca7466683ac1c64707e5cb97c4a510  API2_CONTINUATION_CHANGE_SUMMARY.md
+da8a82e34e4dc879127e062a50fc2402223dd769ea6b6e7d57b7c04de7f96e9f  API2_DOCUMENTATION_SYNC_CHANGE_SUMMARY.md
+9fbf273779fcdfb32e7f81381109f345fa12cb5270beebad55d7d7f6188cd4cf  API2_FINAL_HANDOVER_STATUS.md
+254b62fc7649c214a71c9efa83c4466569f3cc248f563d33f95a4670c21db121  API2_IMPLEMENTATION_REPORT.md
+09f0e063309da353fc7f0b5b36464d0672f8a08d8c16e5fdedbc0c4644ac0e65  API2_TESTING_STATUS.md
+a8880bf27a596adcc37ef37890ede0e6bae36177cb71fdc3166dff9e6e99e055  API2_TYPED_SCHEMA_IMPLEMENTATION.md
+9af38a67d2aa03f7dfeb9c346f65673c94b1da78f3c713dd6a4c65a1373046d6  API3_ACCEPTANCE_CRITERIA.md
+cd01aff852f2baa9d7aa8662c2d13441eed163769592d9f44acc01a4ac15d896  API3_OPENAPI_CONTRACT_IMPLEMENTATION.md
+d387e9abbeb4b4d70f82552466827d1e7870872ed17ecb11ee09155d8be63767  API3_SOURCE_GATE_RESULT.md
+282454ed5bc8dbad5791509ff7ca3101209d3775b4c966493cb857027d8aa7ad  API3_TEST_MATRIX.md
+fb0db57a8ca0368b99111058bca30e3ff434177f1e86409959156a6b5712324f  API61_SEQUENCE_FOUNDATION.md
+5e784c6cee8dcad4c5c0e03e3f64366665b9f6d40e3812d671b1d38422dd5de7  API61_SOURCE_GATE_RESULT.md
+4d03e3d31f016e4cd751d8c595aaf1c5367640d320a91cc5261a21a267150d16  API62_SOURCE_GATE_RESULT.md
+36bb13cd1de3350496ee95f99e9e0a763f0fe4199e8b02f84b56f69b07eaf89f  API62_WORKFLOW_LEARNING.md
+ddc91c2420096cc07b24d9ef426f8b3c0b8af248a1cc3a4c86df628b62b776cf  API63_SEQUENCE_ANOMALY_DETECTION.md
+a1dc9c6dbb1f42cc184f21ca064ed8ab634b5ecf881eab04b4a4ceaaf04ba36e  API63_SOURCE_GATE_RESULT.md
+49e7aec81597ed5548d8f2b9868db161ec9da81c9dc189570d326512d6bbbfde  API64_SEQUENCE_OPERATIONS_HARDENING.md
+99c1ab06116a7569db588e991ad7e4facb3a4663b3836c9458e686dd225c5f9d  API64_SOURCE_GATE_RESULT.md
+3e027ef32029fd710dd8ec2da551b447d215c79659180cdb51961092293e016d  API71_OBJECT_LOCATOR_DISCOVERY.md
+3e183615ede3309ce2bc5741012128fdd354c3861cdb08ce3b8631086f880a15  API71_SOURCE_GATE_RESULT.md
+de1a32cbb7f44461080156310febeae1fcebc47e19d33bd09719f2cffc73e03b  API71_TEST_SUMMARY.txt
+4b57499e1a46a400efd31829ee454eb803250a4d22bf38811ea07bf711b6c286  API72_IDENTITY_OBJECT_RELATIONSHIP.md
+36422a2896c4e0bef50f0da6c71dd7049c5c6903b2828afbf1424028f6d76f16  API72_SOURCE_GATE_RESULT.md
+524d1bd2a4918dd38c158c7eca7b807f882796d3b8a0854f3a4532ee88219caf  API72_TEST_SUMMARY.txt
+21df4d510c71f9c9090595e0c089f9b806a230967dc2a772067caaa1bf329c17  API73_BOLA_DETECTION.md
+1e81abd9369aab3c0cd416d4a38548381f9943077e1bdf57faa129975f53ce92  API73_SOURCE_GATE_RESULT.md
+3db68b8c7a8a5250fa88801d31d708026785383b8f85654ad5ac3ae2674268ee  API73_TEST_SUMMARY.txt
+5809e1999db3f7f45fe7281e150b8abe0b1a12347e1936c0b2917bc4fc8643e1  API74_BOLA_POLICY_EVIDENCE_CONSOLE.md
+cca67a091a79895cde7ee36fe871a0072af9018dbcc58bf04a00213065cf2d18  API74_SOURCE_GATE_RESULT.md
+88b9c042a79028771786355729153e2bcc5632b4facb52e38bdb2276dd0dfb2c  API74_TEST_SUMMARY.txt
+01113f011e28ea3d88fc9849019b3b69dd934cd3fe91696effdfd31258dbaf33  API8_GRAPHQL_SECURITY.md
+8d3dfa6942e0865fe2db7dd1ec264f791ae53af294c42aee9460cbbd18966aec  API8_POST_AUDIT_HARDENING.md
+1c93c75f0feb4d8cb559a1e879aece7c9b5c20975aa78344a6635700cd6bfea9  API8_POST_AUDIT_HARDENING_SOURCE_GATE_RESULT.md
+f256cb27247ceceb59092cc792d0141a369b54d3d72f4190cc0dbc685321041a  API8_POST_AUDIT_HARDENING_TEST_SUMMARY.txt
+f3cd3ef166b8d9455a0d483db5ea8e5b136cf238fcc0cdf04318200325bc0219  API8_SOURCE_GATE_RESULT.md
+0ae7fce36ffa516cdbfc3a44f1a28850f3165d656d861272d0292cf90e187431  API8_TEST_SUMMARY.txt
+7b2cc9c6a7e5ebd6f30c118ae066f3f710cef95014080537693e2fc8af8462d2  API_SECURITY_CLOSURE_RESULT.md
+35339a39bcc23e439db7950c8ce9f2fbe937b184e2b527a3e8a424d357c4cc7b  API_SECURITY_ROADMAP.md
+73a72c244f730ce29a1cc20134b41aa53398e57ec8df3cbf85ae3dc8cbbd341c  API_SECURITY_ROADMAP_CHANGE.md
+4cc01a6b7960d390d17b2c7ae4b81fba9bcd93163f5bd3f6a944dcad0f0d69f4  API_SECURITY_SLICE_IMPLEMENTATION_ROADMAP.md
 89b8c46f481cca49627d2ec4ed2230537a6588fa0bbb0a7df99381c3c7201c06  CLAUDE.md
 712a739811bb2be03a68fc9dc22ce9d36448276e2c49486e137f3cc8199468a6  CLEAN_HOST_DISTRIBUTION_GATE_RESULT.md
 98ef1fd48b2654414c47b77dfd20e5a78bec261afee784c8fac3573d28a0dbd1  DEB_PACKAGE_GATE_RESULT.md
-daafe00e7ee69fdaedb2ea0dcc734eadf7328530c3190e82322208bc151b6302  DEVELOPMENT.md
-2abf22a408065bdfeee4c829b06430ac4851b6a53dacaf08ae6a8af46e5b79f6  DEVELOPMENT_ROADMAP.md
-2331da468532b1bee658ce365f4349ae35d467a9c85e48356c2ee10d548bde89  DOCUMENTATION_INDEX.md
-19f51021208126ab2a391b27a9accfccb47bb534fd81b227c183385a4c1903e3  HANDOVER_PROMPT.md
-162ef9ea5f75162e601eb361ab6fc193ac9bb2f90a965b52b2e1eff5648c8458  HANDOVER_STATUS.md
-f1fefa00f1b09391cc7f3459fa7d4c0ef66fe1ea6808bd072ab0ec6252f1387d  INSTALL.md
-653df5d2570a9059585169c65504e777e73f63e2334ddb4e743a4810ae453522  MANIFEST.md
+91ddc355d3d5942f6555dc4733511acdb5be6523a6d738c796d8fdfce91978b4  DELIVERY_MANIFEST.json
+166b4939ca1451acf80ccebeaebcd6f8f9c86aea42db0fc84141151f296fc1ea  DEVELOPMENT.md
+1088b90446c14eafb15d1da24424236fc1281db9eb452f5d002ed5b03bf50824  DEVELOPMENT_ROADMAP.md
+9d96bf345e97627a0d18b9702be35a08b15b591e02faf5d64692e2d666ed0a06  DOCUMENTATION_INDEX.md
+2d66985402a2c3cce95219a6c307fce408f5aeb554ef0ccea31dc522da9619b0  HANDOVER_PROMPT.md
+c0b217a6331beff4b72245f3b534e777215b5408d150474f3a817814ad1d915f  HANDOVER_STATUS.md
+dfb4f69fb93053d9e87d9d5b7262d0daa000ced0bc6d9790c2c8a2c62897ecff  INSTALL.md
+e546bb42df972f2b679731043aef57dcf01d9a95bfb3822b48eebd71e127b135  MANIFEST.md
+647aa54304604fb2c8bbf0d242002d2abc5080c4af090e6d48715337f263d5a1  NEXT_CHAT_HANDOVER.md
 87c7579131bf3f92c16999e19e5775d9eff7ef20e51d8ab0ca5a421713dada16  OPENAI_INTEGRATION_GATE_RESULT.md
 1cc93554ade8773c3769203d095636c41600423ae454c306510967bcd8626aea  PACKAGE_LIFECYCLE_GATE_RESULT.md
 15cccc4ad0e027ccd62aa314c04f1e39d1588c227f60e53c3b0fde538482ef33  PACKAGE_TOOL_GATE_RESULT.md
 2f42c2e072d42604ef87baaed8cb0528b080dc117c34c669fb08106bf10ef6cd  PACKAGING_TOOL.md
-52b41191a05e349796332f5f1727b9be157cc8baef69c7fed5653ab0c7c67ba6  README.md
-cd4b9083b254ff11e2c1093fa7763e1572232e221ecd3d881347a520295de833  RELEASE_PROCESS.md
+1b29d4bc4fcb0d64308b74f94677986f8f09d9a04fb07c9f2da90885b4415b23  PRODUCTION_CONTROL_PLANE_HARDENING.md
+c09c398dbd3eec7249e01f595291ebd020f12eacd41f8a5f8ccafbb466fcb11d  PRODUCTION_CONTROL_PLANE_HARDENING_SOURCE_GATE_RESULT.md
+fa51cf74e98ac3abc49f8beef7031fd349d44e9a1f1114e8f1bf3765924296a0  PRODUCTION_CONTROL_PLANE_HARDENING_TEST_SUMMARY.txt
+2ddb092d97a9bfed35abe72e4c872393b6dd07cf76eee4bd50b185dee663c2eb  README.md
+b53cfda5235280e9dec535475c90587a88b01c8cf4e2030aa521f3b6534df812  RELEASE_PROCESS.md
 437958906cd398f4c87927ca876dc98279062558aee60b6317d928f89fabce10  RPM_PACKAGE_GATE_RESULT.md
-a3f38a0d8db07cafb9cf11d32fc90ce4809b834c2c6c329aa835c2a2f42300fd  SOURCE_BASELINE_GATE_RESULT.md
-828586318cbcdd55099c416088ff99f48ce86316d9bedf673be28af519c5eb61  TESTING.md
-e92a4c3649e3d7de41f6f25fdd347a23183206b12c28bbdb513c05c7b3e6bc57  TESTING_RESULTS.md
-1b85a2751fb1842018cd01919b596d88e25730154a86659cb00f83f8ef040ca2  admin.go
-894a0a942a404aa5dd09d4783fbd75a4372170f4c3ded8ab88780144d62562b1  ai.go
-6fa843c2300cc8f0c195f9cd264932ac86e535089d72c28a346f8d700d30f8c6  ai_openai_integration_test.go
+3ef415e71fd07bd8e1139bd61e2851e44101b9d332f70be4f004832e8c4b6956  SOURCE_BASELINE_GATE_RESULT.md
+76c99e6db17b52312e1eec30b442cea2b3aec4b8282249da34ba5bc316bc12d3  TESTING.md
+55e3b9260af4148ef2208edb0a53b6fd77398981f895dc6be57661b99bddd2f4  TESTING_RESULTS.md
+f1080e1e05091d1e03d840dad71fe2ce251ca222f105e13a39381b381a8f364e  admin.go
+61879908785038fe2f187077fcac0427cf3bea3a47699f4ada1a5773939aebf9  admin_login_hardening.go
+f57729a83d554f91a2b0664b52a40e347bee80ccb40f9333ab3723dca979d49b  ai.go
+2da72aa1bf201b7ed921a619fb693b23a238dd839f4c028f7bfb480aad2de1bb  ai_openai_integration_test.go
+544f98e425b4eeb7dc5f3936f52e176ff716c9ec540a986a8344c95b637f7e92  ai_schema_review.go
 6a8f1b9b977f5245fccb02a08c4825799c23bce47e3c6b7ada570095205b3878  ai_test.go
+6c33203a54daacc6e8e0240af8c47c19b38e0168f0e99fd56e427dfda9b98a78  api3_contract.go
+5604ddc5881731e8c076fe96cd633b3f09d2a9b9a4ee48a3674cfdaa9dd39305  api3_contract_test.go
+6e2c60cabacd628a0cef8da16a9c1779989efc2583893df60ad0861c02b48f9d  api3_export.go
+28e16abda241fc70834b9dcf8021e7d4618a0d01bb4d146f7380d5dcafef505b  api_operations.go
+15295b428ef58f910d9887e5d249a0a7f7e5cf1b4c976a580b3e0d220de18922  api_operations_test.go
+c6ce2b66793aa8e67e5d3aa5f6cacb60855506d255eb64dc2d1f05d941ec9ee9  api_security_handlers.go
+5ac460bb1eee101bd006c95bbaba7d43cb061efdf66085ac94383671e913ff1e  api_security_handlers_test.go
+8ad1a543791a89b571b18cad7b678976b93260bbbe1fa8c57fdcbf77ba568c47  api_security_integration_test.go
+4166f2ae040a8938a426192bb436244e8dfb349828d10d2155297a6582575f5d  api_security_persist.go
 d539caa72b588aedf168bb0943e7ed61186e7889f49c0f0bb64a34e1ec10bf25  benchmark/README.md
 3f47bb42840b0b2ac99494ef25d6d15fccee70d20a524088cd0a17ac4a469faf  benchmark/build.sh
-8308603f25f8649b1dadf508bd36c7da14579de4ae91dc2abb1ba10519708a06  block_response.go
+22e06ac76e66f69b81ca9535ae1e84e8ff1249062792e4b4f314e1cab92b2480  block_response.go
+b2e013f6b2ad3dc43c3e790ef43e1115dad825dd144b2a089324360e06179e0b  bola_detection_api73.go
+cd83056e83db380a8b20973d09312d0a28b928d28881059b95dbeeeecd02e234  bola_detection_api73_test.go
+4038e252f0bae384813a707bd2b5667453d95479e305cfce3f39a56aeae7ef12  bola_policy_api74.go
+e1d1f7370bc1f1d167477b4e0c6445f5dde49753871d74cfd5b4287fc3e395b4  bola_policy_api74_test.go
 cd7639842049811abb2f42d656ea61bfb42882049eaacd5a9ae97faff397a6c4  build-release-artifact.sh
-e369d09387afaa40725a6f7320949f5fa13fbc2a934591b22c537c8789ddb8ab  build.sh
-8bfe07435c830b1111a79b80474225570a46b23a52828fa343a08d2c198f4241  change_audit.go
-d6d6b4d70949b144e1167a7a3f593d82c4549a1af24cd398aa85b25fed9174b0  cidr_policy.go
+7157a20516efc5df5f3427eb115e91ea0b74df2a736c7897814588a3407a40f6  build.sh
+4902b12ba6caf215bd0684ee57ae12baeeeeb082ae7320556a2f446378ad1541  cidr_policy.go
+daa5b93bd357613e4f94460d725835ff3c1ad9f99a42c2e75354e9ac07c354bc  cidr_policy_test.go
 1836ec1457098aa57af30a7ebe844391ba174ff5d3cca0fbb515dfc5895a050f  clientip.go
-ba55c0fa472aa7b9dbc6b75f9e50f2128e266e42127b92631894635c34cdffb3  clientip_test.go
+c1da783aa24306eb7ab049d91d56508ef87a3f39064f279754b5dfa5bbf52bf5  clientip_test.go
 3e6bc19b5b7a9c16360d82362fb9db6dd1ebd17d1c266e0ce5459d67c94cea7e  cmd/hsmqualify/main.go
 f1cd316df60b9313c1c143dfdd2debb7bb6d8546312d66b89d8bdf656e01acbf  cmd/waf-tlsfront/main.go
 60b5e79884a991c8c6c2822898fc930923af7b43239f7f1c4de4f9c201fa56c1  cmd/wafbench/backend_mode.go
@@ -163,32 +166,39 @@ d64e0bfe64ed12a7ee72ff930a0020734b8964785dfa1b51e3d83c1d236aac0c  cmd/wafbench/w
 748a8a25963f2001562b40e0ab9ecf9bca5fa9f1a00db9f2d6d94a9c2d40b22a  cmd/wafctl/main.go
 386e04a3f854e1aac73dec6bbbd66d520838e68478a1bc52265f783c6d7aaf99  cmd/wafctl/main_test.go
 0d01992d65cffe729b84c42caea6572985bcdaa8bc8859970eddcce7e7c3b303  cmd/wafqualify/main.go
-5697ce522f54293403bc59aff62deb13790b59e6655fce68e9407c1b7b9a16c3  config.sample.json
+70d4ea6accf4f6768e6aa21d69b4b89588ec13eace6457cecc4d4cdeec8d26c3  config.sample.json
 40875efeef531386cef5a586ed4cccef5fb4091a27c6431422155ddbc518e352  config_pool_test.go
 c38880848c57e91179030b0c84b889b5d86c8adcf023f8e7a1bae8b29b7df71b  coraza.conf
 5a89d22287a828cadb23b2e9543ecc6ed7f6a67dc3a0578ecc874b5e1bc6e052  coraza_observer.go
 3dc913cd9d832abb076199b1130f175966ab34719acb625b7ba7bfb65e4bb77b  coraza_real_gate_test.go
-5f48715390638f456f17a4338af8ae0280da7e9cdfc1a6a9cf510947b2af5c7d  correlation.go
-5b8640823579c5df573254756d738d30d2a652ef9ed8ce138600a2166cee1d8f  debug_bundle.go
+187ce2106e6b558eccbe33a6f9ccc627050ee0bdf12582ef19e7911805489987  correlation.go
+9352ccca3899865fce2844153f51c0bc395e0c148a0fe3efee6f9d009cd41fdb  debug_bundle.go
 c20103c800c929b2c093d9c4509ccc4f7b4d47e6efa2165fe7610e556a668b79  debug_bundle_test.go
 442c87ffcf00e6d9a3284fbdba11ec16cbda006f241367ac73a23d2971f4a0d5  debug_evidence.go
 20822298ae8d1da59320addd245ebf1ca6e7c7cf6480a6992b91715b1e2bb5ae  debug_evidence_ops_v2.go
 e7ef1cf078be25c3bc51608951f6b8480f33cc5502afdb9e159f4937d03d6f06  debug_evidence_ops_v2_test.go
 83be06587baeab0a9dae01fd52dbcbe3432ab1229212d4c3627b517cb4743c1e  debug_evidence_test.go
-6db5d9beb886bf5884e9d5ce1d3d31bd95c4f71284c46e65de0b956b77baa133  debug_lifecycle_v2.go
-0713994f86eb43f877e50d4554947c71bbba852d9154072414d3395521d2b8f9  debug_retention_worker_v2.go
 9391c46a7c01f829415c3d030c22c683cf9d5f3a8355a6ddafc8631e6ee40742  deployment_readiness.go
 0bf75a5ec806334c97a99c2896e9ea33c08ef70b14a213d79a0b23b6e23f557d  discovery.go
 c021fc346e6ec0c9ce8502e9d68a142f180f2ec5f562b27b9e0c5ebc9de8b71a  fieldpolicy_test.go
 18c9013683d6d5da7fdfe013ef86d289ee8fbefe1d7f6c4328a66d088d13d5e3  freebind_linux.go
 4d655dc660a83e528f2ec970c72ac77aa58c9588a8f4229081e67cf91de246e9  freebind_other.go
-29950f92bf626789778e87f9c9df33fe5fc49504ab25a7c1b719f5bc99fbb36c  go.mod
+4b507543087e107799cd12d9c619add8f1f444ce65bf0bdef81efbc40eb84653  go.mod
 c3ed48273853eff709f1415d7181c334d33967ec3051861a1dd2e141f0aa175b  go.sum
-3de828e1fc17537c8f0d486a2e72b1c884f70c3e517a61fe419b855e04d596c6  ha.go
+b6e0ea0a4b19a0e516e038c01c11cc7c355cae9b9c2b469ba9a65a5c654008de  graphql_api8.go
+c04089a694417b332e6bd9f08c24846f191ba5e068961b72f48f2d64db6f804d  graphql_api8_test.go
+5ec7163e48eb2936b6f915f7708b7791dcafe0a50d091c446848ca43c44d44cb  ha.go
+978fe53a5b55b95e957432a5698ff4863b9990c7a90a9cd038fdcd64defe3249  handover/API_SECURITY_SLICE_ROADMAP.md
+aa10cbdbddecf6eff2054404979834dde7c11deb6ca1f79b4ea9f465b2a0641d  handover/CHANGE_SUMMARY.md
+8b88c1f219896709b0b2533c2b97394066696ba28745bbdbc6c94f105d57cd07  handover/NEW_CHAT_HANDOVER_PROMPT.md
+c0b4a0a1560fece9eeb83e5394fa063954117142a6b7d1445b9d8ed040ba3be5  handover/NEXT_CHAT_HANDOVER.md
+826404c53d1b91b715ab61dc34a4bec5986d87a554eb740c88a847a966ec834f  handover/NEXT_CHAT_HANDOVER_API2.md
 47c768dfc972967fbce509d4c0cf32b1138d7fd6a22745f73960ec6d43526ae5  hotpath_test.go
 cdb33bb946b1ad4294081194f2c0f4c008e488c534323336f75b0d2b7deea2d9  hsm_integration.go
 8ab6bfe120c07aabbf7c47e7add8b0fe9786a1b0b4498fca6d541b0b9ac7f3f5  hsm_integration_test.go
-86d31edf86e19e76ed371cb5a4eb94ccc2028240ddb6e4fc20bbcdd1369d6ec2  hybrid_discovery_test.go
+1f8d99730716937451002b6454d7e5dd1fd71eee51fab21985aafd67343f6f24  hybrid_discovery_test.go
+bf2b537dd6dd4ffa7a4d2741b30fbf28bd8bd3c39b7b8f7afc92f1dfc7f906f8  identity_api5.go
+f6c2dd25233020643f2bbff13ead2aaab82169fa93bd7a41fd1a28f0188f7426  identity_api5_test.go
 de379e3cf76443da6b80c7a1dae205651ed21a6ffe78de443f4738500c0e9fd2  install.sh
 f4309ad80742c6acb455d461a1c76041fb46115ae08145c159326ad35c1ab054  internal/capability/classifier.go
 4a2c4faa9f6d406b97cf0c81c4e28b08327ff902a43fc8709fd1ec57ae1f6539  internal/capability/classifier_test.go
@@ -235,18 +245,21 @@ d0739c16be1eecf747d407fe90130a37fe69b90b22681ce386969c391158530a  internal/vecto
 89d14d2cdfb4e5a59b7ae9f7c3455cfd690e8a85f2806418bae70eb90877ab2a  internal/vectoraccel/scanner_native_gate_test.go
 820097c83c1aecf86e1da5b18b3dd8d0dbc5bc92d5106b862cd4bce4f711639f  internal/vectoraccel/scanner_stub.go
 1512a3a6038e1d20668b9d7510388a74db334f966edbf3163466982a813d0670  internal/vectoraccel/truth_boundary_test.go
-7534e492c1f385711c6a88cdf6b15d2e806a7296ed036e75aa378040469902c2  investigation.go
 7158c527b610d4ba3b341b9acd94578135afa80a1d5d2848545e16bb02b9e89d  ipmanage.go
-cd4354389206d45c3fc2c3aeb0db01af551174bb0c73fa25b86b9da7c0015147  l7_abuse.go
-eb18aa3f4cf9a7fbf17585cef88c2f1359503d511c11bad375dc2e50aa26b669  l7_abuse_test.go
+ba9c29dda82c0a969554f559dabe4215d9fd81e1a3dab2d5c83d231bf5c2e6ae  l7_abuse.go
+8697751782d613dbc7a55544bd532c5d7d3804fd10f83d1a864ffae128769418  l7_abuse_test.go
 e889cae3bdeac1b4f1fec5820a4c658cb39fc5592b74c68b6de9f2ed46fb536e  learn.go
-681a5f2a4a6d6aec0054d085572bc509f9ab169f868ac9f150e189b7fc076185  listeners.go
-4fb1349c8533c02a7ad8f1af68509b2a90585b835cb018e4051242a57e1961d6  main.go
+bbdb547dd07107c4129947378136d5bf5705a37f96591041a157fa452af91dcd  listeners.go
+b310dd8cf3a91cee37c3283211ba82eea80dbad2686757e700e2835b8bbb8797  main.go
 c5b49ae1c9272eb670e95b620d717cf897681940c9917f23c3dce0cef5923f80  matchlog.go
 70bbcf28c4bba3be500874cb2606b5313c2a9e00b0351ba470be26c4414a01e4  matchlog_test.go
 b6f1fb83ebb589e19afe23deaf11e2e23ea57b57eca23a8e667adc2288a9ddb6  metrics.go
-00d7f2e1a1b1d65569f79a104d3d368f55b9d713a865a4211f1028f10d284bc6  notify.go
-6282fa9bd309b19c7bda3afaa05d90eb64d673edf465133c0f0488f23c241b4d  observations.go
+d9d607f38a488cf2eefc90ebf3895513f64d612af204da7aef1a0b455e0bcdc6  notify.go
+7169bd7d621832af9dfb6ebcbcd50646136f41fc41aa3f3686b8931a9fe58a71  object_locator_api71.go
+c6d9d3bfa1d0e0f0bd0515ddb5ebd632ac24a75821d8a60d03863db35b7a402f  object_locator_api71_test.go
+553a447e942d27a6169542d35c2b844cf894eea4e97c96a09a822f5e64cb334d  object_relationship_api72.go
+fcbccbc2f839d148eae0ca23e8193d1815585424b64e97361c2991a448510197  object_relationship_api72_test.go
+9676fb74de7b979b2001c13ac6c63871c3633fd56af5b03b09f87e389f8a5ddd  observations.go
 177c443e50d98d8b116591b0b4306916361f53ba16bb777bd565166d67699205  observations_test.go
 9dc5c57f5722a742ec24250f19202413427559627c6ca0894addb19f05251842  p1_tuning_test.go
 8baf318b1aa0b5ee35633fec1b7b7fffad849f3e4c07f3b674ac58cf430a6ebd  packaging/cleanhost/README.md
@@ -281,7 +294,7 @@ cca08cb34304b98ad5d8859f06b49d851b5b23e88554d1527d7ddc66fc8f5685  packaging/rpm/
 ecf67fa281a0b4763513f878ac60c9c88568eeaabdd81cf1e8ba76dcb760c1c3  packaging/rpm/validate-rpm-source.py
 df962d362a8612ce1635a2ed0d6a3be1df756ca10574e976cc371cc9c53fbc80  packaging/rpm/verify-rpm.sh
 de34ab82c0836fae965203b630153aee391396aa5312d80f50b692699e0d6376  packaging/rpm/waf-proxy.spec
-bdbdcd50661ee6b640206537541a64316c09d02d206706154502f8a0207ce962  patch.md
+b8d6eb8fddf84aae9d43d8c81e09a50f7dfbde0bf03095990c21c6600eb5dbe8  patch.md
 5c5b50c5c974f71d3b022df2008670445a654cc10fb1e8cb8b6290558cb5613a  pki.go
 620d5e73937908db4ea8d45246d0bd668dafe79fb494ce4151889eb991d5ecf3  pki_crl_test.go
 a8e87b35a323050f857ea5ec8644ed0849aaa94d7bc0a3dff0bd51ee1ddc316b  pki_hardening.go
@@ -291,10 +304,16 @@ a1b9ad7ee4388502bc9d09aaba6feffb2a9a354415db41332e36111f9fd6c8ea  pki_url.go
 fdac41005cda5ba665ca0ab02d46b8147687ca249b179bf2c4e5ca9cdae2de96  pki_url_phase4_test.go
 babd9924e76af2d6aef4b94d705b7591fa4650c7efb3e1159d91b5cc424a2717  pool.go
 9bb7519bba24659a6de6bb292d56df7b431983d4efe007dfa997c4239c431a45  pool_hotpath_test.go
-5db84e4ec24132b46a3d0bba9c3ed532e0ff9474113d6e5443643f0536f7da1a  profiles.go
+11eaff7fef3a54ee4f7c087b34a2cddb0292a22cee83f9f5f60b373bdb2dc12c  positive_schema_api4.go
+e6f7b8d367dd24c585ac8076a2e9f12fdfcc521779393b4b55da5c9f87888a38  positive_schema_api4_test.go
+9d29a75e3d282ad52b0d1b85af9ce5513ae6fd2327285c983bb912775a304265  production_control_plane_hardening_test.go
+1b84cd9593362a3e96ed330c5be2cd1b79ea957a261aa6bba32eae3db997463d  profiles.go
 641473f825cffd18ba326a1bd4f979e455d57f3d4d25bfa0e3db89fed1793e9e  proxy_buffer.go
 1404a38bb350194e9b2becafe51f4b3a12833edb062c2adb4102b7e3af89de4b  proxy_buffer_test.go
+53c15e2dba17ce557ecaddea5658d40dac35391d31fc93e989ad1ea5d9e384a2  qualification/API2_FINAL_QUALIFICATION_REPORT.md
+4e465f9d2169e1197b920379c98c819b4317f8c0ca88080604a690c44197d702  qualification/API2_QUALIFICATION_STATUS.md
 e6822df5e2cbb84561dcb2606fb36a6e20381f3192c684712a786976c36e9181  qualification/README.md
+b7599a3436ec378a906b7bdc723ffb156e7bd80c39ea8664dfd9aa035d4e0f0a  qualification/RELEASE_DECISION.md
 89c70499209111e0e23cc5c5148be7af9e944ccd9b210c6d18909778ce20982c  qualification/clean-host/almalinux-9-NOT_RUN.json
 663824577a59ff4113409fde05a54d71dd27c014074c5edb5cab5d7e61796d94  qualification/clean-host/debian-12-NOT_RUN.json
 2650c3061a9244804aa28f8f82732d2fb4dd42d88900cad57659daf88c0720b5  qualification/clean-host/matrix.json
@@ -324,64 +343,78 @@ a4cf7e2fbd342c56399151d8652f026a45ca8039eaa6fd10fb771d26b45cbe66  qualification/
 a67982dca65a3f62143965a6d58ade359bfdbf4a6fb0c22644d62083cea9bc9e  qualification_diff.go
 9f783bae55922b0075919c363cb90d426e57e3c3f819413016646f11fc574750  qualify-release-host.sh
 a41b872af4c87a11de82e8178f3589905d12307e0c2c2b881b3933ee18712ae9  release-artifact-negative-tests.sh
-bc197bd466daece784dde651d8167f9c72f2b1f545a490ae280356912c72c592  release-evidence/PROVENANCE.json
-6bc57dba363b1076b0815dc7fe46c1ea252dbf0db8ce82e1794d8ea5d2c7ae0d  release-evidence/RELEASE_EVIDENCE.json
-4b8dc36168ea7c26bacdd3878c84fc0dc131efddbd550c3db6e561473e193fee  release-evidence/SOURCE_MANIFEST.sha256
-ff11de888cfd953064bd37b0b6c3d1340bffb7c993cef164aa1aa4c4d22595f7  release-evidence/sbom.cyclonedx.json
-30f107ed33461b9f92fae82a8594e64b9360a1899b7a14a3c6116b6d6d551abd  release-evidence/sbom.spdx.json
+b67add81d9d6151572c07744763e8b2844c971399a8a3e990294428b09a938e1  release-evidence/PROVENANCE.json
+4e2ccc7ab035712e83fc11a9302c53d16bd1edb11e30986f84b27daf53e4ba96  release-evidence/RELEASE_EVIDENCE.json
+8b6bf090f2f67841831ee9e617bf8e245f23ded41054d4415844e40de34f3d33  release-evidence/SOURCE_MANIFEST.sha256
+c6b7920cc928b460743442ea23d20e7999d38fc11adf1fe8dd1c694ceb754e96  release-evidence/sbom.cyclonedx.json
+14114a07d5c110091c03626b4bf1d6a55bf2fc30058d0e8a8e1a4140b10f752e  release-evidence/sbom.spdx.json
 b6ca9b7d9e820357eac47a4db77ff32f3109ff75f46d7c09f9ee1116251f5dbe  release-security-scan.sh
 43ccd38c43b082b58e69399185e516fb303e020d980a3a8bdd1416c67e98c7fc  release_scripts_test.go
 07333c135d90d88ecbe762911f714de2125f8366abc239da183fa0217c36f927  reliability.go
 16ed077fceea36de93e96c824846fc2922393b6ce7ebcae1f399e6ad15bbf9f5  reliability_test.go
 af1743801ce8d18c6f837081bba4a3eeeeee60d697de9e6f5bee09f263e5a917  run-phase1-qualification.sh
 98fa5ab0314590989c5de9585368c019d312c6b01ef578941d7de42c4fbfc770  runtime_smoke_test.go
+9bb7970257d56352b032343295270cb283294ca6c40af06228597009eb20acdf  schema_api2.go
+216cd1c9afd3ee89a47f7991f5db1e64d92b39406a71a36806638c3555035816  schema_api2_continuation.go
+7627c06648bcbdf1080e6c6a6cd7b133c59885904e8afe9af81135d4a7990adf  schema_api2_test.go
 e7a9fddb76adbb3531d4ec240b4e40af2e50bcad596523c3e68d39290da7d6be  security_event.go
-b6c5531c0e6929942664199c81ff626a9347587705d3ce8c2350a8b14dd52b80  security_export.go
 a2c5ede89f33563220c0058604e5ea6ccb06a736a1ff2e3d5d7f4b0e2b07030c  security_state.go
 bebe3b639cc4de325c785f8e9e135998e5175ddafd9486397b3d257ea4c91c7b  security_state_test.go
-661a6e645be482084e45e9a9a298b1853cba73f38a7201699806d66a2883e9e5  security_timeline.go
+259adeabfd9d709852c6986742257737e1eed352c473bf2ab5852644a9c572ce  sequence_api61.go
+da2f6ec9b378af0fcc7b8768869a0882c758982f43f9d4b4051b482787157b28  sequence_api61_test.go
+208be6bf453e29a0fb25f233e52149ed192dd48a7330dada5e3785588065c92b  sequence_api62.go
+4fc9b3788dc73cd5581e2c43287070a557adcddb9ca8221b845591da2fd710d1  sequence_api62_test.go
+fb240d0ac3c8bb39552c6979d32e5892e808af5982d82717ef7322a8995c97df  sequence_api63.go
+c9b8361fd3ac0f99578cdaf933f419c017755d40436363306d10ba2676462bb8  sequence_api63_test.go
+f172bd39380022fd2bae25efe408b3baf55935b24e6caa8ae5689f785d915ecb  sequence_api64.go
+8100b6d579970785116c39de87d3027e36b080355fd997e30b55798350fc165b  sequence_api64_test.go
 9a744231904128ef5fe1ae837c1878102069b8aa4133bdec8fa5c7d9284cc2f7  setup-interfaces.sh
-a38d95b50b43dfc179a515a82d80224c817551a0882b36dba6fe8a27b343f10a  sitemap.go
-f5f409a80b0956e7a06d3a7f1ac654e33e2795442f775d71b315d0f52ebcd79a  sitemap_persist.go
-0b8c4c1f218d0e53dd1cac91b2fc5725842a0dabfc4bb3a5046b5034bfb4064d  static/admin.html
+163894d72042b0b09da7e5c6ce12e5ac717b088abfbd25c99083d4f105b1ff57  sitemap.go
+0563b2ac921bdb02f4faf6d09902a9c20a123841d1e10d6a251568c0d01274dc  sitemap_persist.go
+d45746447da5083d5ac925d3e1e862406f85499d6b638628b00c3e2662af9c39  static/admin.html
 83aae56abd54b9837adffcb93138becd01d1bd2941664f1948a13f56a418f753  static/theme.css
 eeed825f2157da6e0b909d5673725e6198fafc92db87fd8a449585c3545a52d0  support_api.go
 c9eb67b04dddaa3fa9dbed2faf79dd8763acaf777ec2f22d4cd88121fc8fce48  support_bundle_v2.go
 5a067449bc3ee7f9fcae2120add6308baca58210d77b93eb72129ee76f802ef7  syslog.go
 dc93c0f6736f453bac76b76ec17764bbb357a4adb01ef87d7b1f690584561c19  theme_test.go
 f5d1ce056074d7d7330bd8ae8dcc026423a82c5d6c7992e1736339a2701a498c  tls_acceleration_test.go
-3e5ea16e498e81d9fe402d422dca7607d74f119921cea01cb2ba8e3cde3fb3c4  tls_frontend_control.go
+4293c7af9587c68ed01aa17e7a04e71e18ea1d690b60c8e5db19f11082f68fe4  tls_frontend_control.go
 5fa65465efe8485ae58f251a0b0861da67e455864c3eb05bc4617b61c828eac9  tools/release_evidence.py
 7d295b6d50808da84b0a3b7d5254105f91e3d68e2bf03ae0f85b50292e7c1de2  tools/source_manifest.py
+9d0b65cb57700a4f27d1f58fb9d97dbd4d1cf3dc783d8e4d45aa3ad8d3797673  tools/tests/go-root-shape.go
+1bef296b8e04b89f9471c93facb6437f1302dcc11b408cb1bb479372099b6863  tools/tests/test-api12-source.py
+a929b8ee51cfa4d26bf1f60b26c961afbca7837898c4822cbc87bba07f02c67c  tools/tests/test-api3-source.py
+02f112ac304952efc1e03759a8223ec9de16374532d3f4b29979745a3efad0ab  tools/tests/test-api4-source.py
+ddb1596a91af905f3af6523aa692daf473d6417d793a2f7b11a48b64b94c7cc0  tools/tests/test-api5-source.py
+136667de41661546fdec466d155e7a002fec420d69dd20f30cb639284c29761a  tools/tests/test-api61-source.py
+ad87852289a34aad0177ad7fef8b4470d7567f7e4ec0623f3181455ef1a93688  tools/tests/test-api62-source.py
+d9a73b19e705065bb3da6138a12c42db265290b7acef7fd7a0303f343aef4c82  tools/tests/test-api63-source.py
+34db0253698fc04c49b4abd8ff0318218ae3220a0e6f374206489fa68fec7ac7  tools/tests/test-api64-source.py
+4e711fa9a340f0fe581962797fd299e41059bf9f2cc5b6fb87bc15ca241e354e  tools/tests/test-api71-source.py
+4795a9f0518449b01922460aaf1dbb95dc62724ed65d0547fa445967e72ca943  tools/tests/test-api72-source.py
+2c7839e0bd84606b0a8eed414ad5203bcee331dc3b86eb958793e975d3d59995  tools/tests/test-api73-source.py
+9214f1790bb3fba883bccd5b6932a49798ed8089fc6a98f44d3e3dc287d5840e  tools/tests/test-api74-source.py
+92a2fb5b264792befcf5ed9cd28557428aeabf6d32ff26dd37c88d3dcffaa6eb  tools/tests/test-api8-post-audit-hardening-source.py
+6abb6372a57e5b15241d9cb2a621087a52b0d0732336e262c1a8674a777af83a  tools/tests/test-api8-source.py
+e8f28a61302a1ed7ed06735f3a0b24532c4a795a62175e73127d488039178a22  tools/tests/test-go-root-shape.sh
 b3fe5d05d08e3c012e0b4398a315e3b7ff311edac100a150af2ab72f8c003d76  tools/tests/test-openai-integration-source.sh
+e6687409e357e8cc56ba5e03ffcff768af2ffbe6be43a2875e98a58ebc908089  tools/tests/test-production-control-plane-hardening-source.py
 1a5a48a3a76e66b34dd903962f0003632a9c36ee66f297d80f85c2efaa849190  tools/tests/test-waf-package-source.sh
 1f08c2fbf3debe14509d5ccd578be3d242c42fe1a1197953f59867a924bdd3bf  tools/tests/test_waf_package_builder.py
 af70eff8dea578d71fcdf3f4b1383af09e2c3c4433ad6cf4cdee1026821c25d7  tools/waf_package_builder.py
 2328749e01336161f4cb719b15821c95e85399b443865ed55ce0d2c1dc72d535  uninstall.sh
-be9bfc302858774a96498fdaa54c3d78b94206439d9b021a1053ac92f4b6b90c  update.go
+7451069c26a3cb8d5c162323d14ffe6a0d1902a0a72bff7a9f9256155ee03334  update.go
 a02407c4a2a11917f093e1047645a499515db990837ee4e7a3cb945bff9970f6  upgrade.sh
-e14611aa8bfacc00788858cfdf51f1f1bd61a00e80eb7f1e73b45d68412f2a72  users.go
+7a15fdebcdbdcf45d0f4bce84af270b7e10e17fc4c8ee4f354bd7f8fb645ae22  users.go
 d505881bdbad313ea966ca96871113685412707fbbee69669fd76b6d3cc82717  vectorscan_audit_store.go
 eddf4cd5b42853621ec3bdc97a3512a87daf4012ed3ace72becfe751e74cece9  vectorscan_qualification.go
 f08d8faa22a7d4221bc12708b9255c782ccfca212a494b967b67859053995449  vectorscan_qualification_test.go
 877d78b470e5207bc239374ccf7df5e1f082ba79188a5e8878711f23e65528df  vectorscan_transition_audit.go
-0ac89f8b83bcb0b4b9595820df1c3e6a90cf67efde8677fc35f3c66d77495790  verify-release-artifact.sh
+00ad3baa0392d5e0ad9cd559fbe22fb6760704ebc2d1599d1b27edec895e89e7  verify-release-artifact.sh
 55070477932224f39a4678cfd74f44a1c2ca298a1bab1cc95f12656dcdef7b5d  verify-release-signature.sh
 98bec50fa8fbc97d431f1e376e222caf460f0aa50e20e7b137a5758f3a345a72  verify-reproducible-source-release.sh
 6ee5e90ab7f1acf8c2096bdd653327846177cb61753a9c8069e1aa66c392b113  waf-doctor.sh
 bba26faf908c2512fc3ad111eb6a6ea0cc7bd0810f2eca4f7c371992935af1d1  waf-package
-7a8d90c38714df771df67edf7d97fcdd62b06baa35cfc1a7e7ea77dbc2a6a2d4  waf-proxy.service
-ab36c65679dd1565993bc944e002cf1628ab4de23134dbc8988f66d603df1d2b  waf-tls-frontend.service
+83a07d52d7b161793f9ba2507e1c72d9244cac1de78dce2e2621ade2ce4fc63e  waf-proxy.service
+faf707c085fabe486f9d6a288c99dcc148979d8fb716141312161b1327c0b8d2  waf-tls-frontend.service
 c4f2fb801cb98ba49ae85ebcf8819f44c77ec2fbb0934f03070e506edc45fa8e  watchdog.go
-687825de2e9df21640e9fd7700f9182c99514497b0e32fe794c5da1b997414fd  web/PORTING.md
-7aeeb91ae9f6b9a12fba1b10061ee5e69f5b35f5afecb152cac6be072d4983b8  web/index.html
-a2598cf033c4ccb4077e8067656a45d0ffda165cd013b44c041d5313358c4135  web/package.json
-eff9e7fe8d0e5a254ff5af6ccd5e861f63e7071a258e4efbcebf7dfc4dea702e  web/src/App.jsx
-44a563fe148386368fd95584cae3d1010ebc585be273ab1f5d17e32ca2ae74db  web/src/api.js
-22fc4e00749d4f7d4c595ede6e692e72d1593c458deb51d17cf2a6a6622eab39  web/src/components/Bell.jsx
-ecc32c14f98325968b6a8ea608c191682845f6de129cb9ed07a0b1aba68cfb67  web/src/main.jsx
-9b3857a5ec73a0f3d0e6e2c7b444817b6964797fa1c55d95a47154fc657f3a89  web/src/store.js
-45835451648102db89a6ca904d05ef49163601fbb31a20dc29e92d47132f658c  web/src/style.css
-cabc2f7f4df48054eecaeaf93a8dab1e4602982c70559d1f16623d9adde81c2f  web/src/tabs/HATab.jsx
-83aae56abd54b9837adffcb93138becd01d1bd2941664f1948a13f56a418f753  web/src/theme.css
-811d52c96525b069ec83e446e7688f216300754ce74f5177daff3c83270c129d  web/vite.config.js

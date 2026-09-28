@@ -15,8 +15,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +33,22 @@ type NotifyConfig struct {
 	OnMemberDown bool `json:"on_member_down"`
 	OnSync       bool `json:"on_sync"`
 	OnPeer       bool `json:"on_peer"`
+}
+
+func redactNotifySecrets(c Config) Config {
+	if c.Notify.WebhookURL != "" {
+		c.Notify.WebhookURL = ""
+	}
+	return c
+}
+
+func preserveNotifySecrets(cur Config, next *Config) {
+	if next == nil {
+		return
+	}
+	if strings.TrimSpace(next.Notify.WebhookURL) == "" {
+		next.Notify.WebhookURL = cur.Notify.WebhookURL
+	}
 }
 
 func defaultNotifyConfig() NotifyConfig {
@@ -62,14 +80,24 @@ type notification struct {
 	Payload map[string]any `json:"payload,omitempty"`
 }
 
+type webhookJob struct {
+	url  string
+	kind string
+	item notification
+}
+
+const notificationDedupeMax = 4096
+
 type notifier struct {
-	mu     sync.Mutex
-	cfg    NotifyConfig
-	items  []notification
-	nextID int64
-	cap    int
-	client *http.Client
-	log    *slog.Logger
+	mu             sync.Mutex
+	cfg            NotifyConfig
+	items          []notification
+	nextID         int64
+	cap            int
+	client         *http.Client
+	log            *slog.Logger
+	webhookQ       chan webhookJob
+	webhookDropped uint64
 
 	// dedupe map + optional external sink (e.g. syslog)
 	dedupe map[string]time.Time
@@ -77,13 +105,18 @@ type notifier struct {
 }
 
 func newNotifier(log *slog.Logger) *notifier {
-	return &notifier{
-		cfg:    defaultNotifyConfig(),
-		cap:    200,
-		client: &http.Client{Timeout: 6 * time.Second},
-		log:    log,
-		dedupe: map[string]time.Time{},
+	n := &notifier{
+		cfg:      defaultNotifyConfig(),
+		cap:      200,
+		client:   &http.Client{Timeout: 6 * time.Second},
+		log:      log,
+		dedupe:   map[string]time.Time{},
+		webhookQ: make(chan webhookJob, 256),
 	}
+	for i := 0; i < 2; i++ {
+		go n.webhookWorker()
+	}
+	return n
 }
 
 func (n *notifier) configure(c NotifyConfig) {
@@ -118,11 +151,23 @@ func (n *notifier) push(kind, level, title, body, dedupeKey string, action strin
 	}
 	n.mu.Lock()
 	if dedupeKey != "" {
-		if exp, ok := n.dedupe[dedupeKey]; ok && time.Now().Before(exp) {
+		now := time.Now()
+		if exp, ok := n.dedupe[dedupeKey]; ok && now.Before(exp) {
 			n.mu.Unlock()
 			return
 		}
-		n.dedupe[dedupeKey] = time.Now().Add(60 * time.Second)
+		// Dedupe is convenience state, not notification authority. Prune expired
+		// keys and cap retained identities so attacker-controlled IP/path churn
+		// cannot grow the process indefinitely. At saturation we still emit the
+		// notification; we simply stop remembering additional dedupe keys.
+		for key, exp := range n.dedupe {
+			if !now.Before(exp) {
+				delete(n.dedupe, key)
+			}
+		}
+		if len(n.dedupe) < notificationDedupeMax {
+			n.dedupe[dedupeKey] = now.Add(60 * time.Second)
+		}
 	}
 	n.nextID++
 	item := notification{
@@ -142,11 +187,28 @@ func (n *notifier) push(kind, level, title, body, dedupeKey string, action strin
 		sink(level, kind, title, body)
 	}
 	if hook != "" {
-		go n.sendWebhook(hook, kindHook, item)
+		select {
+		case n.webhookQ <- webhookJob{url: hook, kind: kindHook, item: item}:
+		default:
+			atomic.AddUint64(&n.webhookDropped, 1)
+			n.log.Warn("notification webhook queue full; dropping delivery")
+		}
 	}
 }
 
-func (n *notifier) sendWebhook(url, kind string, item notification) {
+func (n *notifier) webhookWorker() {
+	for job := range n.webhookQ {
+		for attempt := 0; attempt < 3; attempt++ {
+			retry, err := n.sendWebhook(job.url, job.kind, job.item)
+			if err == nil || !retry {
+				break
+			}
+			time.Sleep(time.Duration(1<<attempt) * 250 * time.Millisecond)
+		}
+	}
+}
+
+func (n *notifier) sendWebhook(url, kind string, item notification) (bool, error) {
 	var payload any
 	text := "[" + item.Level + "] " + item.Title + " — " + item.Body
 	if kind == "slack" {
@@ -162,15 +224,21 @@ func (n *notifier) sendWebhook(url, kind string, item notification) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
-		return
+		return false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := n.client.Do(req)
 	if err != nil {
 		n.log.Warn("notify webhook failed", "err", err)
-		return
+		return true, err
 	}
 	_ = resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return false, nil
+	}
+	err = fmt.Errorf("webhook HTTP %d", resp.StatusCode)
+	n.log.Warn("notify webhook rejected", "status", resp.StatusCode)
+	return resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500, err
 }
 
 func (n *notifier) list(limit int) []notification {
@@ -199,6 +267,17 @@ func (n *notifier) unreadCount() int {
 	return c
 }
 
+func (n *notifier) webhookDeliveryStats() map[string]any {
+	if n == nil || n.webhookQ == nil {
+		return map[string]any{"queue_depth": 0, "queue_capacity": 0, "dropped": uint64(0)}
+	}
+	return map[string]any{
+		"queue_depth":    len(n.webhookQ),
+		"queue_capacity": cap(n.webhookQ),
+		"dropped":        atomic.LoadUint64(&n.webhookDropped),
+	}
+}
+
 func (n *notifier) markRead(id int64, all bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -224,9 +303,3 @@ func (n *notifier) dismiss(id int64, all bool) {
 	}
 	n.items = out
 }
-
-// pending atomic guard so periodic scanners don't stack.
-type gate struct{ busy int32 }
-
-func (g *gate) enter() bool { return atomic.CompareAndSwapInt32(&g.busy, 0, 1) }
-func (g *gate) leave()      { atomic.StoreInt32(&g.busy, 0) }

@@ -191,7 +191,7 @@
         }
       ],
       "type": "application",
-      "version": "openai-responses-structured-secrets-2026-09-18"
+      "version": "production-control-plane-hardening-2026-09-25"
     },
     "tools": {
       "components": [
@@ -203,7 +203,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:8fe2bb57-a5e7-59f3-8536-61b1344cf14f",
+  "serialNumber": "urn:uuid:f932bcc2-99d7-50c0-aea1-70e7c5c38ff4",
   "specVersion": "1.5",
   "version": 1
 }

@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -38,6 +39,8 @@ type managedListener struct {
 	srv        *http.Server
 	isTLS      bool
 	socketPath string
+	ln         net.Listener
+	done       chan struct{}
 }
 
 type originalSchemeContextKey struct{}
@@ -139,6 +142,18 @@ func (m *listenerManager) buildServer(addr string, isTLS bool, cfg Config) *http
 		}
 		lr := rt.listeners[addr]
 		if lr == nil {
+			// During an atomic Go-TLS <-> external-frontend ownership handoff,
+			// the newly-bound socket can become reachable a fraction before the
+			// runtime pointer swaps. Fall back to the equivalent logical listener
+			// in the previous runtime so the transition never exposes a spurious
+			// 421 solely because the ownership key changed.
+			if frontendListener {
+				lr = rt.listeners[logicalAddr]
+			} else {
+				lr = rt.listeners[tlsfront.InternalListenerKey(addr)]
+			}
+		}
+		if lr == nil {
 			http.Error(w, "listener not configured", http.StatusMisdirectedRequest)
 			return
 		}
@@ -166,8 +181,19 @@ func (m *listenerManager) buildServer(addr string, isTLS bool, cfg Config) *http
 			MinVersion:       tls.VersionTLS12,
 			CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
 			GetCertificate:   s.getCertificate(addr),
-			GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
+			GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
 				s.metrics.addTLSHandshake() // fires once per handshake attempt
+				rt := s.rt.Load()
+				if rt == nil || rt.l7Abuse == nil || hello == nil || hello.Conn == nil {
+					return nil, nil
+				}
+				peer := hello.Conn.RemoteAddr().String()
+				if host, _, err := net.SplitHostPort(peer); err == nil {
+					peer = host
+				}
+				if peer != "" && !rt.l7Abuse.allowTLSHandshakeAt(logicalAddr, peer, time.Now()) {
+					return nil, errors.New("tls handshake rate limit exceeded")
+				}
 				return nil, nil
 			},
 		}
@@ -178,18 +204,12 @@ func (m *listenerManager) buildServer(addr string, isTLS bool, cfg Config) *http
 // start launches a server in the background. Bind failures are retried while
 // the socket remains desired. This matters during a Go-TLS <-> external-TLS
 // mode transition, where the old owner may hold the public port briefly.
-func (m *listenerManager) start(addr string, isTLS bool, cfg Config) {
+func (m *listenerManager) prepare(addr string, isTLS bool, cfg Config) (*managedListener, error) {
 	srv := m.buildServer(addr, isTLS, cfg)
-	ml := &managedListener{srv: srv, isTLS: isTLS}
+	ml := &managedListener{srv: srv, isTLS: isTLS, done: make(chan struct{})}
 	if p, ok := tlsfront.SocketPathFromKey(addr); ok {
 		ml.socketPath = p
 	}
-	m.live[addr] = ml
-	go m.serve(addr, ml, cfg)
-}
-
-func (m *listenerManager) serve(addr string, ml *managedListener, cfg Config) {
-	m.log.Info("listener up", "addr", addr, "public_addr", tlsfront.PublicListenForKey(cfg.TLSAcceleration, tlsFrontendSites(cfg), addr), "tls", ml.isTLS, "tls_frontend_internal", ml.socketPath != "")
 	var ln net.Listener
 	var err error
 	if ml.socketPath != "" {
@@ -215,24 +235,48 @@ func (m *listenerManager) serve(addr string, ml *managedListener, cfg Config) {
 		ln, err = lc.Listen(context.Background(), "tcp", addr)
 	}
 	if err != nil {
-		m.listenerFailed(addr, ml, err)
-		return
+		if ln != nil {
+			_ = ln.Close()
+		}
+		if ml.socketPath != "" {
+			_ = os.Remove(ml.socketPath)
+		}
+		return nil, err
 	}
+	ml.ln = ln
+	return ml, nil
+}
+
+func (m *listenerManager) serveBound(addr string, ml *managedListener, cfg Config) {
+	defer close(ml.done)
+	m.log.Info("listener up", "addr", addr, "public_addr", tlsfront.PublicListenForKey(cfg.TLSAcceleration, tlsFrontendSites(cfg), addr), "tls", ml.isTLS, "tls_frontend_internal", ml.socketPath != "")
 	defer func() {
-		_ = ln.Close()
+		if ml.ln != nil {
+			_ = ml.ln.Close()
+		}
 		if ml.socketPath != "" {
 			_ = os.Remove(ml.socketPath)
 		}
 	}()
 	var serveErr error
 	if ml.isTLS {
-		serveErr = ml.srv.ServeTLS(ln, "", "")
+		serveErr = ml.srv.ServeTLS(ml.ln, "", "")
 	} else {
-		serveErr = ml.srv.Serve(ln)
+		serveErr = ml.srv.Serve(ml.ln)
 	}
 	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 		m.listenerFailed(addr, ml, serveErr)
 	}
+}
+
+func (m *listenerManager) startLocked(addr string, isTLS bool, cfg Config) error {
+	ml, err := m.prepare(addr, isTLS, cfg)
+	if err != nil {
+		return err
+	}
+	m.live[addr] = ml
+	go m.serveBound(addr, ml, cfg)
+	return nil
 }
 
 func (m *listenerManager) listenerFailed(addr string, ml *managedListener, err error) {
@@ -259,46 +303,157 @@ func (m *listenerManager) retry(addr string, isTLS bool) {
 	if !ok || desired != isTLS {
 		return
 	}
-	m.start(addr, isTLS, rt.cfg)
+	if err := m.startLocked(addr, isTLS, rt.cfg); err != nil {
+		m.log.Error("listener retry bind failed", "addr", addr, "err", err)
+		time.AfterFunc(time.Second, func() { m.retry(addr, isTLS) })
+	}
 }
 
-// reconcile brings the running listeners in line with the desired set from cfg.
-// Added addresses are opened, removed ones gracefully closed, TLS flips
-// reopened; unchanged addresses are untouched (their connections persist).
-func (m *listenerManager) reconcile(cfg Config) {
-	desired := listenerSet(cfg) // addr -> isTLS
+func waitListenerStopped(ml *managedListener) {
+	if ml == nil || ml.done == nil {
+		return
+	}
+	select {
+	case <-ml.done:
+	case <-time.After(2 * time.Second):
+	}
+}
+
+func closePrepared(ml *managedListener) {
+	if ml == nil {
+		return
+	}
+	if ml.ln != nil {
+		_ = ml.ln.Close()
+	}
+	if ml.socketPath != "" {
+		_ = os.Remove(ml.socketPath)
+	}
+}
+
+func (m *listenerManager) restoreOldLocked(oldCfg Config) error {
+	oldDesired := listenerSet(oldCfg)
+	var errs []string
+	for addr, ml := range m.live {
+		wantTLS, keep := oldDesired[addr]
+		if !keep || wantTLS != ml.isTLS {
+			_ = ml.srv.Close()
+			waitListenerStopped(ml)
+			delete(m.live, addr)
+		}
+	}
+	for addr, isTLS := range oldDesired {
+		if _, ok := m.live[addr]; ok {
+			continue
+		}
+		if err := m.startLocked(addr, isTLS, oldCfg); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", addr, err))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("listener rollback failed: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// reconcile synchronously binds every newly-required socket before reporting
+// success. Destructive TLS-mode flips are rolled back to the old listener set
+// on bind failure; removed sockets are closed only after all additions/flips
+// are known-good. This prevents Apply from claiming success when the data plane
+// cannot actually own the configured addresses.
+func (m *listenerManager) reconcile(cfg Config) error {
+	desired := listenerSet(cfg)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// close removed or TLS-changed
-	for addr, ml := range m.live {
-		wantTLS, keep := desired[addr]
-		if !keep {
-			m.log.Info("listener closing", "addr", addr, "reason", "removed")
-			go gracefulClose(ml.srv) // drain removed address
-			delete(m.live, addr)
-		} else if wantTLS != ml.isTLS {
-			// Same address, http<->tls flip: free the port synchronously so the
-			// reopen below can rebind immediately (graceful drain would hold it).
-			m.log.Info("listener reopening", "addr", addr, "reason", "tls-change", "tls", wantTLS)
-			_ = ml.srv.Close()
-			delete(m.live, addr)
-		}
+	oldCfg := cfg
+	if rt := m.srv.rt.Load(); rt != nil {
+		oldCfg = rt.cfg
 	}
-	// open added (or reopen after a TLS flip)
+
+	prepared := map[string]*managedListener{}
 	for addr, isTLS := range desired {
-		if _, running := m.live[addr]; !running {
-			m.start(addr, isTLS, cfg)
+		if cur, ok := m.live[addr]; ok {
+			if cur.isTLS == isTLS {
+				continue
+			}
+			continue // protocol flips are handled below after closing the old socket
+		}
+		ml, err := m.prepare(addr, isTLS, cfg)
+		if err != nil {
+			for _, p := range prepared {
+				closePrepared(p)
+			}
+			return fmt.Errorf("bind listener %s: %w", addr, err)
+		}
+		prepared[addr] = ml
+	}
+
+	// TLS-mode flips require releasing the old socket. If any replacement bind
+	// fails, restore the complete old listener topology before returning.
+	for addr, cur := range m.live {
+		wantTLS, keep := desired[addr]
+		if !keep || wantTLS == cur.isTLS {
+			continue
+		}
+		m.log.Info("listener reopening", "addr", addr, "reason", "tls-change", "tls", wantTLS)
+		_ = cur.srv.Close()
+		waitListenerStopped(cur)
+		delete(m.live, addr)
+		ml, err := m.prepare(addr, wantTLS, cfg)
+		if err != nil {
+			for _, p := range prepared {
+				closePrepared(p)
+			}
+			rbErr := m.restoreOldLocked(oldCfg)
+			if rbErr != nil {
+				return fmt.Errorf("bind listener %s after TLS change: %v; %v", addr, err, rbErr)
+			}
+			return fmt.Errorf("bind listener %s after TLS change: %w", addr, err)
+		}
+		m.live[addr] = ml
+		go m.serveBound(addr, ml, cfg)
+	}
+
+	for addr, ml := range prepared {
+		m.live[addr] = ml
+		go m.serveBound(addr, ml, cfg)
+	}
+
+	frontendOwnedPublic := map[string]struct{}{}
+	if tlsfront.FrontendEnabled(cfg.TLSAcceleration) {
+		for addr, isTLS := range publicListenerSet(cfg) {
+			if isTLS {
+				frontendOwnedPublic[addr] = struct{}{}
+			}
 		}
 	}
+	for addr, ml := range m.live {
+		if _, keep := desired[addr]; keep {
+			continue
+		}
+		if _, handoff := frontendOwnedPublic[addr]; handoff {
+			m.log.Info("listener releasing", "addr", addr, "reason", "tls-frontend-ownership")
+			releaseForFrontendOwnership(ml)
+		} else {
+			m.log.Info("listener closing", "addr", addr, "reason", "removed")
+			go gracefulClose(ml.srv)
+		}
+		delete(m.live, addr)
+	}
+	return nil
 }
 
-// startAll is the initial bind at boot.
+// startAll is the initial bind at boot. Startup keeps the historical retry
+// behavior, but each initial bind attempt is synchronous and visible in logs.
 func (m *listenerManager) startAll(cfg Config) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for addr, isTLS := range listenerSet(cfg) {
-		m.start(addr, isTLS, cfg)
+		if err := m.startLocked(addr, isTLS, cfg); err != nil {
+			m.log.Error("initial listener bind failed", "addr", addr, "err", err)
+			time.AfterFunc(time.Second, func() { m.retry(addr, isTLS) })
+		}
 	}
 }
 
@@ -322,6 +477,23 @@ func (m *listenerManager) count() int {
 	return len(m.live)
 }
 
+func releaseForFrontendOwnership(ml *managedListener) {
+	if ml == nil || ml.srv == nil {
+		return
+	}
+	// Shutdown closes the listening socket before waiting for active requests,
+	// which is the property the external TLS frontend needs before it can bind
+	// the public address. Keep the drain bounded; Close is the fail-safe that
+	// guarantees ownership is released even if a handler ignores cancellation.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	err := ml.srv.Shutdown(ctx)
+	cancel()
+	if err != nil {
+		_ = ml.srv.Close()
+	}
+	waitListenerStopped(ml)
+}
+
 func gracefulClose(srv *http.Server) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -329,17 +501,13 @@ func gracefulClose(srv *http.Server) {
 }
 
 func writeHealth(w http.ResponseWriter, ok bool, draining bool, role string) {
-	if ok {
-		_, _ = w.Write([]byte(`{"status":"ok","role":"` + role + `"}` + "\n"))
-		return
-	}
 	status := "unavailable"
-	_, _ = w.Write([]byte(`{"status":"` + status + `","draining":` + boolStr(draining) + `,"role":"` + role + `"}` + "\n"))
-}
-
-func boolStr(b bool) string {
-	if b {
-		return "true"
+	if ok {
+		status = "ok"
 	}
-	return "false"
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":   status,
+		"draining": draining,
+		"role":     role,
+	})
 }

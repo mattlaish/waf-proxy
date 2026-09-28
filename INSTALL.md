@@ -14,6 +14,11 @@ Coraza-based reverse-proxy WAF with an embedded admin console. The console is co
 
 ---
 
+
+### API Security persistent state — 2026-09-23
+
+API Security state is stored adjacent to `config.json`. Preserve `api-operations.json`, `api-schema.json`, `api-contracts.json`, `api-positive-schema.json`, `api-identity.json`, `api-sequence.json`, and `api-sequence.key` across upgrades/backups. The sequence key must remain mode `0600`; it keeps anonymous/verified correlation digests stable across restarts. Sequence state contains only keyed digests and normalized operation IDs, not raw Authorization/Cookie/JWT/claim/IP/User-Agent values or complete request bodies.
+
 ## Enterprise distribution paths
 
 For production Linux deployments, use the formal package path rather than the
@@ -505,12 +510,18 @@ an IP you didn't expect = it's up, you're looking at the wrong address.
 
 ## 10. Known limits (as of this package)
 
-- **In-memory state**, reset on restart: AI blocklist, learner aggregates,
-  content signals, notification queue, sessions, audit ring, log rings.
-  Users/config persist in `config.json`; the **site content map now persists**
-  to `/etc/waf/sitemap.json` (autosaved every 60s + on shutdown, reloaded at
-  startup), so it survives restarts and upgrades. Persisting the remaining state
-  is the top open item.
+- **Runtime state**: AI blocklist, some legacy learner/content signals,
+  notification queue, sessions, audit ring, and log rings remain in memory.
+  Users/config persist in `config.json`; the site content map persists to
+  `/etc/waf/sitemap.json`. API Security state now persists adjacent to
+  `config.json` as `/etc/waf/api-operations.json`, `/etc/waf/api-schema.json`,
+  `/etc/waf/api-contracts.json`, `/etc/waf/api-positive-schema.json`,
+  `/etc/waf/api-identity.json`, `/etc/waf/api-sequence.json`, and the mode-0600
+  `/etc/waf/api-sequence.key` (startup restore, 60-second autosave, clean
+  shutdown flush). Preserve these files across upgrades and include them in
+  backups with `config.json`. The sequence state contains keyed correlation
+  digests and normalized operation IDs, not raw Authorization/Cookie/JWT/claim,
+  IP, User-Agent, or complete request-body values.
 - **Signed self-update** exists (Setup → Signed self-update), admin+localhost
   only, and **disabled unless a publisher public key is baked in** (`go build`
   with `PublisherKeyPEM`, or `WAF_PUBLISHER_KEY_FILE`). Packages are verified

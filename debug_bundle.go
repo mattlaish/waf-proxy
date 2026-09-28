@@ -449,7 +449,7 @@ func truncateDebugString(s string, max int) string {
 
 func clientIdentityEvidence(r *http.Request) map[string]any {
 	if d, ok := clientIdentityFromContext(r.Context()); ok {
-		return map[string]any{"remote_addr": d.RemoteAddr, "resolved_client_ip": d.ResolvedClientIP, "source": d.Source, "trusted_proxy": d.TrustedProxy, "decision": d.Decision, "rejection_reason": d.RejectionReason}
+		return map[string]any{"remote_addr": maskedDebugClientIP(d.RemoteAddr), "resolved_client_ip": maskedDebugClientIP(d.ResolvedClientIP), "source": d.Source, "trusted_proxy": d.TrustedProxy, "decision": d.Decision, "rejection_reason": d.RejectionReason}
 	}
-	return map[string]any{"remote_addr": clientIP(r), "source": "REMOTE_ADDR"}
+	return map[string]any{"remote_addr": maskedDebugClientIP(clientIP(r)), "source": "REMOTE_ADDR"}
 }

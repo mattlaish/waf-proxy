@@ -147,7 +147,6 @@ func TestClientIPResolverFeedsBackendCanonicalHeaders(t *testing.T) {
 	r := newTestRequest(http.MethodGet, "http://waf.test/")
 	r.RemoteAddr = "10.0.0.3:4321"
 	r.Header.Set("X-Forwarded-For", "198.51.100.9, 10.0.0.2")
-	r.Header.Set("X-Real-IP", "203.0.113.200")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	if w.Code != http.StatusNoContent {
@@ -156,5 +155,37 @@ func TestClientIPResolverFeedsBackendCanonicalHeaders(t *testing.T) {
 	got := <-gotHeaders
 	if got[0] != "198.51.100.9" || got[1] != "198.51.100.9" {
 		t.Fatalf("backend headers = XFF %q, X-Real-IP %q", got[0], got[1])
+	}
+}
+func TestClientIPResolverConflictingIdentityHeadersFailClosed(t *testing.T) {
+	gotHeaders := make(chan [2]string, 1)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeaders <- [2]string{r.Header.Get("X-Forwarded-For"), r.Header.Get("X-Real-IP")}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer backend.Close()
+	target, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool := &poolRuntime{name: "test", method: "round_robin", members: []*memberRuntime{{
+		node: "backend", target: target, weight: 1,
+	}}}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	proxy := buildProxy(pool, SiteConfig{Name: "test"}, Config{BackendTimeoutSec: 2}, log, nil)
+	handler := mustClientIPResolver(t, "10.0.0.0/8").wrap(proxy)
+
+	r := newTestRequest(http.MethodGet, "http://waf.test/")
+	r.RemoteAddr = "10.0.0.3:4321"
+	r.Header.Set("X-Forwarded-For", "198.51.100.9, 10.0.0.2")
+	r.Header.Set("X-Real-IP", "203.0.113.200")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("proxy status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	got := <-gotHeaders
+	if got[0] != "10.0.0.3" || got[1] != "10.0.0.3" {
+		t.Fatalf("conflicting identity headers were not reduced to trusted peer: XFF %q, X-Real-IP %q", got[0], got[1])
 	}
 }

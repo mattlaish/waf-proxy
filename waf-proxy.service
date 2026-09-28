@@ -15,10 +15,13 @@ ExecStart=/usr/local/bin/waf-proxy -config /etc/waf/config.json
 # Admin token: REQUIRED for a stable token across restarts.
 # Generate: openssl rand -hex 24
 # Prefer an EnvironmentFile (0600, root-owned) over inlining the secret here.
+# HA config replication uses a separate WAF_HA_PEER_TOKEN; do not reuse the break-glass admin token.
+# Generate both independently (for example: openssl rand -hex 24).
 EnvironmentFile=-/etc/waf/waf-proxy.env
 EnvironmentFile=-/etc/waf/waf-tls-frontend.env
 Environment=WAF_TLS_FRONTEND_CONTROL=/run/waf-proxy/tls-frontend-live.json
 Environment=WAF_TLS_FRONTEND_STATUS=/run/waf-tls-frontend/status.json
+Environment=WAF_ADMIN_AUDIT_FILE=/var/lib/waf-proxy/admin-audit.jsonl
 
 # Admin console bind address. Default is loopback-only (reach it via ssh -L).
 # To expose it to a management network, set an IP or 0.0.0.0 here AND set TLS
@@ -49,7 +52,18 @@ TimeoutStopSec=30
 # ── hardening ──
 NoNewPrivileges=true
 PrivateTmp=true
-PrivateDevices=true
+# Host devices remain hidden by DevicePolicy except the minimal runtime set and
+# optional watchdog nodes. This makes WAF_WATCHDOG_DEVICE usable without
+# exposing arbitrary accelerator/storage devices to the process.
+PrivateDevices=false
+DevicePolicy=closed
+DeviceAllow=/dev/null rw
+DeviceAllow=/dev/zero rw
+DeviceAllow=/dev/full rw
+DeviceAllow=/dev/random r
+DeviceAllow=/dev/urandom r
+DeviceAllow=/dev/watchdog rw
+DeviceAllow=/dev/watchdog0 rw
 ProtectSystem=strict
 ProtectHome=true
 ProtectKernelTunables=true

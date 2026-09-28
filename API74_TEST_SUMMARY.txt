@@ -1,0 +1,35 @@
+API-7.4 BOLA Policy/Evidence/Console — 2026-09-24
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Executed exact-source gates:
+API-1/2 69 PASS
+API-3 47 PASS
+API-4 46 PASS
+API-5 72 PASS
+API-6.1 33 PASS
+API-6.2 56 PASS
+API-6.3 45 PASS
+API-6.4 58 PASS
+API-7.1 83 PASS
+API-7.2 100 PASS
+API-7.3 110 PASS
+API-7.4 156 PASS
+OpenAI source contract 16/16 PASS + isolated package tests PASS
+WAF package-source PASS
+package-builder tests 9/9 PASS
+root Go source-shape 113 files PASS
+Admin JavaScript syntax PASS
+changed API-7.4 Go files gofmt PASS
+primary shell/Python syntax PASS
+
+Targeted API-7.4 Go test functions present: 10
+Canonical Go 1.25 targeted tests: BLOCKED_ENVIRONMENT / NOT_RUN
+Canonical Go 1.25 race tests: BLOCKED_ENVIRONMENT / NOT_RUN
+Reason: local Go 1.23.2; go.mod requires Go 1.25.0; external toolchain retrieval unavailable.
+
+Authority result:
+- inferred BOLA evidence does not block
+- policy actions are REVIEW/SUPPRESS only
+- no ownership verdict
+- no request-path 403/BLOCK/DENY/ENFORCE
+- OpenAI absent from API-7.4 authority

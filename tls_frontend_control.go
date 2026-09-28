@@ -62,6 +62,40 @@ func (p *tlsFrontendPublisher) preflight(cfg Config) error {
 	return err
 }
 
+func (p *tlsFrontendPublisher) publishAndWait(cfg Config, timeout time.Duration) error {
+	if p == nil || !p.enabled() {
+		if tlsfront.FrontendEnabled(cfg.TLSAcceleration) {
+			return errors.New("TLS frontend publisher is not configured")
+		}
+		return nil
+	}
+	started := time.Now().UTC()
+	if err := p.publish(cfg); err != nil {
+		return err
+	}
+	if timeout <= 0 {
+		timeout = 6 * time.Second
+	}
+	wantMode := cfg.TLSAcceleration.Effective().Mode
+	wantActive := tlsfront.FrontendEnabled(cfg.TLSAcceleration)
+	deadline := time.Now().Add(timeout)
+	for {
+		st := p.status()
+		if !st.UpdatedAt.IsZero() && !st.UpdatedAt.Before(started) && st.Mode == wantMode {
+			if st.LastError != "" {
+				return fmt.Errorf("TLS frontend apply failed: %s", st.LastError)
+			}
+			if st.Active == wantActive {
+				return nil
+			}
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for TLS frontend mode=%s active=%t", wantMode, wantActive)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func (p *tlsFrontendPublisher) publish(cfg Config) error {
 	if !p.enabled() {
 		return nil

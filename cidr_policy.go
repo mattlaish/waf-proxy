@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,12 +41,13 @@ type cidrPolicyDecision struct {
 }
 
 type cidrPolicyEngine struct {
-	rules []cidrPolicyRule
-	mu    sync.RWMutex
+	enabled bool
+	rules   []cidrPolicyRule
+	mu      sync.RWMutex
 }
 
 func newCIDRPolicyEngine(cfg CIDRPolicyConfig) (*cidrPolicyEngine, error) {
-	e := &cidrPolicyEngine{}
+	e := &cidrPolicyEngine{enabled: cfg.Enabled}
 	for _, r := range cfg.Rules {
 		_, n, err := net.ParseCIDR(r.CIDR)
 		if err != nil {
@@ -54,13 +56,24 @@ func newCIDRPolicyEngine(cfg CIDRPolicyConfig) (*cidrPolicyEngine, error) {
 		if r.Action != "allow" && r.Action != "deny" {
 			return nil, fmt.Errorf("cidr policy %q: invalid action", r.Name)
 		}
-		e.rules = append(e.rules, cidrPolicyRule{CIDR: n, Name: r.Name, Action: r.Action, Priority: r.Priority, Reason: r.Reason})
+		var expires time.Time
+		if raw := strings.TrimSpace(r.ExpiresAt); raw != "" {
+			parsed, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				return nil, fmt.Errorf("cidr policy %q: expires_at must be RFC3339: %w", r.Name, err)
+			}
+			expires = parsed.UTC()
+		}
+		e.rules = append(e.rules, cidrPolicyRule{CIDR: n, Name: r.Name, Action: r.Action, Priority: r.Priority, Reason: r.Reason, Expires: expires})
 	}
 	sort.SliceStable(e.rules, func(i, j int) bool { return e.rules[i].Priority > e.rules[j].Priority })
 	return e, nil
 }
 
 func (e *cidrPolicyEngine) evaluate(ip string) cidrPolicyDecision {
+	if e == nil || !e.enabled {
+		return cidrPolicyDecision{}
+	}
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
 		return cidrPolicyDecision{}

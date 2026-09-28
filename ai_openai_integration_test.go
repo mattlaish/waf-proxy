@@ -24,7 +24,7 @@ func openAIResponsesBody(text string) string {
 	return string(b)
 }
 
-func testAIEngineWithoutWorkers(cfg AIConfig) *aiEngine {
+func testConfiguredAIEngineWithoutWorkers(cfg AIConfig) *aiEngine {
 	e := &aiEngine{}
 	e.configure(cfg)
 	return e
@@ -78,7 +78,7 @@ func TestOpenAIResponsesStructuredVerdictContract(t *testing.T) {
 	cfg.BaseURL = srv.URL + "/v1"
 	cfg.APIKeyRef = "env:OPENAI_TEST_KEY"
 	cfg.Model = "gpt-test"
-	e := testAIEngineWithoutWorkers(cfg)
+	e := testConfiguredAIEngineWithoutWorkers(cfg)
 	e.client.Store(srv.Client())
 	got, err := e.callLLM(context.Background(), cfg, "<request>test</request>")
 	if err != nil {
@@ -110,12 +110,49 @@ func TestOpenAIResponsesProfileReviewUsesStructuredOutput(t *testing.T) {
 	cfg.APIStyle = "responses"
 	cfg.BaseURL = srv.URL + "/v1"
 	cfg.APIKeyRef = "env:OPENAI_TEST_KEY"
-	e := testAIEngineWithoutWorkers(cfg)
+	e := testConfiguredAIEngineWithoutWorkers(cfg)
 	e.client.Store(srv.Client())
 
 	agree, confidence, reason, err := e.reviewProfile(context.Background(), "/login", "password form", "login")
 	if err != nil || !agree || confidence != 88 || reason == "" {
 		t.Fatalf("profile review = agree=%v confidence=%d reason=%q err=%v", agree, confidence, reason, err)
+	}
+}
+
+func TestOpenAIResponsesSchemaCandidateReviewIsAdvisoryStructuredOutput(t *testing.T) {
+	t.Setenv("OPENAI_TEST_KEY", "test-openai-key")
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		text := body["text"].(map[string]any)
+		format := text["format"].(map[string]any)
+		if format["name"] != "waf_api_schema_review" || format["strict"] != true {
+			t.Errorf("schema review format = %#v", format)
+		}
+		_, _ = w.Write([]byte(openAIResponsesBody(`{"recommendation":"approve","confidence":91,"reason":"Required and enum evidence are stable"}`)))
+	}))
+	defer srv.Close()
+
+	cfg := defaultAIConfig()
+	cfg.Enabled = true
+	cfg.APIStyle = "responses"
+	cfg.BaseURL = srv.URL + "/v1"
+	cfg.APIKeyRef = "env:OPENAI_TEST_KEY"
+	e := testConfiguredAIEngineWithoutWorkers(cfg)
+	e.client.Store(srv.Client())
+
+	candidate := &SchemaCandidate{
+		ID: "schema-1", OperationID: "op-1", Status: "CANDIDATE", SampleCount: 100, Confidence: 0.99, Version: 7,
+		Fields: []SchemaFieldObservation{{Path: "currency", Location: "body", TypeCounts: map[string]int64{"string": 100}, PresenceRate: 1, RequiredCandidate: true, EnumCandidate: []string{"TWD", "USD"}}},
+	}
+	review, err := e.reviewSchemaCandidate(context.Background(), candidate)
+	if err != nil || review.Recommendation != "approve" || review.Confidence != 91 || review.Source != "openai" {
+		t.Fatalf("schema review = %#v err=%v", review, err)
+	}
+	if candidate.Status != "CANDIDATE" || candidate.Version != 7 {
+		t.Fatalf("AI review must not mutate candidate lifecycle: %#v", candidate)
 	}
 }
 
@@ -140,7 +177,7 @@ func TestOpenAIResponsesRefusalIncompleteAndMalformedFailOpen(t *testing.T) {
 			cfg.APIStyle = "responses"
 			cfg.BaseURL = srv.URL
 			cfg.APIKeyRef = "env:OPENAI_TEST_KEY"
-			e := testAIEngineWithoutWorkers(cfg)
+			e := testConfiguredAIEngineWithoutWorkers(cfg)
 			e.client.Store(srv.Client())
 			if _, err := e.callLLM(context.Background(), cfg, "test"); err == nil || !strings.Contains(strings.ToLower(err.Error()), tc.want) {
 				t.Fatalf("error = %v, want substring %q", err, tc.want)
@@ -163,7 +200,7 @@ func TestOpenAIResponsesHTTPFailuresDoNotReflectProviderBody(t *testing.T) {
 			cfg.APIStyle = "responses"
 			cfg.BaseURL = srv.URL
 			cfg.APIKeyRef = "env:OPENAI_TEST_KEY"
-			e := testAIEngineWithoutWorkers(cfg)
+			e := testConfiguredAIEngineWithoutWorkers(cfg)
 			e.client.Store(srv.Client())
 			_, err := e.callLLM(context.Background(), cfg, "test")
 			if err == nil || !strings.Contains(strings.ToLower(err.Error()), fmt.Sprintf("http %d", status)) || strings.Contains(err.Error(), "sensitive") {
@@ -185,7 +222,7 @@ func TestOpenAIResponsesTimeoutIsAnError(t *testing.T) {
 	cfg.APIStyle = "responses"
 	cfg.BaseURL = srv.URL
 	cfg.APIKeyRef = "env:OPENAI_TEST_KEY"
-	e := testAIEngineWithoutWorkers(cfg)
+	e := testConfiguredAIEngineWithoutWorkers(cfg)
 	e.client.Store(&http.Client{Transport: srv.Client().Transport, Timeout: 10 * time.Millisecond})
 	if _, err := e.callLLM(context.Background(), cfg, "test"); err == nil {
 		t.Fatal("timeout unexpectedly produced a verdict")
@@ -206,7 +243,7 @@ func TestOpenAIChatCompletionsCompatibilityPath(t *testing.T) {
 	if err := cfg.validate(); err != nil {
 		t.Fatalf("compatibility config rejected: %v", err)
 	}
-	e := testAIEngineWithoutWorkers(cfg)
+	e := testConfiguredAIEngineWithoutWorkers(cfg)
 	e.client.Store(srv.Client())
 	v, err := e.callLLM(context.Background(), cfg, "test")
 	if err != nil || v.Verdict != "benign" || path != "/v1/chat/completions" {

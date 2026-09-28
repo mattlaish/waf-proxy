@@ -1,0 +1,8 @@
+API-7.2 Identity/Object Relationship — IMPLEMENTED_TESTING_DEFERRED
+API source gates: API-1/2 69 PASS; API-3 47 PASS; API-4 46 PASS; API-5 72 PASS; API-6.1 33 PASS; API-6.2 56 PASS; API-6.3 45 PASS; API-6.4 58 PASS; API-7.1 83 PASS; API-7.2 100 PASS.
+API-7.2 targeted Go test functions present: 9.
+OpenAI source contract: 16/16 PASS; isolated OpenAI/secretref tests PASS.
+Package-source gate PASS. Root Go source-shape PASS: 109 files. Package-builder tests 9/9 PASS. Changed Go files gofmt PASS.
+Canonical Go 1.25 targeted test execution: BLOCKED_ENVIRONMENT / NOT_RUN (host Go 1.23.2; go.mod requires >=1.25.0; external toolchain retrieval unavailable).
+Canonical Go 1.25 race execution: BLOCKED_ENVIRONMENT / NOT_RUN for the same reason.
+No source/static result promotes this slice to TESTED or RELEASED.

@@ -404,6 +404,9 @@ func (c Config) validateDraft() error {
 	if _, err := newCIDRPolicyEngine(c.CIDRPolicy); err != nil {
 		return err
 	}
+	if err := validateL7AbuseConfig(c.L7Abuse, c.TLSAcceleration); err != nil {
+		return err
+	}
 	if err := tlsfront.Validate(c.TLSAcceleration); err != nil {
 		return err
 	}
@@ -494,6 +497,9 @@ func (c Config) validate() error {
 		return err
 	}
 	if _, err := newCIDRPolicyEngine(c.CIDRPolicy); err != nil {
+		return err
+	}
+	if err := validateL7AbuseConfig(c.L7Abuse, c.TLSAcceleration); err != nil {
 		return err
 	}
 	if err := tlsfront.Validate(c.TLSAcceleration); err != nil {
@@ -814,16 +820,124 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-func saveConfig(path string, c Config) error {
+type stagedConfigWrite struct {
+	path string
+	tmp  string
+}
+
+func stageConfig(path string, c Config) (*stagedConfigWrite, error) {
 	b, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	b = append(b, '\n')
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return nil, err
+	}
+	tmp := f.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			_ = f.Close()
+			_ = os.Remove(tmp)
+		}
+	}()
+	if err := f.Chmod(0o600); err != nil {
+		return nil, err
+	}
+	if _, err := f.Write(b); err != nil {
+		return nil, err
+	}
+	if err := f.Sync(); err != nil {
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
+	ok = true
+	return &stagedConfigWrite{path: path, tmp: tmp}, nil
+}
+
+func (s *stagedConfigWrite) abort() {
+	if s != nil && s.tmp != "" {
+		_ = os.Remove(s.tmp)
+	}
+}
+
+// commit returns committed=true once rename succeeded. A directory fsync error
+// after rename is a durability warning, not a reason to roll live state back to
+// an older config while the filesystem already exposes the new one.
+func (s *stagedConfigWrite) commit() (committed bool, err error) {
+	if s == nil {
+		return false, errors.New("nil staged config")
+	}
+	if err := os.Rename(s.tmp, s.path); err != nil {
+		return false, err
+	}
+	s.tmp = ""
+	d, err := os.Open(filepath.Dir(s.path))
+	if err != nil {
+		return true, err
+	}
+	defer d.Close()
+	if err := d.Sync(); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func saveConfig(path string, c Config) error {
+	staged, err := stageConfig(path, c)
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	defer staged.abort()
+	_, err = staged.commit()
+	return err
+}
+
+func draftConfigPath(path string) string {
+	return path + ".draft"
+}
+
+// removeConfigFileDurable removes an auxiliary control-plane state file and
+// fsyncs the parent directory so a successful Apply cannot resurrect a stale
+// draft after a crash/restart. Missing files are already converged.
+func removeConfigFileDurable(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	return os.Rename(tmp, path)
+	d, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
+// loadDraftConfig returns a draft only when it is newer than the authoritative
+// config. This makes best-effort cleanup safe: an old draft left behind after a
+// committed Apply is ignored on the next Console load and is never startup
+// authority.
+func loadDraftConfig(configPath string) (Config, bool, error) {
+	draftPath := draftConfigPath(configPath)
+	draftInfo, err := os.Stat(draftPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Config{}, false, nil
+		}
+		return Config{}, false, err
+	}
+	if liveInfo, liveErr := os.Stat(configPath); liveErr == nil && !draftInfo.ModTime().After(liveInfo.ModTime()) {
+		return Config{}, false, nil
+	}
+	c, err := loadConfig(draftPath)
+	if err != nil {
+		return Config{}, false, err
+	}
+	return c, true, nil
 }
 
 func normalizeHost(h string) string {
@@ -831,6 +945,7 @@ func normalizeHost(h string) string {
 	if host, _, err := net.SplitHostPort(h); err == nil {
 		h = host
 	}
+	h = strings.Trim(h, "[]")
 	return strings.TrimSuffix(h, ".")
 }
 
@@ -925,6 +1040,7 @@ type runtimeState struct {
 	builtAt    time.Time
 	cancel     context.CancelFunc // stops this runtime's health monitors
 	vector     *vectoraccel.Manager
+	l7Abuse    *l7AbuseController
 	hsmSigners []hsm.Signer
 }
 
@@ -951,34 +1067,42 @@ func (rt *runtimeState) close() {
 }
 
 type server struct {
-	rt            atomic.Pointer[runtimeState]
-	matches       *matchRing
-	access        *accessRing
-	maps          *siteMaps
-	signals       *signalStore
-	ai            *aiEngine
-	learn         *learnStore
-	notify        *notifier
-	ha            *haEngine
-	syslog        *syslogEngine
-	hosts         *hostObserver
-	observations  *observationPlane
-	matchLogs     *matchLogPlane
-	metrics       *metrics
-	debug         *DebugEvidenceStore
-	hsmAudit      *hsm.AuditRing
-	l7Abuse       *l7AbuseController
-	apiOps        *apiOperationStore
-	schema        *schemaStore
-	contracts     *contractStore
-	ipmgr         *ipManager
-	listenMgr     *listenerManager
-	draining      atomic.Bool
-	log           *slog.Logger
-	configPath    string
-	tlsBrowseRoot string
-	tlsFrontend   *tlsFrontendPublisher
-	bootCfg       Config
+	applyMu             sync.Mutex
+	rt                  atomic.Pointer[runtimeState]
+	matches             *matchRing
+	access              *accessRing
+	maps                *siteMaps
+	signals             *signalStore
+	ai                  *aiEngine
+	learn               *learnStore
+	notify              *notifier
+	ha                  *haEngine
+	syslog              *syslogEngine
+	hosts               *hostObserver
+	observations        *observationPlane
+	matchLogs           *matchLogPlane
+	metrics             *metrics
+	debug               *DebugEvidenceStore
+	hsmAudit            *hsm.AuditRing
+	apiOps              *apiOperationStore
+	schema              *schemaStore
+	contracts           *contractStore
+	positiveSchema      *positiveSchemaStore
+	identity            *apiIdentityStore
+	sequence            *sequenceStore
+	objectLocators      *objectLocatorStore
+	objectRelationships *objectRelationshipStore
+	bolaCandidates      *bolaDetectionStore
+	bolaPolicy          *bolaPolicyStore
+	graphql             *graphqlStore
+	ipmgr               *ipManager
+	listenMgr           *listenerManager
+	draining            atomic.Bool
+	log                 *slog.Logger
+	configPath          string
+	tlsBrowseRoot       string
+	tlsFrontend         *tlsFrontendPublisher
+	bootCfg             Config
 }
 
 // restartPending is retained for API compatibility but is always false now:
@@ -989,6 +1113,8 @@ func (s *server) restartPending(cfg Config) bool {
 }
 
 func (s *server) apply(cfg Config) error {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
 	return s.applyEx(cfg, false)
 }
 
@@ -1008,40 +1134,201 @@ func (s *server) applyEx(cfg Config, fromSync bool) error {
 			return fmt.Errorf("TLS frontend preflight: %w", err)
 		}
 	}
-	// Network ownership must succeed before the runtime becomes live. Otherwise
-	// the API could report Apply failure after already swapping the config.
+
+	oldCfg := cfg
+	if old := s.rt.Load(); old != nil {
+		oldCfg = old.cfg
+	}
+	oldFrontend := tlsfront.FrontendEnabled(oldCfg.TLSAcceleration)
+	newFrontend := tlsfront.FrontendEnabled(cfg.TLSAcceleration)
+	frontendPublished := false
+
+	// The external frontend owns the public TLS port. When handing ownership
+	// back to Go crypto/tls, stop it and wait for acknowledgement before the
+	// listener manager attempts to bind the public socket. Without this ordering,
+	// a valid frontend->go transition deterministically fails with EADDRINUSE.
+	if oldFrontend && !newFrontend {
+		if s.tlsFrontend == nil || !s.tlsFrontend.enabled() {
+			rt.close()
+			return errors.New("cannot disable TLS frontend: control publisher is unavailable")
+		}
+		if err := s.tlsFrontend.publishAndWait(cfg, 8*time.Second); err != nil {
+			// Best effort restore of the previously active frontend specification.
+			_ = s.tlsFrontend.publishAndWait(oldCfg, 8*time.Second)
+			rt.close()
+			return fmt.Errorf("disable TLS frontend: %w", err)
+		}
+		frontendPublished = true
+	}
+
+	listenersChanged := false
+	frontendRollback := func() {
+		if !frontendPublished || s.tlsFrontend == nil || !s.tlsFrontend.enabled() {
+			return
+		}
+		// If the attempted config enabled the external frontend while the old
+		// config used Go TLS, stop the frontend first so the old public socket can
+		// be rebound. If the old config used the frontend, restore it only after
+		// the old internal listener topology is back in place.
+		if !oldFrontend && newFrontend {
+			if rbErr := s.tlsFrontend.publishAndWait(oldCfg, 8*time.Second); rbErr != nil {
+				s.log.Error("TLS frontend rollback/stop failed", "err", rbErr)
+			}
+		}
+	}
+	frontendRestoreAfterListeners := func() {
+		if frontendPublished && oldFrontend && s.tlsFrontend != nil && s.tlsFrontend.enabled() {
+			if rbErr := s.tlsFrontend.publishAndWait(oldCfg, 8*time.Second); rbErr != nil {
+				s.log.Error("TLS frontend rollback/restore failed", "err", rbErr)
+			}
+		}
+	}
+	rollbackNetwork := func() {
+		frontendRollback()
+		if s.ipmgr != nil {
+			if rbErr := s.ipmgr.reconcile(oldCfg); rbErr != nil {
+				s.log.Error("managed IP rollback failed", "err", rbErr)
+			}
+		}
+		if listenersChanged && s.listenMgr != nil {
+			if rbErr := s.listenMgr.reconcile(oldCfg); rbErr != nil {
+				s.log.Error("listener rollback failed", "err", rbErr)
+			}
+		}
+		frontendRestoreAfterListeners()
+	}
+
+	if s.listenMgr != nil {
+		if err := s.listenMgr.reconcile(cfg); err != nil {
+			frontendRestoreAfterListeners()
+			rt.close()
+			return err
+		}
+		listenersChanged = true
+	}
 	if s.ipmgr != nil {
 		if err := s.ipmgr.reconcile(cfg); err != nil {
+			rollbackNetwork()
 			rt.close()
 			return err
 		}
 	}
-	// Publish only the successfully built/live TLS frontend specification. Draft
-	// saves never touch this file, so the companion cannot bind public TLS ports
-	// before the WAF runtime is actually applied.
-	if s.tlsFrontend != nil {
-		if err := s.tlsFrontend.publish(cfg); err != nil {
+	if s.tlsFrontend != nil && !frontendPublished {
+		if newFrontend {
+			if err := s.tlsFrontend.publishAndWait(cfg, 8*time.Second); err != nil {
+				// The frontend may have partially activated. Restore old ownership
+				// before returning Apply failure.
+				frontendPublished = true
+				rollbackNetwork()
+				rt.close()
+				return fmt.Errorf("publish TLS frontend config: %w", err)
+			}
+			frontendPublished = true
+		} else if err := s.tlsFrontend.publish(cfg); err != nil {
+			rollbackNetwork()
 			rt.close()
 			return fmt.Errorf("publish TLS frontend config: %w", err)
 		}
 	}
+
 	old := s.rt.Swap(rt)
-	old.close() // stop previous monitors and release idle backend connections
+	if old != nil {
+		old.close()
+	}
 	s.ai.configure(cfg.AI)
 	s.notify.configure(cfg.Notify)
 	s.ha.configure(cfg.HA)
 	s.syslog.configure(cfg.Syslog)
-	if s.listenMgr != nil {
-		s.listenMgr.reconcile(cfg) // open/close data-plane sockets live — no restart
+	_ = fromSync // loop prevention is handled by applyPersisted after durable commit.
+	return nil
+}
+
+// applyPersisted stages the config durably before changing live state, applies
+// the full runtime/listener transaction, then atomically renames the staged
+// config. If commit fails before rename, live state is rolled back. HA sync is
+// emitted only after local persistence succeeded.
+func (s *server) applyPersisted(cfg Config, fromSync bool) error {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return s.applyPersistedLocked(cfg, fromSync)
+}
+
+// applyPersistedLocked is the lock-assumed implementation shared by direct
+// full-config Apply and read-modify-write control-plane mutations. Keeping the
+// lock across stage -> live reconcile -> rename -> HA enqueue prevents a second
+// mutation from rolling back or publishing across the first transaction.
+func (s *server) applyPersistedLocked(cfg Config, fromSync bool) error {
+	if err := cfg.validate(); err != nil {
+		return err
+	}
+	staged, err := stageConfig(s.configPath, cfg)
+	if err != nil {
+		return fmt.Errorf("stage config: %w", err)
+	}
+	defer staged.abort()
+	oldCfg := cfg
+	if old := s.rt.Load(); old != nil {
+		oldCfg = old.cfg
+	}
+	if err := s.applyEx(cfg, fromSync); err != nil {
+		return err
+	}
+	committed, err := staged.commit()
+	if err != nil && !committed {
+		if rbErr := s.applyEx(oldCfg, true); rbErr != nil {
+			return fmt.Errorf("persist config: %v; live rollback also failed: %v", err, rbErr)
+		}
+		return fmt.Errorf("persist config: %w", err)
+	}
+	if err != nil && committed {
+		s.log.Warn("config renamed but directory fsync failed", "err", err)
 	}
 	if !fromSync {
-		s.ha.pushConfig(cfg) // propagate local changes to the peer
+		s.ha.pushConfig(cfg)
 	}
 	return nil
 }
 
+// cloneConfig creates an ownership-independent copy suitable for control-plane
+// read-modify-write operations. Config contains nested slices/maps; assigning it
+// by value is not enough and can mutate the active runtime before Apply.
+func cloneConfig(cfg Config) (Config, error) {
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		return Config{}, fmt.Errorf("clone config: %w", err)
+	}
+	var out Config
+	if err := json.Unmarshal(b, &out); err != nil {
+		return Config{}, fmt.Errorf("clone config: %w", err)
+	}
+	return out, nil
+}
+
+// mutatePersisted serializes a partial config change and derives it from the
+// newest live runtime while holding applyMu, preventing shallow-copy mutation
+// of live state and avoiding lost updates between independent partial handlers.
+func (s *server) mutatePersisted(fromSync bool, mutate func(*Config) error) (Config, error) {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	rt := s.rt.Load()
+	if rt == nil {
+		return Config{}, errors.New("runtime unavailable")
+	}
+	cfg, err := cloneConfig(rt.cfg)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := mutate(&cfg); err != nil {
+		return Config{}, err
+	}
+	if err := s.applyPersistedLocked(cfg, fromSync); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
 func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
-	s.l7Abuse = newL7AbuseController(cfg.L7Abuse)
+	l7Abuse := newL7AbuseController(cfg.L7Abuse)
 	cidrEngine, err := newCIDRPolicyEngine(cfg.CIDRPolicy)
 	if err != nil {
 		return nil, err
@@ -1064,6 +1351,7 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 		builtAt:   time.Now(),
 		cancel:    cancel,
 		vector:    vectorMgr,
+		l7Abuse:   l7Abuse,
 	}
 
 	nodeHost := map[string]string{}
@@ -1121,18 +1409,49 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 		waf = observeCorazaWAF(waf, vectorPlan)
 		pool := rt.pools[sc.Pool]
 		siteName := sc.Name
-		record := func(method, path, rawQuery, contentType string, code int, fields []DiscoveredField) {
-			s.observeRequest(siteName, method, path, rawQuery, contentType, code, fields)
+		record := func(method, path, rawQuery, contentType string, code int, fields []DiscoveredField, meta apiObservationMeta) {
+			s.observeRequest(siteName, method, path, rawQuery, contentType, code, fields, meta)
 		}
 		proxyHandler := vectoraccel.StripEgress(buildProxy(pool, sc, cfg, s.log, record))
 		baseHandler := txhttp.WrapHandler(waf, proxyHandler)
 		baseHandler = vectorPlan.Wrap(baseHandler)
 		aiHandler := s.ai.wrap(sc, baseHandler)
 		passiveHandler := passiveDiscoveryWrap(cfg.PassiveDiscoveryEnabled, aiHandler)
+		positiveHandler := passiveHandler
+		if s.positiveSchema != nil {
+			positiveHandler = s.positiveSchema.wrap(siteName, positiveHandler)
+		}
+		// API-7.2 relationship telemetry runs inside the bounded body-prefix
+		// capture but downstream of API-5 identity. It only enqueues compact
+		// pseudonymous evidence and never participates in request authorization.
+		relationshipHandler := positiveHandler
+		if s.objectRelationships != nil {
+			relationshipHandler = s.objectRelationships.wrap(siteName, relationshipHandler)
+		}
+		// API-8 GraphQL analysis runs after the shared bounded body capture and
+		// after API-5 identity verification, but before API-7.2 REST relationship
+		// telemetry. Explicit GraphQL ENFORCE policy may reject a request;
+		// learned API-6/API-7 evidence remains non-enforcing.
+		graphqlHandler := relationshipHandler
+		if s.graphql != nil {
+			graphqlHandler = s.graphql.wrap(siteName, graphqlHandler)
+		}
 		captureForAI := cfg.AI.Enabled && cfg.AI.IncludeBody && sc.AIMode != "" && sc.AIMode != "off"
-		handler := requestBodyPrefixWrap(captureForAI, cfg.PassiveDiscoveryEnabled, passiveHandler)
-		if s.l7Abuse != nil {
-			handler = s.l7Abuse.wrap(siteName, handler)
+		handler := requestBodyPrefixWrap(captureForAI, cfg.PassiveDiscoveryEnabled, true, graphqlHandler)
+		// API-6.1 sequence telemetry runs downstream of API-5 identity so only a
+		// cryptographically verified identity context can select identity
+		// correlation. It is asynchronous visibility state and never blocks.
+		if s.sequence != nil {
+			handler = s.sequence.wrap(siteName, handler)
+		}
+		// API-5 identity verification runs outside body/schema middleware so only
+		// cryptographically verified claims are attached before downstream policy,
+		// Coraza, AI, or the backend can observe identity context.
+		if s.identity != nil {
+			handler = s.identity.wrap(siteName, handler)
+		}
+		if l7Abuse != nil {
+			handler = l7Abuse.wrap(siteName, handler)
 		}
 		if cidrEngine != nil {
 			handler = cidrEngine.wrap(handler)
@@ -1310,9 +1629,13 @@ func (s *server) observeHost(listener, host string, declared bool) {
 	}
 }
 
-func (s *server) observeRequest(site, method, path, rawQuery, contentType string, code int, fields []DiscoveredField) {
+func (s *server) observeRequest(site, method, path, rawQuery, contentType string, code int, fields []DiscoveredField, metas ...apiObservationMeta) {
+	var meta apiObservationMeta
+	if len(metas) > 0 {
+		meta = metas[0]
+	}
 	if s.observations != nil {
-		s.observations.noteRequest(site, method, path, rawQuery, contentType, code, fields)
+		s.observations.noteRequest(site, method, path, rawQuery, contentType, code, fields, meta)
 		return
 	}
 	if s.maps != nil {
@@ -1325,7 +1648,16 @@ func (s *server) observeRequest(site, method, path, rawQuery, contentType string
 		s.signals.noteRequestShape(site, path, method, rawQuery, contentType, fields)
 	}
 	if s.apiOps != nil {
-		s.apiOps.note(site, method, path, code)
+		op := s.apiOps.note(site, meta.Host, method, path, contentType, meta.AuthScheme, code)
+		if op.ID != "" && (s.schema != nil || s.objectLocators != nil) {
+			samples := collectSchemaSamplesFromObservation(path, rawQuery, contentType, meta)
+			if s.schema != nil {
+				s.schema.note(op, samples)
+			}
+			if s.objectLocators != nil {
+				s.objectLocators.noteObservation(op, samples)
+			}
+		}
 	}
 }
 
@@ -1704,7 +2036,7 @@ func buildBackendTransport(pool *poolRuntime, cfg Config) *http.Transport {
 	}
 }
 
-func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger, record func(method, path, rawQuery, contentType string, code int, fields []DiscoveredField)) *httputil.ReverseProxy {
+func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger, record func(method, path, rawQuery, contentType string, code int, fields []DiscoveredField, meta apiObservationMeta)) *httputil.ReverseProxy {
 	base := (*http.Transport)(nil)
 	if pool != nil {
 		base = pool.httpTransport
@@ -1743,8 +2075,9 @@ func buildProxy(pool *poolRuntime, site SiteConfig, cfg Config, log *slog.Logger
 				resp.Header.Set("X-Content-Type-Options", "nosniff")
 			}
 			if record != nil && resp.Request != nil && resp.Request.URL != nil {
-				record(resp.Request.Method, resp.Request.URL.Path, resp.Request.URL.RawQuery,
-					resp.Request.Header.Get("Content-Type"), resp.StatusCode, passiveFieldsFromRequest(resp.Request))
+				contentType := resp.Request.Header.Get("Content-Type")
+				record(resp.Request.Method, resp.Request.URL.Path, resp.Request.URL.RawQuery, contentType, resp.StatusCode,
+					passiveFieldsFromRequest(resp.Request), buildAPIObservationMeta(resp.Request, resp.Request.URL.RawQuery, contentType))
 			}
 			return nil
 		},
@@ -1769,7 +2102,17 @@ func clientIP(r *http.Request) string {
 func (s *server) getCertificate(addr string) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		rt := s.rt.Load()
+		if rt == nil {
+			return nil, fmt.Errorf("runtime unavailable")
+		}
 		lr := rt.listeners[addr]
+		if lr == nil {
+			// When ownership is moving from the external TLS frontend back to
+			// Go crypto/tls, the public socket can be bound just before the
+			// runtime pointer swaps. Reuse the equivalent internal-listener
+			// certificate table from the previous runtime for that handoff.
+			lr = rt.listeners[tlsfront.InternalListenerKey(addr)]
+		}
 		if lr == nil {
 			return nil, fmt.Errorf("no listener for %s", addr)
 		}
@@ -1787,12 +2130,13 @@ func (s *server) getCertificate(addr string) func(*tls.ClientHelloInfo) (*tls.Ce
 
 func main() {
 	var (
-		configPath = flag.String("config", "config.json", "path to JSON config (created with defaults if missing)")
-		adminAddr  = flag.String("admin", envOr("WAF_ADMIN_ADDR", "127.0.0.1:9090"), "admin console listen address, e.g. 127.0.0.1:9090, 0.0.0.0:9090, or a mgmt IP")
-		adminCert  = flag.String("admin-cert", os.Getenv("WAF_ADMIN_TLS_CERT"), "TLS cert for the admin console (recommended when binding off-loopback)")
-		adminKey   = flag.String("admin-key", os.Getenv("WAF_ADMIN_TLS_KEY"), "TLS key for the admin console")
-		adminToken = flag.String("admin-token", os.Getenv("WAF_ADMIN_TOKEN"), "bearer token for the admin API (random if empty)")
-		browseRoot = flag.String("tls-browse-root", "/etc", "directory the console's cert/key file browser is allowed to list (read-only)")
+		configPath  = flag.String("config", "config.json", "path to JSON config (created with defaults if missing)")
+		adminAddr   = flag.String("admin", envOr("WAF_ADMIN_ADDR", "127.0.0.1:9090"), "admin console listen address, e.g. 127.0.0.1:9090, 0.0.0.0:9090, or a mgmt IP")
+		adminCert   = flag.String("admin-cert", os.Getenv("WAF_ADMIN_TLS_CERT"), "TLS cert for the admin console (recommended when binding off-loopback)")
+		adminKey    = flag.String("admin-key", os.Getenv("WAF_ADMIN_TLS_KEY"), "TLS key for the admin console")
+		adminToken  = flag.String("admin-token", os.Getenv("WAF_ADMIN_TOKEN"), "bearer token for the admin API (random if empty)")
+		haPeerToken = flag.String("ha-peer-token", os.Getenv("WAF_HA_PEER_TOKEN"), "dedicated bearer token accepted only by the HA replication endpoint")
+		browseRoot  = flag.String("tls-browse-root", "/etc", "directory the console's cert/key file browser is allowed to list (read-only)")
 	)
 	flag.Parse()
 
@@ -1811,6 +2155,10 @@ func main() {
 		log.Error("could not load config", "path", *configPath, "err", err)
 		os.Exit(1)
 	}
+	if cfg.HA.Enabled && cfg.HA.SyncConfig && strings.TrimSpace(*haPeerToken) == "" {
+		log.Error("HA config sync requires a stable dedicated replication token", "hint", "set WAF_HA_PEER_TOKEN or -ha-peer-token")
+		os.Exit(1)
+	}
 
 	root, err := filepath.Abs(*browseRoot)
 	if err != nil {
@@ -1820,43 +2168,97 @@ func main() {
 	aiEng := newAIEngine(log)
 	aiEng.notify = notifier
 	s := &server{
-		matches:       newMatchRing(250),
-		access:        newAccessRing(1000),
-		maps:          newSiteMaps(5000),
-		signals:       newSignalStore(),
-		ai:            aiEng,
-		learn:         newLearnStore(),
-		notify:        notifier,
-		ha:            newHAEngine(log, notifier),
-		syslog:        newSyslogEngine(log),
-		hosts:         newHostObserver(log),
-		metrics:       newMetrics(),
-		contracts:     newContractStore(),
-		debug:         NewDebugEvidenceStore(debugEvidenceMaxFromEnv(), debugEvidenceTTLFromEnv()),
-		hsmAudit:      hsm.NewAuditRing(500),
-		ipmgr:         newIPManager(log, *adminAddr, os.Getenv("WAF_DATA_INTERFACE")),
-		log:           log,
-		configPath:    *configPath,
-		tlsBrowseRoot: filepath.Clean(root),
-		tlsFrontend:   newTLSFrontendPublisher(log),
-		bootCfg:       cfg,
+		matches:             newMatchRing(250),
+		access:              newAccessRing(1000),
+		maps:                newSiteMaps(5000),
+		signals:             newSignalStore(),
+		ai:                  aiEng,
+		learn:               newLearnStore(),
+		notify:              notifier,
+		ha:                  newHAEngine(log, notifier),
+		syslog:              newSyslogEngine(log),
+		hosts:               newHostObserver(log),
+		metrics:             newMetrics(),
+		apiOps:              newAPIOperationStore(),
+		schema:              newSchemaStore(),
+		contracts:           newContractStore(),
+		positiveSchema:      newPositiveSchemaStore(),
+		identity:            newAPIIdentityStore(),
+		sequence:            newSequenceStore(),
+		objectLocators:      newObjectLocatorStore(),
+		objectRelationships: newObjectRelationshipStore(),
+		bolaCandidates:      newBOLADetectionStore(),
+		bolaPolicy:          newBOLAPolicyStore(),
+		graphql:             newGraphQLStore(),
+		debug:               NewDebugEvidenceStore(debugEvidenceMaxFromEnv(), debugEvidenceTTLFromEnv()),
+		hsmAudit:            hsm.NewAuditRing(500),
+		ipmgr:               newIPManager(log, *adminAddr, os.Getenv("WAF_DATA_INTERFACE")),
+		log:                 log,
+		configPath:          *configPath,
+		tlsBrowseRoot:       filepath.Clean(root),
+		tlsFrontend:         newTLSFrontendPublisher(log),
+		bootCfg:             cfg,
 	}
 	notifier.sink = s.syslog.forwardNotify // fan notifications out to syslog
+	s.objectRelationships.locators = s.objectLocators
+	s.objectRelationships.detector = s.bolaCandidates
+	s.graphql.objectLocators = s.objectLocators
+	s.graphql.objectRelationships = s.objectRelationships
 	SetDebugEvidenceStore(s.debug)
 	if err := s.apply(cfg); err != nil {
 		log.Error("initial build failed", "err", err)
 		os.Exit(1)
 	}
 
-	// ── site-map persistence: restore state before traffic can mutate it ──
+	// ── persisted discovery/API intelligence: restore before traffic mutates it ──
 	if err := s.maps.load(*configPath); err != nil {
 		log.Warn("could not load saved site map", "err", err)
 	}
+	if err := s.apiOps.load(*configPath); err != nil {
+		log.Warn("could not load saved API operations", "err", err)
+	}
+	if err := s.schema.load(*configPath); err != nil {
+		log.Warn("could not load saved API schema learning state", "err", err)
+	}
+	if err := s.contracts.load(*configPath); err != nil {
+		log.Warn("could not load saved API contracts", "err", err)
+	}
+	if err := s.positiveSchema.load(*configPath); err != nil {
+		log.Warn("could not load saved positive schema enforcement state", "err", err)
+	}
+	if err := s.identity.load(*configPath); err != nil {
+		log.Warn("could not load saved API identity state", "err", err)
+	}
+	if err := s.sequence.load(*configPath); err != nil {
+		log.Warn("could not load saved API sequence state", "err", err)
+	}
+	if err := s.objectLocators.load(*configPath); err != nil {
+		log.Warn("could not load saved API object locator state", "err", err)
+	}
+	s.objectLocators.refreshContractSources(s.contracts)
+	if err := s.objectRelationships.load(*configPath); err != nil {
+		log.Warn("could not load saved API object relationship state", "err", err)
+	}
+	if err := s.bolaCandidates.load(*configPath); err != nil {
+		log.Warn("could not load saved API BOLA candidate state", "err", err)
+	}
+	if err := s.bolaPolicy.load(*configPath); err != nil {
+		log.Warn("could not load saved API BOLA policy/evidence state", "err", err)
+	}
+	if err := s.graphql.load(*configPath); err != nil {
+		log.Warn("could not load saved GraphQL security state", "err", err)
+	}
+	s.sequence.start()
+	s.objectRelationships.start()
+	s.graphql.start()
 
 	// ── bounded observation plane ──
 	// Visibility/learning telemetry is fail-open: queue saturation drops and
 	// counts observations rather than blocking the WAF data plane.
 	s.observations = newObservationPlane(s.hosts, s.maps, s.learn, s.signals, log, observationQueueCapacity)
+	s.observations.apiOps = s.apiOps
+	s.observations.schema = s.schema
+	s.observations.objectLocators = s.objectLocators
 	s.observations.start()
 
 	// ── bounded asynchronous match-log aggregation ──
@@ -1869,10 +2271,13 @@ func main() {
 	s.listenMgr = newListenerManager(s, log)
 	s.listenMgr.startAll(cfg)
 
-	// ── site-map autosave ──
+	// ── discovery/API intelligence autosave ──
 	sitemapStop := make(chan struct{})
 	var sitemapWG sync.WaitGroup
 	s.maps.startAutosave(*configPath, 60*time.Second, sitemapStop, &sitemapWG)
+	apiStateStop := make(chan struct{})
+	var apiStateWG sync.WaitGroup
+	startAPISecurityAutosave(*configPath, 60*time.Second, apiStateStop, &apiStateWG, s.apiOps, s.schema, s.contracts, s.positiveSchema, s.identity, s.sequence, s.objectLocators, s.objectRelationships, s.bolaCandidates, s.bolaPolicy, s.graphql)
 
 	// ── metrics sampler (CPU/mem/throughput/rates for the dashboard) ──
 	metricsStop := make(chan struct{})
@@ -1883,7 +2288,7 @@ func main() {
 	go s.debug.RunCleanup(debugStop, time.Minute)
 
 	// ── admin listener ──
-	admin := newAdminServer(s, *adminToken, log)
+	admin := newAdminServer(s, *adminToken, *haPeerToken, log)
 	adminSrv := &http.Server{
 		Addr:              *adminAddr,
 		Handler:           admin.handler(),
@@ -1961,11 +2366,22 @@ func main() {
 	if s.observations != nil {
 		s.observations.stopAndDrain()
 	}
+	if s.sequence != nil {
+		s.sequence.stopAndDrain()
+	}
+	if s.graphql != nil {
+		s.graphql.stopAndDrain()
+	}
+	if s.objectRelationships != nil {
+		s.objectRelationships.stopAndDrain()
+	}
 	if s.matchLogs != nil {
 		s.matchLogs.stopAndDrain()
 	}
-	close(sitemapStop) // final site-map flush includes drained observations
+	close(sitemapStop)  // final site-map flush includes drained observations
+	close(apiStateStop) // final API intelligence flush includes drained observations
 	sitemapWG.Wait()
+	apiStateWG.Wait()
 	log.Info("stopped cleanly")
 }
 

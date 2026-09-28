@@ -5,8 +5,8 @@ package main
 // Host discovery, sitemap updates, learner accounting, and request-shape
 // signals are visibility/learning telemetry. None of them participates in the
 // blocking WAF verdict, so the data plane must never wait on their mutexes or
-// allocations. Requests enqueue a small immutable event with a non-blocking
-// send; a single background consumer updates the existing stores. When the
+// allocations. Requests enqueue a bounded immutable event with a non-blocking
+// send; API-schema body samples are shed before the general backlog grows large; a single background consumer updates the existing stores. When the
 // queue is full, telemetry is dropped and counted rather than applying
 // backpressure to traffic.
 
@@ -17,7 +17,10 @@ import (
 	"time"
 )
 
-const observationQueueCapacity = 8192
+const (
+	observationQueueCapacity     = 8192
+	observationSchemaBodyBacklog = 512
+)
 
 type observationKind uint8
 
@@ -41,6 +44,7 @@ type observationEvent struct {
 	contentType string
 	code        int
 	fields      []DiscoveredField
+	meta        apiObservationMeta
 
 	ruleID   int
 	client   string
@@ -48,11 +52,12 @@ type observationEvent struct {
 }
 
 type observationSnapshot struct {
-	QueueDepth    int    `json:"queue_depth"`
-	QueueCapacity int    `json:"queue_capacity"`
-	Dropped       uint64 `json:"dropped"`
-	Processed     uint64 `json:"processed"`
-	Accepting     bool   `json:"accepting"`
+	QueueDepth        int    `json:"queue_depth"`
+	QueueCapacity     int    `json:"queue_capacity"`
+	Dropped           uint64 `json:"dropped"`
+	SchemaBodyDropped uint64 `json:"schema_body_dropped"`
+	Processed         uint64 `json:"processed"`
+	Accepting         bool   `json:"accepting"`
 }
 
 type observationPlane struct {
@@ -61,15 +66,19 @@ type observationPlane struct {
 	done  chan struct{}
 	log   *slog.Logger
 
-	hosts   *hostObserver
-	maps    *siteMaps
-	learn   *learnStore
-	signals *signalStore
+	hosts          *hostObserver
+	maps           *siteMaps
+	learn          *learnStore
+	signals        *signalStore
+	apiOps         *apiOperationStore
+	schema         *schemaStore
+	objectLocators *objectLocatorStore
 
-	accepting atomic.Bool
-	dropped   atomic.Uint64
-	processed atomic.Uint64
-	started   atomic.Bool
+	accepting         atomic.Bool
+	dropped           atomic.Uint64
+	schemaBodyDropped atomic.Uint64
+	processed         atomic.Uint64
+	started           atomic.Bool
 
 	startOnce sync.Once
 	stopOnce  sync.Once
@@ -121,10 +130,23 @@ func (p *observationPlane) noteHost(listener, host string, declared bool) {
 	p.enqueue(observationEvent{kind: observationHost, listener: listener, host: host, declared: declared})
 }
 
-func (p *observationPlane) noteRequest(site, method, path, rawQuery, contentType string, code int, fields []DiscoveredField) {
+func (p *observationPlane) noteRequest(site, method, path, rawQuery, contentType string, code int, fields []DiscoveredField, metas ...apiObservationMeta) {
+	var meta apiObservationMeta
+	if len(metas) > 0 {
+		meta = metas[0]
+	}
+	// The general observation queue was designed for compact events. Do not
+	// allow schema body prefixes to turn an 8192-entry telemetry backlog into a
+	// hundreds-of-megabytes retention buffer. Preserve API-1/request metadata,
+	// but shed only the API-2 body sample once the backlog is already elevated.
+	if len(meta.BodyPrefix) > 0 && len(p.queue) >= observationSchemaBodyBacklog {
+		meta.BodyPrefix = nil
+		meta.BodyTruncated = true
+		p.schemaBodyDropped.Add(1)
+	}
 	p.enqueue(observationEvent{
 		kind: observationRequest, site: site, method: method, path: path,
-		rawQuery: rawQuery, contentType: contentType, code: code, fields: fields,
+		rawQuery: rawQuery, contentType: contentType, code: code, fields: fields, meta: meta,
 	})
 }
 
@@ -150,6 +172,19 @@ func (p *observationPlane) process(ev observationEvent) {
 		}
 		if p.signals != nil {
 			p.signals.noteRequestShape(ev.site, ev.path, ev.method, ev.rawQuery, ev.contentType, ev.fields)
+		}
+		var op apiOperation
+		if p.apiOps != nil {
+			op = p.apiOps.note(ev.site, ev.meta.Host, ev.method, ev.path, ev.contentType, ev.meta.AuthScheme, ev.code)
+		}
+		if op.ID != "" && (p.schema != nil || p.objectLocators != nil) {
+			samples := collectSchemaSamplesFromObservation(ev.path, ev.rawQuery, ev.contentType, ev.meta)
+			if p.schema != nil {
+				p.schema.note(op, samples)
+			}
+			if p.objectLocators != nil {
+				p.objectLocators.noteObservation(op, samples)
+			}
 		}
 	case observationMatch:
 		if p.learn != nil {
@@ -221,10 +256,11 @@ func (p *observationPlane) snapshot() observationSnapshot {
 		return observationSnapshot{}
 	}
 	return observationSnapshot{
-		QueueDepth:    len(p.queue),
-		QueueCapacity: cap(p.queue),
-		Dropped:       p.dropped.Load(),
-		Processed:     p.processed.Load(),
-		Accepting:     p.accepting.Load(),
+		QueueDepth:        len(p.queue),
+		QueueCapacity:     cap(p.queue),
+		Dropped:           p.dropped.Load(),
+		SchemaBodyDropped: p.schemaBodyDropped.Load(),
+		Processed:         p.processed.Load(),
+		Accepting:         p.accepting.Load(),
 	}
 }

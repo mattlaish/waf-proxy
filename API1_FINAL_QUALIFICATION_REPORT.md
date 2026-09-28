@@ -1,5 +1,10 @@
 # API-1 Final Qualification Report
 
+## 2026-09-23 source closure update
+
+API-1 source closure now includes durable `api-operations.json` persistence/restart restore, host/content-type/auth/status metadata, typed path parameters, detail/ignore/reclassify APIs, and embedded admin inventory UI. Exact-source isolated deterministic tests are **4/4 PASS**. Browser/large-corpus and pinned Go 1.25 repository qualification remain deferred, so the slice stays `IMPLEMENTED_TESTING_DEFERRED`. Operation version history is not part of the current API-1 product acceptance scope; stable operation identity plus durable current inventory is implemented.
+
+
 ## Scope
 
 API-1 — API Discovery + Operation Normalization Final Qualification Hardening.

@@ -255,8 +255,10 @@
     <button class="tab" data-view="sites">SITES</button>
     <button class="tab" data-view="pools">POOLS&nbsp;&amp;&nbsp;NODES</button>
     <button class="tab" data-view="policies">POLICIES</button>
+    <button class="tab" data-view="api">API&nbsp;SECURITY</button>
     <button class="tab" data-view="logs">LOGS</button>
     <button class="tab" data-view="setup">SETUP&nbsp;/&nbsp;AI</button>
+    <button class="tab" data-view="system">SYSTEM</button>
     <button class="tab" data-view="users">USERS</button>
     <button class="tab" data-view="map">SITE&nbsp;MAP</button>
   </nav>
@@ -373,6 +375,218 @@
         <div id="policies"></div>
       </section>
     </div>
+  <section id="traffic_controls">
+    <div class="feedhead"><div><div class="eyebrow">Traffic controls</div><h3 style="margin:2px 0 0">CIDR and L7 abuse protection</h3></div><div class="count" id="traffic_control_state"></div></div>
+    <div class="hint" style="margin:6px 0 14px">These are deterministic request-path controls. CIDR decisions use the trusted client-identity resolver. L7 request/concurrency limits are site-scoped; the TLS handshake bucket is direct-peer + listener scoped and is supported only by built-in Go TLS.</div>
+    <div class="grid2">
+      <div>
+        <div class="eyebrow">L7 abuse controls</div>
+        <label class="check"><input type="checkbox" id="l7_enabled"> Enable L7 abuse controls</label>
+        <div class="row">
+          <div class="field"><label>Requests / window</label><input type="number" id="l7_requests" min="0" max="10000000"></div>
+          <div class="field"><label>Window seconds</label><input type="number" id="l7_window" min="0" max="86400"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Max concurrent requests / client / site</label><input type="number" id="l7_concurrent" min="0" max="1000000"></div>
+          <div class="field"><label>TLS handshakes / window / peer / listener</label><input type="number" id="l7_tls_handshakes" min="0" max="10000000"></div>
+        </div>
+        <div class="hint">0 disables that individual limiter. A zero window uses a one-second compatibility default. TLS handshake limiting is intentionally rejected when the external NGINX TLS frontend is selected because the Go process cannot observe those handshakes.</div>
+      </div>
+      <div>
+        <div class="feedhead"><div class="eyebrow" style="margin:0">CIDR policy</div><button class="btn sm" id="cidr_add">+ Rule</button></div>
+        <label class="check"><input type="checkbox" id="cidr_enabled"> Enable CIDR allow/deny rules</label>
+        <div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>Name</th><th>CIDR</th><th>Action</th><th>Priority</th><th>Reason</th><th>Expires RFC3339</th><th></th></tr></thead><tbody id="cidr_rules"></tbody></table></div>
+        <div class="empty" id="cidr_empty">No CIDR rules configured.</div>
+        <div class="hint">Expired rules remain valid config but are skipped at runtime. Higher priority wins. Expiry must be RFC3339, for example <span class="mono">2026-09-25T00:00:00Z</span>.</div>
+      </div>
+    </div>
+    <div class="actions"><button class="btn" id="traffic_save">Save draft</button><button class="btn primary" id="traffic_apply">Apply traffic controls</button></div>
+  </section>
+  </div>
+
+  <!-- ══ API SECURITY ══ -->
+  <div id="view-api" class="view">
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">API operations</div><h3 style="margin:2px 0 0">Discovered operation inventory</h3></div><div class="count" id="api_ops_count"></div><button class="btn sm" id="api_refresh">Refresh</button></div>
+      <div class="hint" style="margin:6px 0 12px">Passive inventory only. Normalization, ignore, and reclassification do not change the WAF block verdict.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Site / host</th><th>Operation</th><th>Auth</th><th>Content type</th><th>Samples</th><th>Last seen</th><th>State</th><th></th></tr></thead><tbody id="api_ops_body"></tbody></table></div>
+      <div class="empty" id="api_ops_empty">No API operations observed yet.</div>
+    </section>
+
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">Typed schema learning</div><h3 style="margin:2px 0 0">Schema candidates</h3></div><div class="count" id="api_schema_count"></div></div>
+      <div class="hint" style="margin:6px 0 12px">Deterministic learning stays LEARNING/CANDIDATE until reviewed. AI review is advisory only and never activates enforcement.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Operation</th><th>Status</th><th>Samples</th><th>Confidence</th><th>Fields</th><th>Review</th><th></th></tr></thead><tbody id="api_schema_body"></tbody></table></div>
+      <div class="empty" id="api_schema_empty">No schema candidates yet.</div>
+    </section>
+
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">Positive schema enforcement</div><h3 style="margin:2px 0 0">Approved API profiles</h3></div><div class="count" id="api_enforce_count"></div></div>
+      <div class="hint" style="margin:6px 0 12px">Promotion requires a current operator-reviewed schema. New versions enter LEARN. DETECT is shadow mode; ENFORCE can only follow DETECT. AI review never activates this table.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Operation</th><th>Mode</th><th>Profile</th><th>Block</th><th>Updated</th><th></th></tr></thead><tbody id="api_enforce_body"></tbody></table></div>
+      <div class="empty" id="api_enforce_empty">No positive schema profiles deployed yet.</div>
+      <div id="api_enforce_detail" style="display:none;margin-top:14px" class="card"></div>
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Violation evidence</div><h3 style="margin:2px 0 0">Recent schema decisions</h3></div><div class="count" id="api_violation_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Time</th><th>Operation</th><th>Mode/action</th><th>Violation</th><th>Field</th><th>Observed</th></tr></thead><tbody id="api_violation_body"></tbody></table></div>
+      <div class="empty" id="api_violation_empty">No positive-schema violations recorded.</div>
+    </section>
+
+
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">JWT + identity-aware API security</div><h3 style="margin:2px 0 0">Trusted issuers and operation policies</h3></div><div class="count" id="api_identity_count"></div></div>
+      <div class="hint" style="margin:6px 0 12px">Only cryptographically verified claims enter policy context. New/changed policies stay in DETECT until explicitly promoted to ENFORCE. Raw JWTs and JWKS cache material are never persisted.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Issuer</th><th>Audiences</th><th>Algorithms</th><th>Claims</th><th></th></tr></thead><tbody id="api_identity_issuers"></tbody></table></div>
+      <div class="empty" id="api_identity_issuers_empty">No trusted JWT issuers configured.</div>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--mut)">Add or update trusted JWT issuer</summary>
+        <div class="row" style="margin-top:10px"><div class="field"><label>ID</label><input id="api_idp_id" type="text" placeholder="corp"></div><div class="field"><label>Name</label><input id="api_idp_name" type="text" placeholder="Corporate IdP"></div></div>
+        <div class="field"><label>Issuer (iss)</label><input id="api_idp_issuer" type="text" placeholder="https://idp.example.com/"></div>
+        <div class="field"><label>JWKS URL (HTTPS)</label><input id="api_idp_jwks" type="text" placeholder="https://idp.example.com/.well-known/jwks.json"></div>
+        <div class="row"><div class="field"><label>Audiences (comma-separated)</label><input id="api_idp_aud" type="text" placeholder="payments-api"></div><div class="field"><label>Allowed algs</label><input id="api_idp_algs" type="text" value="RS256" placeholder="RS256,PS256,ES256,EdDSA"></div></div>
+        <div class="row"><div class="field"><label>Tenant claim</label><input id="api_idp_tenant" type="text" placeholder="tenant_id"></div><div class="field"><label>Roles claim</label><input id="api_idp_roles" type="text" value="roles"></div><div class="field"><label>Scopes claim</label><input id="api_idp_scopes" type="text" value="scope"></div></div>
+        <label class="check"><input type="checkbox" id="api_idp_enabled" checked> enabled</label>
+        <div class="actions"><button class="btn primary" id="api_idp_save">Save issuer</button></div>
+      </details>
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Identity policy</div><h3 style="margin:2px 0 0">Operation bindings</h3></div><div class="count" id="api_identity_policy_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Operation</th><th>Issuer</th><th>Mode</th><th>Roles</th><th>Scopes</th><th>Tenant/client</th><th></th></tr></thead><tbody id="api_identity_policies"></tbody></table></div>
+      <div class="empty" id="api_identity_policies_empty">No identity-aware operation policies configured.</div>
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Identity evidence</div><h3 style="margin:2px 0 0">Recent JWT / authorization decisions</h3></div><div class="count" id="api_identity_violation_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Time</th><th>Operation</th><th>Mode/action</th><th>Type</th><th>Issuer</th><th>Subject hash</th></tr></thead><tbody id="api_identity_violations"></tbody></table></div>
+      <div class="empty" id="api_identity_violations_empty">No identity-policy violations recorded.</div>
+    </section>
+
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">API sequence foundation + operations</div><h3 style="margin:2px 0 0">Workflow analytics, evidence, and hardening</h3></div><div class="count" id="api_sequence_count"></div></div>
+      <div class="hint" style="margin:6px 0 12px">API-6.1 foundation; API-6.2 LEARN-only workflow construction; API-6.3 DETECT-only anomaly evidence; API-6.4 operations and hardening. Modes are explicitly LEARN or DETECT only. Sequence analytics never blocks traffic; learned sequence evidence is DETECT-only and there is no sequence ENFORCE mode.</div>
+      <div id="api_sequence_model" class="hint" style="margin-bottom:12px"></div>
+      <div class="row">
+        <div class="field"><label>Site</label><input id="api_sequence_site" type="text" placeholder="api-site"></div>
+        <div class="field"><label>Mode</label><select id="api_sequence_mode"><option>LEARN</option><option>DETECT</option></select></div>
+        <div class="actions" style="align-items:end"><button class="btn primary" id="api_sequence_mode_apply">Apply mode</button><button class="btn" id="api_sequence_relearn">Reset / relearn</button></div>
+      </div>
+      <div class="hint">DETECT requires at least one MATURE workflow. Reset/relearn is site-scoped, preserves explicit exceptions, clears learned/runtime evidence for that site, increments the generation, and returns the site to LEARN.</div>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Learning state</div><h3 style="margin:2px 0 0">Per-site operational state</h3></div><div class="count" id="api_sequence_state_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Site</th><th>Mode</th><th>Generation</th><th>Workflows</th><th>Transitions</th><th>Sessions</th><th>Violations</th><th>Exceptions</th></tr></thead><tbody id="api_sequence_states"></tbody></table></div>
+      <div class="empty" id="api_sequence_states_empty">No sequence learning state yet.</div>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Active / recent sessions</div><h3 style="margin:2px 0 0">Privacy-preserving session correlation</h3></div><div class="count" id="api_sequence_session_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>State</th><th>Time</th><th>Correlation</th><th>Session digest</th><th>Entry</th><th>Current / terminal</th><th>Requests</th></tr></thead><tbody id="api_sequence_sessions"></tbody></table></div>
+      <div class="empty" id="api_sequence_sessions_empty">No active or recent sequence sessions.</div>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Workflow models</div><h3 style="margin:2px 0 0">Learned workflow cohorts</h3></div><div class="count" id="api_sequence_workflow_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Last seen</th><th>Site / identity cohort</th><th>Entry → terminal</th><th>Sessions</th><th>Observations</th><th>Depth</th><th>Maturity</th><th>State</th></tr></thead><tbody id="api_sequence_workflows"></tbody></table></div>
+      <div class="empty" id="api_sequence_workflows_empty">No workflow models learned.</div>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Transitions</div><h3 style="margin:2px 0 0">Observed normalized edges</h3></div><div class="count" id="api_sequence_transition_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Last seen</th><th>Site</th><th>From operation</th><th>To operation</th><th>Observations</th><th>Sessions</th><th>Confidence</th><th>Maturity</th></tr></thead><tbody id="api_sequence_transitions"></tbody></table></div>
+      <div class="empty" id="api_sequence_transitions_empty">No sequence transitions observed.</div>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Sequence violations</div><h3 style="margin:2px 0 0">Bounded DETECT-only evidence</h3></div><div class="count" id="api_sequence_violation_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Time</th><th>Site</th><th>Type</th><th>From → to</th><th>Related</th><th>Confidence</th><th>Sessions</th><th>Expires</th></tr></thead><tbody id="api_sequence_violations"></tbody></table></div>
+      <div class="empty" id="api_sequence_violations_empty">No sequence anomaly evidence recorded.</div>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Exceptions</div><h3 style="margin:2px 0 0">Bounded sequence detection exceptions</h3></div><div class="count" id="api_sequence_exception_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Site</th><th>Type</th><th>Workflow</th><th>From</th><th>To</th><th>Related</th><th>Expires</th><th></th></tr></thead><tbody id="api_sequence_exceptions"></tbody></table></div>
+      <div class="empty" id="api_sequence_exceptions_empty">No sequence exceptions configured.</div>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--mut)">Create bounded exception</summary>
+        <div class="row" style="margin-top:10px"><div class="field"><label>Site</label><input id="api_sequence_ex_site" type="text" placeholder="api-site"></div><div class="field"><label>Anomaly type</label><select id="api_sequence_ex_type"><option>UNKNOWN_TRANSITION</option><option>PREREQUISITE_SKIPPED</option><option>UNEXPECTED_ENTRY_POINT</option><option>SEQUENCE_REVERSAL</option><option>ABNORMAL_REPETITION</option><option>WORKFLOW_DIVERGENCE</option></select></div><div class="field"><label>TTL seconds</label><input id="api_sequence_ex_ttl" type="number" min="60" max="2592000" value="86400"></div></div>
+        <div class="row"><div class="field"><label>Workflow ID</label><select id="api_sequence_ex_workflow"><option value="">— any workflow —</option></select></div><div class="field"><label>From operation ID</label><input id="api_sequence_ex_from" type="text" placeholder="optional normalized operation ID"></div><div class="field"><label>To operation ID</label><input id="api_sequence_ex_to" type="text" placeholder="optional normalized operation ID"></div><div class="field"><label>Related operation ID</label><input id="api_sequence_ex_related" type="text" placeholder="optional normalized operation ID"></div></div>
+        <div class="hint">At least one workflow/operation selector is required. Raw URLs, object values, JWTs, cookies, and claim values are not accepted as selectors. Exceptions expire automatically and cannot exceed 30 days.</div>
+        <div class="actions"><button class="btn primary" id="api_sequence_exception_create">Create exception</button></div>
+      </details>
+    </section>
+
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">API-7.1 object locator discovery</div><h3 style="margin:2px 0 0">Normalized object selector inventory</h3></div><div class="count" id="api_object_locator_count"></div></div>
+      <div class="hint" style="margin:6px 0 12px">Discovery combines API-1 normalized path parameters, API-2 typed query/body evidence, matched API-3 OpenAPI contracts, and explicit operator configuration. Raw object values are never retained: value evidence is keyed HMAC only. API-7.1 makes no ownership, tenant-boundary, BOLA, or blocking decision.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Operation</th><th>Location / field</th><th>Semantic</th><th>Type</th><th>Confidence</th><th>Sources</th><th>Evidence</th><th>Status</th></tr></thead><tbody id="api_object_locators"></tbody></table></div>
+      <div class="empty" id="api_object_locators_empty">No object locators discovered yet.</div>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--mut)">Operator include / suppress override</summary>
+        <div class="row" style="margin-top:10px"><div class="field"><label>Normalized operation ID</label><input id="api_obj_op" type="text" placeholder="32-hex API-1 operation ID"></div><div class="field"><label>Location</label><select id="api_obj_location"><option>path</option><option>query</option><option>body</option><option>graphql_variable</option></select></div><div class="field"><label>Action</label><select id="api_obj_action"><option>INCLUDE</option><option>SUPPRESS</option></select></div></div>
+        <div class="row"><div class="field"><label>Field / JSON path</label><input id="api_obj_field" type="text" placeholder="order_id"></div><div class="field"><label>Schema type</label><input id="api_obj_type" type="text" placeholder="string"></div><div class="field"><label>Semantic name</label><input id="api_obj_semantic" type="text" placeholder="order_id"></div></div>
+        <div class="hint">INCLUDE declares locator position only. SUPPRESS marks a discovery false positive. These controls never define object ownership or authorization.</div>
+        <div class="actions"><button class="btn primary" id="api_object_override_save">Save override</button></div>
+      </details>
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Operator configuration</div><h3 style="margin:2px 0 0">Locator overrides</h3></div><div class="count" id="api_object_override_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Operation</th><th>Location / field</th><th>Action</th><th>Semantic</th><th>Updated</th><th></th></tr></thead><tbody id="api_object_overrides"></tbody></table></div>
+      <div class="empty" id="api_object_overrides_empty">No object locator overrides configured.</div>
+
+      <div class="feedhead" style="margin-top:18px"><div><div class="eyebrow">API-7.2 identity/object relationship</div><h3 style="margin:2px 0 0">Verified identity ↔ keyed object evidence</h3></div><div class="count" id="api_object_relationship_count"></div></div>
+      <div class="hint" style="margin:6px 0 12px">Only API-5 cryptographically verified identity context is correlated with active API-7.1 locators. Identity claims and object values are never retained raw: both sides are keyed pseudonymous evidence. Caller-supplied tenant/owner headers and cookies are not authority. API-7.2 makes no ownership, tenant-boundary, BOLA, or blocking decision.</div>
+      <div class="hint" id="api_object_relationship_status" style="margin:6px 0 12px"></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Last seen</th><th>Operation</th><th>Locator</th><th>Identity kind</th><th>Identity fingerprint</th><th>Tenant / client evidence</th><th>Object fingerprint</th><th>Evidence</th></tr></thead><tbody id="api_object_relationships"></tbody></table></div>
+      <div class="empty" id="api_object_relationships_empty">No verified identity/object relationship evidence observed yet.</div>
+
+      <div class="feedhead" style="margin-top:18px"><div><div class="eyebrow">API-7.3 / API-7.4 BOLA evidence</div><h3 style="margin:2px 0 0">Detection candidates and operator workflow</h3></div><div class="count" id="api_bola_evidence_count"></div></div>
+      <div class="hint" style="margin:6px 0 12px">BOLA candidates are inferred evidence only. API-7.4 policies can route evidence to REVIEW or SUPPRESS and operators can acknowledge, dismiss, resolve, or reopen cases. These controls never authorize request-path BLOCK/DENY/403 and never declare object ownership.</div>
+      <div class="hint" id="api_bola_status" style="margin:6px 0 12px"></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Last seen</th><th>Type / confidence</th><th>Operation / locator</th><th>Identity / object evidence</th><th>Baseline</th><th>Policy</th><th>Workflow</th><th>Action</th></tr></thead><tbody id="api_bola_evidence"></tbody></table></div>
+      <div class="empty" id="api_bola_evidence_empty">No BOLA candidate evidence recorded.</div>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Evidence-handling policy</div><h3 style="margin:2px 0 0">Normalized candidate routing rules</h3></div><div class="count" id="api_bola_policy_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Operation</th><th>Locator</th><th>Candidate type</th><th>Minimum confidence</th><th>Action</th><th>Expires</th><th></th></tr></thead><tbody id="api_bola_policies"></tbody></table></div>
+      <div class="empty" id="api_bola_policies_empty">No BOLA evidence-handling policies configured.</div>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--mut)">Create or update BOLA evidence policy</summary>
+        <div class="row" style="margin-top:10px"><div class="field"><label>Normalized operation ID</label><input id="api_bola_policy_op" type="text" placeholder="32-hex API-1 operation ID"></div><div class="field"><label>Locator ID (optional)</label><select id="api_bola_policy_locator"><option value="">— any locator for operation —</option></select></div></div>
+        <div class="row"><div class="field"><label>Candidate type</label><select id="api_bola_policy_type"><option value="">all types</option><option>IDENTITY_OBJECT_DIVERGENCE</option><option>TENANT_OBJECT_DIVERGENCE</option><option>OBJECT_ENUMERATION</option></select></div><div class="field"><label>Minimum confidence</label><select id="api_bola_policy_conf"><option>MEDIUM</option><option>HIGH</option></select></div><div class="field"><label>Action</label><select id="api_bola_policy_action"><option>REVIEW</option><option>SUPPRESS</option></select></div><div class="field"><label>TTL seconds</label><input id="api_bola_policy_ttl" type="number" min="60" max="15552000" value="2592000"></div></div>
+        <label class="check"><input type="checkbox" id="api_bola_policy_enabled" checked> enabled</label>
+        <div class="hint">Policies are evidence-routing controls only. They cannot contain raw object IDs, raw identity values, ownership assertions, arbitrary headers, or an ENFORCE action. More-specific locator/type rules override broader operation rules.</div>
+        <div class="actions"><button class="btn primary" id="api_bola_policy_save">Save BOLA policy</button></div>
+      </details>
+
+      <div class="feedhead" style="margin-top:22px"><div><div class="eyebrow">API-8 GraphQL Security</div><h3 style="margin:2px 0 0">Operation, complexity, persisted-query and deterministic policy controls</h3></div><div class="count" id="api_graphql_count"></div></div>
+      <div class="hint" style="margin:6px 0 12px">API-8 parses bounded GraphQL documents without retaining raw query text or literal/variable values. LEARN and DETECT never block. Explicit Reviewer-managed GraphQL policy may enter ENFORCE only through LEARN → DETECT → ENFORCE. API-6/API-7 learned sequence/BOLA evidence remains non-enforcing and OpenAI has no GraphQL policy authority.</div>
+      <div class="hint" id="api_graphql_status" style="margin:6px 0 12px"></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Last seen</th><th>Endpoint / operation</th><th>Type</th><th>Depth</th><th>Complexity</th><th>Fields</th><th>Persisted</th><th>Introspection</th></tr></thead><tbody id="api_graphql_operations"></tbody></table></div>
+      <div class="empty" id="api_graphql_operations_empty">No GraphQL operations discovered yet.</div>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Persisted queries</div><h3 style="margin:2px 0 0">Verified APQ structural profiles</h3></div><div class="count" id="api_graphql_persisted_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Hash</th><th>Operation</th><th>Depth / complexity</th><th>Last seen</th><th>Expires</th></tr></thead><tbody id="api_graphql_persisted"></tbody></table></div>
+      <div class="empty" id="api_graphql_persisted_empty">No verified persisted-query profiles learned.</div>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">GraphQL SDL schema contract</div><h3 style="margin:2px 0 0">Operator-imported type/field topology</h3></div><div class="count" id="api_graphql_contract_count"></div></div>
+      <div class="hint">Raw SDL is parsed transiently and replaced by a SHA-256 digest plus bounded type/field names; the source SDL document is not retained.</div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Name</th><th>Endpoint</th><th>Roots</th><th>Types</th><th>Digest</th><th>Updated</th><th></th></tr></thead><tbody id="api_graphql_contracts"></tbody></table></div>
+      <div class="empty" id="api_graphql_contracts_empty">No GraphQL SDL schema contracts imported.</div>
+      <details style="margin-top:12px"><summary style="cursor:pointer;color:var(--mut)">Import GraphQL SDL contract</summary>
+        <div class="row" style="margin-top:10px"><div class="field"><label>Name</label><input id="api_gql_schema_name" type="text" placeholder="shop-schema"></div><div class="field"><label>Endpoint API-1 operation ID</label><input id="api_gql_schema_endpoint" type="text" placeholder="32-hex endpoint operation ID"></div></div>
+        <div class="field"><label>GraphQL SDL</label><textarea id="api_gql_schema_sdl" rows="10" spellcheck="false" style="width:100%;font-family:var(--mono)" placeholder="type Query { viewer: User }"></textarea></div>
+        <div class="actions"><button class="btn primary" id="api_graphql_contract_import">Import SDL contract</button></div>
+      </details>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">Deterministic GraphQL policy</div><h3 style="margin:2px 0 0">Depth, complexity, field, mutation, introspection and APQ controls</h3></div><div class="count" id="api_graphql_policy_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Endpoint / operation</th><th>Mode</th><th>Depth</th><th>Complexity</th><th>Mutation</th><th>Introspection</th><th>Persisted</th><th>Field policy</th><th>Action</th></tr></thead><tbody id="api_graphql_policies"></tbody></table></div>
+      <div class="empty" id="api_graphql_policies_empty">No GraphQL policy configured.</div>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--mut)">Create or update GraphQL policy</summary>
+        <div class="row" style="margin-top:10px"><div class="field"><label>Endpoint API-1 operation ID</label><input id="api_gql_endpoint" type="text" placeholder="32-hex normalized endpoint operation ID"></div><div class="field"><label>GraphQL operation name (optional)</label><input id="api_gql_name" type="text" placeholder="GetOrder"></div><div class="field"><label>SDL contract ID (optional)</label><select id="api_gql_schema_contract"><option value="">— no SDL contract —</option></select></div><div class="field"><label>Block status</label><input id="api_gql_block" type="number" min="400" max="499" value="400"></div></div>
+        <div class="row"><div class="field"><label>Max depth (0 = unset)</label><input id="api_gql_depth" type="number" min="0" max="64" value="12"></div><div class="field"><label>Max complexity (0 = unset)</label><input id="api_gql_complexity" type="number" min="0" max="10000" value="500"></div><label class="check"><input type="checkbox" id="api_gql_mutation"> allow mutation</label><label class="check"><input type="checkbox" id="api_gql_subscription"> allow subscription</label><label class="check"><input type="checkbox" id="api_gql_introspection"> allow introspection</label><label class="check"><input type="checkbox" id="api_gql_persisted_required"> require persisted query</label></div>
+        <div class="row"><div class="field"><label>Allowed field paths (comma-separated; empty = no allowlist)</label><input id="api_gql_allowed" type="text" placeholder="query.viewer, query.viewer.id"></div><div class="field"><label>Denied field paths</label><input id="api_gql_denied" type="text" placeholder="query.adminSecrets"></div></div>
+        <div class="hint">Field selectors use normalized paths such as <span class="mono">query.viewer.orders.id</span>. Raw GraphQL query text, literal values, variables, JWTs and BOLA evidence are not policy selectors.</div>
+        <div class="actions"><button class="btn primary" id="api_graphql_policy_save">Save in LEARN</button></div>
+      </details>
+
+      <div class="feedhead" style="margin-top:16px"><div><div class="eyebrow">GraphQL violations</div><h3 style="margin:2px 0 0">Bounded policy and parser evidence</h3></div><div class="count" id="api_graphql_violation_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Time</th><th>Operation</th><th>Mode / action</th><th>Type</th><th>Field</th><th>Observed</th></tr></thead><tbody id="api_graphql_violations"></tbody></table></div>
+      <div class="empty" id="api_graphql_violations_empty">No GraphQL security violations recorded.</div>
+    </section>
+
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">OpenAPI contracts</div><h3 style="margin:2px 0 0">Declared contract inventory</h3></div><div class="count" id="api_contract_count"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Application</th><th>Name</th><th>Updated</th><th>ID</th><th></th></tr></thead><tbody id="api_contract_body"></tbody></table></div>
+      <div class="empty" id="api_contract_empty">No OpenAPI contracts imported.</div>
+      <div id="api_contract_detail" style="display:none;margin-top:14px" class="card"></div>
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;color:var(--mut)">Import OpenAPI 3.x contract</summary>
+        <div class="row" style="margin-top:10px"><div class="field"><label>Name</label><input id="api_contract_name" type="text" placeholder="payments"></div><div class="field"><label>Application</label><input id="api_contract_app" type="text" placeholder="checkout"></div></div>
+        <div class="field"><label>YAML or JSON</label><textarea id="api_contract_doc" rows="12" spellcheck="false" style="width:100%;font-family:var(--mono)"></textarea></div>
+        <div class="actions"><button class="btn primary" id="api_contract_import">Import immutable version</button></div>
+      </details>
+    </section>
   </div>
 
   <!-- ══ LOGS ══ -->
@@ -467,12 +681,12 @@
             <div class="field"><label>Role</label><select id="ha_role"><option value="primary">primary</option><option value="secondary">secondary</option></select></div>
             <div class="field" style="display:flex;align-items:flex-end"><div class="check"><input type="checkbox" id="ha_sync_config"><label for="ha_sync_config" style="margin:0">Sync config to peer</label></div></div>
           </div>
-          <div class="field"><label>Peer admin URL</label><input type="text" id="ha_peer_url" spellcheck="false" placeholder="https://10.0.0.6:9090"></div>
-          <div class="field"><label>Peer admin token <span id="ha_tokenset" class="restart" style="border-color:var(--line);color:var(--mut)">not set</span></label>
+          <div class="field"><label>Peer HA endpoint URL</label><input type="text" id="ha_peer_url" spellcheck="false" placeholder="https://10.0.0.6:9090"></div>
+          <div class="field"><label>Peer dedicated HA token <span id="ha_tokenset" class="restart" style="border-color:var(--line);color:var(--mut)">not set</span></label>
             <input type="password" id="ha_peer_token" spellcheck="false" placeholder="leave blank to keep current"></div>
           <div class="strip" id="ha_status" style="margin-top:4px"></div>
           <div class="actions"><button class="btn primary" id="ha_save">Save &amp; apply</button><button class="btn" id="ha_syncnow">Sync now</button></div>
-          <div class="hint">waf-proxy syncs config and computes an <b>active/standby</b> role from peer health. Actual VIP failover belongs to keepalived/VRRP or your load balancer — point its health check at <code>/healthz</code> and read role from <code>/api/ha</code>. Blocklist state is intentionally not shared.</div>
+          <div class="hint">HA sync uses a dedicated peer-only HTTPS endpoint and a separate replication credential. Configure this node's <code>WAF_HA_PEER_TOKEN</code> locally; enter the peer node's dedicated HA token above. Shared WAF config is replicated, while each node keeps its own HA role/peer/token, users, AI/HSM secret references, and notification webhook secret. Actual VIP failover belongs to keepalived/VRRP or your load balancer — point its health check at <code>/healthz</code> and read role from <code>/api/ha</code>.</div>
         </div>
         <div>
           <div class="eyebrow">Notifications</div>
@@ -483,8 +697,8 @@
           <div class="field check"><input type="checkbox" id="nt_on_member_down"><label for="nt_on_member_down" style="margin:0">Pool member down</label></div>
           <div class="field check"><input type="checkbox" id="nt_on_sync"><label for="nt_on_sync" style="margin:0">Config sync results</label></div>
           <div class="field check"><input type="checkbox" id="nt_on_peer"><label for="nt_on_peer" style="margin:0">HA peer up/down</label></div>
-          <div class="actions"><button class="btn primary" id="nt_save">Save &amp; apply</button></div>
-          <div class="hint">Events always show in the bell; the webhook is an extra fan-out. Suggestions never auto-apply — they arrive with a one-click apply button.</div>
+          <div class="actions"><button class="btn primary" id="nt_save">Save &amp; apply</button><button class="btn danger" id="nt_clear_webhook">Clear stored webhook</button></div>
+          <div class="hint">Events always show in the bell; the webhook is an extra fan-out. Stored webhook URLs are never returned by the config API; leave this field blank to keep the current secret, or use <b>Clear stored webhook</b> to remove it explicitly. Suggestions never auto-apply.</div>
         </div>
       </div>
     </section>
@@ -526,7 +740,7 @@
       <div class="eyebrow">Signed self-update</div>
       <div id="upd_off" class="hint" style="display:none">Signed updates aren't enabled in this build (no publisher key baked in, or not on localhost). Rebuild with a publisher public key, or set <code>WAF_PUBLISHER_KEY_FILE</code>, and access the console over <code>ssh -L</code>.</div>
       <div id="upd_on" style="display:none">
-        <div class="strip" id="upd_status" style="margin-top:0"></div>
+        <div class="strip" id="upd_status" style="margin-top:0"></div><div class="hint" id="upd_mode_hint" style="margin-top:8px"></div>
         <div class="row" style="margin-top:12px">
           <div class="field"><label>Upload signed package (.wafupdate)</label><input type="file" id="upd_file" accept=".wafupdate"></div>
           <div class="field" style="display:flex;align-items:flex-end"><button class="btn" id="upd_stage">Verify &amp; stage</button></div>
@@ -547,7 +761,7 @@
           <button class="btn" id="upd_rollback">Roll back</button>
           <button class="btn danger" id="upd_restart" style="display:none">Restart into new binary</button>
         </div>
-        <div class="hint"><b style="color:var(--amber)">How trust works:</b> packages are verified against the baked-in publisher <b>public</b> key (RSA/SHA-256) before anything is written — a bad signature, checksum, or unsafe path is rejected. The private key stays offline, so a stolen admin session still can't forge an update. Installing replaces the binary and requires a <b>restart</b>; the previous version is kept for one-click rollback. Admin-only, localhost-only.</div>
+        <div class="hint"><b style="color:var(--amber)">How trust works:</b> packages are verified against the baked-in publisher <b>public</b> key (RSA/SHA-256) before anything is written — a bad signature, checksum, or unsafe path is rejected. The private key stays offline, so a stolen admin session still can't forge an update. Hardened DEB/RPM/systemd deployments intentionally use the external package manager for privileged installation; direct install is only available with an explicit standalone <code>WAF_UPDATE_INSTALL_DIR</code>. Admin-only, localhost-only.</div>
       </div>
     </section>
 
@@ -568,6 +782,61 @@
         <div class="empty" id="vd_empty">No verdicts yet.</div>
       </div>
     </section>
+  </div>
+
+  <!-- ══ SYSTEM / DIAGNOSTICS ══ -->
+  <div id="view-system" class="view">
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">System diagnostics</div><h3 style="margin:2px 0 0">Doctor / runtime truth</h3></div><button class="btn sm" id="doctor_refresh">Refresh</button></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody id="doctor_body"></tbody></table></div>
+      <div class="empty" id="doctor_empty">No diagnostic result loaded.</div>
+      <div class="hint" id="doctor_truth"></div>
+    </section>
+
+    <section>
+      <div class="feedhead"><div><div class="eyebrow">Bounded debug evidence</div><h3 style="margin:2px 0 0">Capture, inspect, export</h3></div><div class="count" id="debug_state"></div></div>
+      <div class="row3">
+        <div class="field"><label>Site / tenant</label><select id="debug_tenant"></select></div>
+        <div class="field"><label>Capture duration seconds</label><input id="debug_duration" type="number" min="1" max="3600" value="300"></div>
+        <div class="actions" style="align-items:end"><button class="btn primary" id="debug_start">Start capture</button><button class="btn" id="debug_stop">Stop</button><button class="btn" id="debug_refresh">Refresh evidence</button></div>
+      </div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Time</th><th>Transaction</th><th>Method</th><th>URI</th><th>Status</th><th>WAF / vector evidence</th><th></th></tr></thead><tbody id="debug_evidence"></tbody></table></div>
+      <div class="empty" id="debug_empty">No bounded debug evidence for this site.</div>
+      <div class="hint">Capture is site-scoped, bounded, temporary and audited. Export requires Reviewer permission. It does not disable request-path controls.</div>
+    </section>
+
+    <div class="grid2">
+      <section>
+        <div class="feedhead"><div><div class="eyebrow">HSM / PKCS#11</div><h3 style="margin:2px 0 0">Runtime health and module policy</h3></div><button class="btn sm" id="hsm_refresh">Refresh</button></div>
+        <div class="field"><label>Allowed PKCS#11 module directories (comma-separated)</label><input id="hsm_allowed_dirs" type="text" spellcheck="false"></div>
+        <div class="actions"><button class="btn" id="hsm_save">Save draft</button><button class="btn primary" id="hsm_apply">Apply HSM config</button></div>
+        <div class="hint">Per-site HSM key selection is configured in the SITES editor. PINs are accepted only as <span class="mono">env:NAME</span> or <span class="mono">file:/absolute/path</span> secret references; secret values are never returned to the Console.</div>
+        <div style="overflow-x:auto;margin-top:12px"><table><thead><tr><th>Provider</th><th>Slot</th><th>Key</th><th>Status</th><th>Checks</th></tr></thead><tbody id="hsm_status"></tbody></table></div>
+        <div class="empty" id="hsm_empty">No active HSM-backed TLS signer.</div>
+        <div class="feedhead" style="margin-top:16px"><div class="eyebrow" style="margin:0">HSM audit</div></div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Provider</th><th>Slot</th><th>Key</th><th>Operation</th><th>Result</th></tr></thead><tbody id="hsm_audit"></tbody></table></div>
+      </section>
+
+      <section>
+        <div class="feedhead"><div><div class="eyebrow">VectorScan acceleration</div><h3 style="margin:2px 0 0">Learning accelerator status</h3></div><button class="btn sm" id="vector_refresh">Refresh</button></div>
+        <div class="row">
+          <div class="field"><label>Mode</label><select id="vector_mode"><option value="off">off</option><option value="auto">auto</option><option value="required">required</option></select></div>
+          <div class="field"><label>State path</label><input id="vector_state_path" type="text" spellcheck="false"></div>
+        </div>
+        <div class="row3">
+          <div class="field"><label>Min samples</label><input id="vector_min_samples" type="number" min="1" max="1000000000"></div>
+          <div class="field"><label>Min Coraza matches</label><input id="vector_min_matches" type="number" min="0"></div>
+          <div class="field"><label>Min learning seconds</label><input id="vector_min_learning" type="number" min="0"></div>
+        </div>
+        <div class="field"><label>Verification sample rate (0..1]</label><input id="vector_verify_rate" type="number" min="0.000001" max="1" step="0.001"></div>
+        <div class="actions"><button class="btn" id="vector_save">Save draft</button><button class="btn primary" id="vector_apply">Apply VectorScan config</button></div>
+        <div class="strip" id="vector_state"></div>
+        <div style="overflow-x:auto;margin-top:12px"><table><thead><tr><th>Site</th><th>Group</th><th>State</th><th>Rules</th><th>Samples</th><th>Coraza</th><th>False neg.</th><th>Skipped/errors</th></tr></thead><tbody id="vector_groups"></tbody></table></div>
+        <div class="empty" id="vector_empty">No VectorScan groups are active.</div>
+        <div class="row" style="margin-top:12px"><div class="field"><label>Reset FAILSAFE groups for site</label><select id="vector_reset_site"></select></div><div class="actions" style="align-items:end"><button class="btn" id="vector_reset">Reset failsafe</button></div></div>
+        <div class="hint">Coraza remains authoritative. Reset only returns FAILSAFE groups to learning; it never makes VectorScan an independent blocking engine.</div>
+      </section>
+    </div>
   </div>
 
   <!-- ══ USERS ══ -->
@@ -689,16 +958,62 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s??"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   const globalFields = ["read_timeout_sec","idle_timeout_sec","backend_timeout_sec"];
-  let cfg=null, engineMode="DetectionOnly", sites=[], nodes=[], pools=[], policies=[], interfaces=[];
+  let cfg=null, engineMode="DetectionOnly", sites=[], nodes=[], pools=[], policies=[], interfaces=[], cidrRules=[];
 
   // ── auth ──
   function getToken(){ return sessionStorage.getItem("waf_token")||""; }
+  function requiredCapability(path, method){
+    method=(method||"GET").toUpperCase();
+    if(["GET","HEAD","OPTIONS"].includes(method)) return "";
+    if(path==="/api/login" || path==="/api/logout" || path==="/api/users/password") return "";
+    if(path.startsWith("/api/users/") || path.startsWith("/api/update/")) return "manage";
+    if(path.startsWith("/api/config") || path==="/api/reload" || path.startsWith("/api/ai/") || path.startsWith("/api/syslog/") || path.startsWith("/api/ha/") || path==="/api/crawl" || path.startsWith("/api/debug/capture") || path==="/api/notifications/webhook" || path==="/api/security/contracts/import") return "edit";
+    return "review";
+  }
+  function hasCapability(cap){
+    if(!cap || !curUser) return true;
+    if(cap==="manage") return !!curUser.can_manage_users;
+    if(cap==="edit") return !!curUser.can_edit_config;
+    if(cap==="review") return !!curUser.can_review;
+    return false;
+  }
+  const roleControlIDs={
+    edit:["addsite","save","applybtn","reload","addnode","nodes_save","addpool","pools_save","pools_apply","addpolicy","pol_save","pol_apply","cidr_add","traffic_save","traffic_apply","api_contract_import","tls_accel_save","ai_test","ai_save","ha_save","ha_syncnow","nt_save","nt_clear_webhook","sl_save","sl_test","debug_start","debug_stop","hsm_save","hsm_apply","vector_save","vector_apply"],
+    review:["bellread","bellclear","api_idp_save","api_sequence_mode_apply","api_sequence_relearn","api_sequence_exception_create","api_object_override_save","api_bola_policy_save","api_graphql_contract_import","api_graphql_policy_save","vector_reset","pp_save","pp_delete"],
+    manage:["upd_stage","upd_catalog","upd_install","upd_discard","upd_rollback","upd_restart","nu_add"]
+  };
+  function applyRoleUI(){
+    if(!curUser) return;
+    for(const [cap,ids] of Object.entries(roleControlIDs)) for(const id of ids){
+      const el=$(id); if(!el) continue;
+      const denied=!hasCapability(cap);
+      el.disabled=denied;
+      if(denied) el.title=`${curUser.role||"viewer"} role cannot perform this action`;
+      else if(el.title&&el.title.includes("role cannot perform")) el.removeAttribute("title");
+    }
+    document.querySelectorAll("[data-required-capability]").forEach(el=>{
+      const cap=el.dataset.requiredCapability||"";
+      const denied=!hasCapability(cap);
+      el.disabled=denied;
+      if(denied) el.title=`${curUser.role||"viewer"} role cannot perform this action`;
+    });
+  }
   async function api(path, opts={}){
+    const cap=requiredCapability(path, opts.method||"GET");
+    if(curUser && !hasCapability(cap)) throw new Error(`role ${curUser.role||"viewer"} cannot perform this action`);
     opts.headers = Object.assign({"Authorization":"Bearer "+getToken(),"Content-Type":"application/json"}, opts.headers||{});
     const r = await fetch(path, opts);
     if (r.status===401){ sessionStorage.removeItem("waf_token"); showGate(); throw new Error("session expired — sign in again"); }
     if (!r.ok) throw new Error((await r.text()).trim()||("HTTP "+r.status));
     return r.json();
+  }
+  async function downloadAPI(path, filename){
+    const r=await fetch(path,{headers:{"Authorization":"Bearer "+getToken()}});
+    if(r.status===401){sessionStorage.removeItem("waf_token");showGate();throw new Error("session expired — sign in again");}
+    if(!r.ok) throw new Error((await r.text()).trim()||("HTTP "+r.status));
+    const blob=await r.blob(), a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download=filename||"waf-export.bin"; document.body.appendChild(a); a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},0);
   }
   function toast(msg, cls=""){ const t=$("toast"); t.textContent=msg; t.className="show "+cls; clearTimeout(t._h); t._h=setTimeout(()=>t.className="",4000); }
 
@@ -713,8 +1028,10 @@
     if (v==="sites") renderSites();          // master-detail site editor
     if (v==="pools"){ renderNodes(); renderPools(); pollPools(); }
     if (v==="policies") renderPolicies();
+    if (v==="api") loadAPISecurity();
     if (v==="logs") pollLogs();
     if (v==="setup"){ pollAI(); pollTLSAcceleration(); loadUpdate(); }
+    if (v==="system") loadSystem();
     if (v==="users"){ loadWhoami(); loadUsers(); loadAudit(); }
     if (mapActive) pollMap();
   });
@@ -802,8 +1119,14 @@
         <div class="field"><label>TLS certificate</label>
           <div class="fbrow"><input type="text" data-f="tls_cert" spellcheck="false" value="${esc(s.tls_cert||"")}" placeholder="/etc/waf/tls/site/fullchain.pem"><button type="button" class="btn sm browse">Browse</button></div></div>
         <div class="field"><label>TLS key</label>
-          <div class="fbrow"><input type="text" data-f="tls_key" spellcheck="false" value="${esc(s.tls_key||"")}" placeholder="/etc/waf/tls/site/privkey.pem"><button type="button" class="btn sm browse">Browse</button></div></div>
+          <div class="fbrow"><input type="text" data-f="tls_key" spellcheck="false" value="${esc(s.tls_key||"")}" placeholder="/etc/waf/tls/site/privkey.pem" ${(s.tls_key_provider||{}).provider?'disabled title="HSM provider is active; file TLS key must be empty"':''}><button type="button" class="btn sm browse" ${(s.tls_key_provider||{}).provider?'disabled':''}>Browse</button></div></div>
       </div>
+      <details style="margin-top:8px" ${(s.tls_key_provider||{}).provider?'open':''}><summary style="cursor:pointer;color:var(--mut)">HSM / PKCS#11 TLS private key</summary>
+        <div class="row" style="margin-top:10px"><div class="field"><label>Provider</label><select data-hsm-f="provider"><option value="" ${!(s.tls_key_provider||{}).provider?'selected':''}>file key / none</option><option value="pkcs11" ${(s.tls_key_provider||{}).provider==='pkcs11'?'selected':''}>pkcs11</option></select></div><div class="field"><label>Module path</label><input data-hsm-f="module_path" value="${esc((s.tls_key_provider||{}).module_path||'')}" placeholder="/usr/lib/.../pkcs11.so"></div></div>
+        <div class="row3"><div class="field"><label>Slot ID</label><input data-hsm-f="slot_id" type="number" min="0" value="${(s.tls_key_provider||{}).slot_id??''}"></div><div class="field"><label>Token label</label><input data-hsm-f="token_label" value="${esc((s.tls_key_provider||{}).token_label||'')}"></div><div class="field"><label>Key label</label><input data-hsm-f="key_label" value="${esc((s.tls_key_provider||{}).key_label||'')}"></div></div>
+        <div class="row"><div class="field"><label>Key ID (hex)</label><input data-hsm-f="key_id" value="${esc((s.tls_key_provider||{}).key_id||'')}"></div><div class="field"><label>PIN secret reference</label><input data-hsm-f="pin_secret_ref" type="password" autocomplete="off" placeholder="env:WAF_HSM_PIN or file:/run/secrets/hsm-pin"><div class="hint">Leave blank to preserve the existing secret reference when key identity is unchanged.</div></div></div>
+        <div class="hint">HSM mode requires a certificate file but no file private key. External TLS frontend mode cannot use the in-process PKCS#11 signer.</div>
+      </details>
     </div>`;
   }
   let selectedSite = -1;
@@ -849,6 +1172,7 @@
           const input=b.closest(".field").querySelector("input[data-f]");
           openBrowser(input, input.dataset.f==="tls_key"?"Choose TLS key":"Choose TLS certificate");
         });
+        document.querySelectorAll('#sites [data-hsm-f="provider"]').forEach(sel=>sel.onchange=()=>{syncSites();renderSites();});
       }
     }
   }
@@ -863,9 +1187,11 @@
         else if(f==="manage_prefix_len") s.manage_prefix_len=Number(el.value||0);
         else s[f]=el.value.trim();
       });
+      const h={}; card.querySelectorAll("[data-hsm-f]").forEach(el=>{const f=el.dataset.hsmF,v=el.value.trim(); if(f==="slot_id"){if(v!=="")h.slot_id=Number(v);}else if(v!=="")h[f]=v;});
+      s.tls_key_provider=h; if(h.provider) s.tls_key="";
     });
   }
-  $("addsite").onclick=()=>{ syncSites(); sites.push({name:"site-"+(sites.length+1),listen:"",hostnames:[],pool:"",policy:"",preserve_host:true,engine_mode:"",ai_mode:"off",tls_cert:"",tls_key:"",manage_ip:false,manage_interface:"",manage_prefix_len:0,_new:true}); selectedSite=sites.length-1; renderSites(); };
+  $("addsite").onclick=()=>{ syncSites(); sites.push({name:"site-"+(sites.length+1),listen:"",hostnames:[],pool:"",policy:"",preserve_host:true,engine_mode:"",ai_mode:"off",tls_cert:"",tls_key:"",manage_ip:false,manage_interface:"",manage_prefix_len:0,tls_key_provider:{},_new:true}); selectedSite=sites.length-1; renderSites(); };
 
   // ── nodes ──
   function nodeRow(n,i){
@@ -1185,15 +1511,76 @@
     }catch(e){}
   }
 
+  // ── post-audit traffic controls / system diagnostics ──
+  function fillTrafficControls(l7={}, cidr={}){
+    $("l7_enabled").checked=!!l7.enabled; $("l7_requests").value=Number(l7.requests_per_window)||0; $("l7_window").value=Number(l7.window_seconds)||0;
+    $("l7_concurrent").value=Number(l7.max_concurrent_connections)||0; $("l7_tls_handshakes").value=Number(l7.tls_handshake_per_window)||0;
+    $("cidr_enabled").checked=!!cidr.enabled; renderCIDRRules();
+  }
+  function collectL7Abuse(){return {enabled:$("l7_enabled").checked,requests_per_window:Number($("l7_requests").value)||0,window_seconds:Number($("l7_window").value)||0,max_concurrent_connections:Number($("l7_concurrent").value)||0,tls_handshake_per_window:Number($("l7_tls_handshakes").value)||0};}
+  function collectCIDRPolicy(){syncCIDRRules();return {enabled:$("cidr_enabled").checked,rules:cidrRules.map(r=>({name:r.name||"",cidr:r.cidr||"",action:r.action||"deny",priority:Number(r.priority)||0,reason:r.reason||"",expires_at:r.expires_at||""}))};}
+  function renderCIDRRules(){
+    const body=$("cidr_rules"); if(!body)return;
+    body.innerHTML=cidrRules.map((r,i)=>`<tr data-i="${i}"><td><input data-cidr="name" value="${esc(r.name||'')}" placeholder="office"></td><td><input data-cidr="cidr" class="mono" value="${esc(r.cidr||'')}" placeholder="203.0.113.0/24"></td><td><select data-cidr="action"><option value="deny" ${r.action==='deny'?'selected':''}>deny</option><option value="allow" ${r.action==='allow'?'selected':''}>allow</option></select></td><td><input data-cidr="priority" type="number" value="${Number(r.priority)||0}"></td><td><input data-cidr="reason" value="${esc(r.reason||'')}"></td><td><input data-cidr="expires_at" class="mono" value="${esc(r.expires_at||'')}" placeholder="2026-12-31T23:59:59Z"></td><td><button class="btn danger sm cidr-del">✕</button></td></tr>`).join("");
+    $("cidr_empty").style.display=cidrRules.length?"none":"";
+    body.querySelectorAll(".cidr-del").forEach(b=>b.onclick=()=>{syncCIDRRules();cidrRules.splice(Number(b.closest("tr").dataset.i),1);renderCIDRRules();});
+  }
+  function syncCIDRRules(){
+    const out=[]; document.querySelectorAll("#cidr_rules tr").forEach(row=>{const r={};row.querySelectorAll("[data-cidr]").forEach(el=>{r[el.dataset.cidr]=el.dataset.cidr==="priority"?Number(el.value||0):el.value.trim();});out.push(r);});cidrRules=out;
+  }
+  $("cidr_add").onclick=()=>{syncCIDRRules();cidrRules.push({name:"",cidr:"",action:"deny",priority:0,reason:"",expires_at:""});renderCIDRRules();};
+  $("traffic_save").onclick=()=>draftSave("traffic controls — draft saved");
+  $("traffic_apply").onclick=liveApply;
+
+  function fillHSMVector(hsm={}, vector={}){
+    $("hsm_allowed_dirs").value=(hsm.allowed_module_dirs||[]).join(", ");
+    $("vector_mode").value=vector.mode||"off"; $("vector_state_path").value=vector.state_path||"/var/lib/waf-proxy/vector-learning.json";
+    $("vector_min_samples").value=Number(vector.min_samples)||100000; $("vector_min_matches").value=vector.min_coraza_matches===0?0:(Number(vector.min_coraza_matches)||10);
+    $("vector_min_learning").value=vector.min_learning_sec===0?0:(Number(vector.min_learning_sec)||3600); $("vector_verify_rate").value=Number(vector.verification_sample_rate)||0.01;
+    const opts=sites.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}</option>`).join(""); $("vector_reset_site").innerHTML=opts||'<option value="">— no sites —</option>'; $("debug_tenant").innerHTML=opts||'<option value="">— no sites —</option>';
+  }
+  function collectHSM(){return {allowed_module_dirs:$("hsm_allowed_dirs").value.split(",").map(x=>x.trim()).filter(Boolean)};}
+  function collectVector(){return {mode:$("vector_mode").value,state_path:$("vector_state_path").value.trim(),min_samples:Number($("vector_min_samples").value)||0,min_coraza_matches:Number($("vector_min_matches").value)||0,min_learning_sec:Number($("vector_min_learning").value)||0,verification_sample_rate:Number($("vector_verify_rate").value)||0};}
+  $("hsm_save").onclick=()=>draftSave("HSM config — draft saved"); $("hsm_apply").onclick=liveApply;
+  $("vector_save").onclick=()=>draftSave("VectorScan config — draft saved"); $("vector_apply").onclick=liveApply;
+
+  function simpleStatusTag(v){const s=String(v||"—");return `<span class="tag ${/FAIL|ERROR|DOWN/i.test(s)?'code4':/WARN|NOT_RUN/i.test(s)?'method':'src-seen'}">${esc(s)}</span>`;}
+  async function loadDoctor(){
+    const d=await api("/api/doctor"), rows=d.checks||[]; $("doctor_body").innerHTML=rows.map(x=>`<tr><td class="mono">${esc(x.name)}</td><td>${simpleStatusTag(x.status)}</td><td>${esc(x.detail||'—')}</td></tr>`).join(""); $("doctor_empty").style.display=rows.length?"none":"";
+    $("doctor_truth").innerHTML=Object.entries(d.truth_boundary||{}).map(([k,v])=>`<b>${esc(k)}</b>: ${esc(v)}`).join("<br>");
+  }
+  async function loadHSM(){
+    const st=await api("/api/hsm/status"), rows=st.providers||[]; let audit=[]; try{audit=await api("/api/hsm/audit");}catch(e){audit=[];}
+    $("hsm_status").innerHTML=rows.map(x=>`<tr><td>${esc(x.provider)}</td><td>${esc(x.slot)}</td><td class="mono">${esc(x.key_reference)}</td><td>${simpleStatusTag(x.status)}</td><td>${(x.checks||[]).map(c=>`${esc(c.component)}:${esc(c.status)}`).join(" · ")||'—'}</td></tr>`).join(""); $("hsm_empty").style.display=rows.length?"none":"";
+    $("hsm_audit").innerHTML=(audit||[]).slice(-100).reverse().map(x=>`<tr><td>${esc(x.provider)}</td><td>${esc(x.slot)}</td><td class="mono">${esc(x.key_reference)}</td><td>${esc(x.operation)}</td><td>${esc(x.result)}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Reviewer permission required or no HSM audit evidence.</td></tr>';
+  }
+  async function loadVector(){
+    const st=await api("/api/vector-acceleration"), groups=st.groups||[]; $("vector_state").innerHTML=`mode <b>${esc(st.mode||'off')}</b> · native ${st.native_available?'available':'unavailable'}${st.native_version?' · '+esc(st.native_version):''}`;
+    $("vector_groups").innerHTML=groups.map(g=>`<tr><td>${esc(g.site)}</td><td class="mono">${esc(g.key)}</td><td>${simpleStatusTag(g.state)}</td><td>${Number(g.rules)||0}</td><td>${Number(g.samples)||0}</td><td>${Number(g.coraza_matches)||0}</td><td>${Number(g.false_negatives)||0}</td><td>${Number(g.skipped)||0} / ${Number(g.scan_errors)||0}</td></tr>`).join(""); $("vector_empty").style.display=groups.length?"none":"";
+  }
+  async function loadDebug(){
+    const tenant=$("debug_tenant").value; const st=await api("/api/debug/status"); const active=st.active_tenants||{}; $("debug_state").textContent=`${Object.keys(active).length} active · ${Number(st.entries)||0}/${Number(st.max_entries)||0} stored`;
+    if(!tenant){$("debug_evidence").innerHTML="";$("debug_empty").style.display="";return;} let rows=[]; try{rows=await api(`/api/debug/evidence?tenant=${encodeURIComponent(tenant)}&limit=100`);}catch(e){$("debug_evidence").innerHTML='<tr><td colspan="7" class="muted">Reviewer permission required to view/export debug evidence.</td></tr>';$("debug_empty").style.display="none";return;}
+    $("debug_evidence").innerHTML=rows.map(x=>{const req=x.request||{},res=x.response||{};return `<tr><td>${esc(x.captured_at||'—')}</td><td class="mono">${esc(x.transaction_id)}</td><td>${esc(req.method||'—')}</td><td class="mono">${esc(req.uri||req.path||'—')}</td><td>${esc(res.status||res.status_code||'—')}</td><td>${Object.keys(x.coraza||{}).length?`Coraza ${esc(JSON.stringify(x.coraza).slice(0,120))}`:'—'}${Object.keys(x.vectorscan||{}).length?`<br>Vector ${esc(JSON.stringify(x.vectorscan).slice(0,120))}`:''}</td><td><button class="btn sm debug-export" data-tx="${esc(x.transaction_id)}">Export</button></td></tr>`;}).join(""); $("debug_empty").style.display=rows.length?"none":"";
+    document.querySelectorAll(".debug-export").forEach(b=>b.onclick=()=>downloadAPI(`/api/debug/export?tenant=${encodeURIComponent(tenant)}&transaction_id=${encodeURIComponent(b.dataset.tx)}`,`waf-debug-${b.dataset.tx}.zip`).catch(e=>toast(e.message,"err")));
+  }
+  async function loadSystem(){try{await Promise.all([loadDoctor(),loadHSM(),loadVector(),loadDebug()]);}catch(e){toast("system diagnostics: "+e.message,"err");}}
+  $("doctor_refresh").onclick=()=>loadDoctor().catch(e=>toast(e.message,"err")); $("hsm_refresh").onclick=()=>loadHSM().catch(e=>toast(e.message,"err")); $("vector_refresh").onclick=()=>loadVector().catch(e=>toast(e.message,"err")); $("debug_refresh").onclick=()=>loadDebug().catch(e=>toast(e.message,"err")); $("debug_tenant").onchange=()=>loadDebug().catch(e=>toast(e.message,"err"));
+  $("debug_start").onclick=async()=>{const tenant=$("debug_tenant").value;if(!tenant){toast("select a site","warn");return;}try{await api("/api/debug/capture",{method:"POST",body:JSON.stringify({tenant,enabled:true,duration_sec:Number($("debug_duration").value)||300})});toast("debug capture started");loadDebug();}catch(e){toast(e.message,"err");}};
+  $("debug_stop").onclick=async()=>{const tenant=$("debug_tenant").value;if(!tenant)return;try{await api("/api/debug/capture",{method:"POST",body:JSON.stringify({tenant,enabled:false,duration_sec:0})});toast("debug capture stopped");loadDebug();}catch(e){toast(e.message,"err");}};
+  $("vector_reset").onclick=async()=>{const site=$("vector_reset_site").value;if(!site)return;if(!confirm(`Reset VectorScan FAILSAFE groups for ${site} back to learning?`))return;try{const r=await api("/api/vector-acceleration/reset",{method:"POST",body:JSON.stringify({site})});toast(`${Number(r.reset_groups)||0} VectorScan groups reset`);loadVector();}catch(e){toast(e.message,"err");}};
+
   // ── config load/save ──
   function fill(c){
     cfg=c; engineMode=c.engine_mode||"DetectionOnly";
-    sites=(c.sites||[]).map(x=>Object.assign({},x));
+    sites=(c.sites||[]).map(x=>Object.assign({},x,{tls_key_provider:Object.assign({},x.tls_key_provider||{})}));
     nodes=(c.nodes||[]).map(x=>Object.assign({},x));
     pools=(c.pools||[]).map(x=>Object.assign({},x,{monitor:Object.assign({},x.monitor),members:(x.members||[]).map(m=>Object.assign({},m)),backend_tls:Object.assign({},x.backend_tls||{}),transport:Object.assign({},x.transport||{})}));
     policies=(c.policies||[]).map(x=>Object.assign({},x,{exclusions:(x.exclusions||[]).map(e=>Object.assign({},e,{rule_ids:(e.rule_ids||[]).slice(),targets:(e.targets||[]).slice()}))}));
     globalFields.forEach(f=>$(f).value = c[f] ?? "");
     $("passive_discovery_enabled").checked = c.passive_discovery_enabled !== false;
+    cidrRules=((c.cidr_policy||{}).rules||[]).map(x=>Object.assign({},x));
+    fillTrafficControls(c.l7_abuse,c.cidr_policy); fillHSMVector(c.hsm,c.vector_acceleration);
     fillTLSAcceleration(c.tls_acceleration); fillAI(c.ai, c.trusted_proxy_cidrs); fillHA(c.ha); fillNotify(c.notify); fillSyslog(c.syslog);
     paintMode(); renderSites();
   }
@@ -1204,6 +1591,7 @@
     c.passive_discovery_enabled=$("passive_discovery_enabled").checked;
     c.engine_mode=engineMode; c.sites=sites; c.nodes=nodes; c.pools=pools; c.policies=policies;
     c.trusted_proxy_cidrs=$("ai_trusted_proxies").value.split(",").map(x=>x.trim()).filter(Boolean);
+    c.l7_abuse=collectL7Abuse(); c.cidr_policy=collectCIDRPolicy(); c.hsm=collectHSM(); c.vector_acceleration=collectVector();
     c.tls_acceleration=collectTLSAcceleration(); c.ai=collectAI(); c.ha=collectHA(); c.notify=collectNotify(); c.syslog=collectSyslog();
     return c;
   }
@@ -1243,6 +1631,368 @@
   $("pol_save").onclick=()=>draftSave("policies — draft saved");
   $("pol_apply").onclick=liveApply;
   $("reload").onclick=()=>api("/api/reload",{method:"POST"}).then(()=>toast("rules reloaded")).catch(e=>toast(e.message,"err"));
+
+  // ── API security ──
+  function countSummary(obj){
+    if(!obj||typeof obj!=="object") return "—";
+    const rows=Object.entries(obj).filter(([,v])=>Number(v)>0).sort((a,b)=>Number(b[1])-Number(a[1])||String(a[0]).localeCompare(String(b[0])));
+    return rows.length?rows.slice(0,3).map(([k,v])=>`${esc(k)} (${v})`).join("<br>"):"—";
+  }
+  function pct(v){ const n=Number(v)||0; return (n*100).toFixed(n>=.995?1:0)+"%"; }
+  function setSelectOptions(id, rows, label, placeholder){
+    const el=$(id); if(!el)return; const current=el.value;
+    el.innerHTML=`<option value="">${esc(placeholder||'— none —')}</option>`+rows.map(x=>`<option value="${esc(x.id)}">${esc(label(x))}</option>`).join("");
+    if([...el.options].some(o=>o.value===current))el.value=current;
+  }
+  async function loadPositiveSchemaDetail(operationID){
+    const box=$("api_enforce_detail"); const d=await api(`/api/security/schema/enforcement/${encodeURIComponent(operationID)}`), dep=d.deployment||{}, versions=d.versions||[], exceptions=d.exceptions||[];
+    box.style.display=""; box.innerHTML=`<div class="feedhead"><div><div class="eyebrow">Positive schema detail</div><h3 style="margin:2px 0 0" class="mono">${esc(operationID)}</h3></div><button class="btn sm" id="api_enforce_detail_close">Close</button></div>
+      <div class="hint">Active profile <span class="mono">${esc(dep.profile_version_id||'—')}</span> · mode ${esc(dep.mode||'—')} · block ${Number(dep.block_status)||400}</div>
+      <div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>Version</th><th>Profile ID</th><th>Candidate</th><th>Created</th><th>Policy</th><th></th></tr></thead><tbody>${versions.map(v=>`<tr><td>v${Number(v.version)||0}</td><td class="mono">${esc(v.id)}</td><td>${esc(v.candidate_id||'—')} / ${Number(v.candidate_version)||0}</td><td>${esc(v.created_at||'—')}</td><td>unknown=${esc(v.unknown_fields)} · formats=${v.enforce_formats?'yes':'no'} · enums=${v.enforce_enums?'yes':'no'}</td><td>${v.id===dep.profile_version_id?'<span class="tag src-seen">active</span>':`<button class="btn sm api-profile-activate" data-id="${esc(v.id)}">Activate</button>`}</td></tr>`).join('')}</tbody></table></div>
+      <div class="eyebrow" style="margin-top:14px">Exceptions</div><div style="overflow-x:auto"><table><thead><tr><th>State</th><th>Type</th><th>Field</th><th>Reason</th><th>Expires</th><th></th></tr></thead><tbody>${exceptions.map(x=>`<tr><td>${x.enabled?'<span class="tag src-seen">enabled</span>':'<span class="tag">disabled</span>'}</td><td>${esc(x.violation_type||'all')}</td><td class="mono">${esc(x.field||'all')}</td><td>${esc(x.reason||'—')}</td><td>${esc(x.expires_at||'—')}</td><td><button class="btn sm api-exception-toggle" data-id="${esc(x.id)}" data-enabled="${x.enabled?'1':'0'}">${x.enabled?'Disable':'Enable'}</button></td></tr>`).join('')||'<tr><td colspan="6">No exceptions.</td></tr>'}</tbody></table></div>`;
+    $("api_enforce_detail_close").onclick=()=>box.style.display="none";
+    box.querySelectorAll(".api-profile-activate").forEach(b=>b.onclick=async()=>{const reason=(prompt("Reason for activating this schema profile version","operator-selected profile version")||"").trim();if(!reason)return;try{await api(`/api/security/schema/enforcement/${encodeURIComponent(operationID)}/activate`,{method:"POST",body:JSON.stringify({profile_version_id:b.dataset.id,reason})});toast("positive schema version activated in LEARN");await loadPositiveSchemaDetail(operationID);loadAPISecurity();}catch(e){toast(e.message,"err");}});
+    box.querySelectorAll(".api-exception-toggle").forEach(b=>b.onclick=async()=>{try{await api(`/api/security/schema/enforcement/exceptions/${encodeURIComponent(b.dataset.id)}`,{method:"POST",body:JSON.stringify({enabled:b.dataset.enabled!=="1"})});toast("exception state updated");await loadPositiveSchemaDetail(operationID);loadAPISecurity();}catch(e){toast(e.message,"err");}});
+  }
+  async function loadOpenAPIContract(contractID){
+    const box=$("api_contract_detail"); const [c,versions,bindings,diffs]=await Promise.all([api(`/api/security/contracts/${encodeURIComponent(contractID)}`),api(`/api/security/contracts/${encodeURIComponent(contractID)}/versions`),api(`/api/security/contracts/${encodeURIComponent(contractID)}/bindings`),api(`/api/security/contracts/${encodeURIComponent(contractID)}/diffs`)]);
+    const opts=versions.map(v=>`<option value="${esc(v.id)}">${esc(v.version||v.id.slice(0,12))} · ${esc(v.created_at||'')}</option>`).join('');
+    box.style.display=""; box.innerHTML=`<div class="feedhead"><div><div class="eyebrow">OpenAPI lifecycle</div><h3 style="margin:2px 0 0">${esc(c.application||'—')} / ${esc(c.name)}</h3></div><button class="btn sm" id="api_contract_close">Close</button></div><div class="mono muted">${esc(c.id)}</div>
+      <div class="actions"><button class="btn primary" id="api_contract_match">Match latest</button><button class="btn" id="api_contract_drift">Refresh drift</button><button class="btn" id="api_contract_export_json">Export JSON</button><button class="btn" id="api_contract_export_yaml">Export YAML</button></div>
+      <div class="row"><div class="field"><label>Compare from</label><select id="api_contract_from">${opts}</select></div><div class="field"><label>to</label><select id="api_contract_to">${opts}</select></div><div class="actions" style="align-items:end"><button class="btn" id="api_contract_compare">Compare</button></div></div>
+      <div class="eyebrow">Versions</div><div style="overflow-x:auto"><table><thead><tr><th>Version</th><th>ID</th><th>OpenAPI</th><th>Operations</th><th>Schemas</th><th>Hash</th></tr></thead><tbody>${versions.map(v=>`<tr><td>${esc(v.version)}</td><td class="mono">${esc(v.id)}</td><td>${esc(v.openapi_version)}</td><td>${Number(v.operation_count)||0}</td><td>${Number(v.schema_count)||0}</td><td class="mono">${esc((v.content_hash||'').slice(0,16))}…</td></tr>`).join('')}</tbody></table></div>
+      <div class="eyebrow" style="margin-top:12px">Bindings</div><div style="overflow-x:auto"><table><thead><tr><th>Method/path</th><th>Status</th><th>API operation</th><th>Confidence</th><th>Reasons</th></tr></thead><tbody id="api_contract_bindings">${bindings.map(b=>`<tr><td><b>${esc(b.method)}</b> <span class="mono">${esc(b.path)}</span></td><td>${esc(b.status)}</td><td class="mono">${esc(b.api_operation_id||'—')}</td><td>${pct(b.confidence)}</td><td>${esc((b.reasons||[]).join(' · ')||'—')}</td></tr>`).join('')||'<tr><td colspan="5">No bindings.</td></tr>'}</tbody></table></div>
+      <div class="eyebrow" style="margin-top:12px">Diff / drift evidence</div><div id="api_contract_evidence" class="hint">${diffs.length?diffs.slice(0,50).map(x=>`${esc(x.severity)} · ${esc(x.change_type)} · ${esc(x.location)} — ${esc(x.description)}`).join('<br>'):'No saved version diffs.'}</div>`;
+    $("api_contract_close").onclick=()=>box.style.display="none";
+    if(versions.length>1){$("api_contract_from").value=versions[versions.length-2].id;$("api_contract_to").value=versions[versions.length-1].id;}
+    $("api_contract_match").onclick=async()=>{try{const rows=await api(`/api/security/contracts/${encodeURIComponent(contractID)}/match`,{method:"POST",body:"{}"});toast(`${rows.length} contract bindings refreshed`);loadOpenAPIContract(contractID);}catch(e){toast(e.message,"err");}};
+    $("api_contract_drift").onclick=async()=>{try{const rows=await api(`/api/security/contracts/${encodeURIComponent(contractID)}/drift`);$("api_contract_evidence").innerHTML=rows.length?rows.slice(0,100).map(x=>`${esc(x.severity)} · ${esc(x.type)} · ${esc(x.location)} — ${esc(x.description)}`).join('<br>'):'No drift detected.';toast("contract drift refreshed");}catch(e){toast(e.message,"err");}};
+    $("api_contract_compare").onclick=async()=>{const from=$("api_contract_from").value,to=$("api_contract_to").value;if(!from||!to||from===to){toast("select two different versions","warn");return;}try{const rows=await api(`/api/security/contracts/${encodeURIComponent(contractID)}/compare`,{method:"POST",body:JSON.stringify({from_version_id:from,to_version_id:to})});$("api_contract_evidence").innerHTML=rows.length?rows.slice(0,100).map(x=>`${esc(x.severity)} · ${esc(x.change_type)} · ${esc(x.location)} — ${esc(x.description)}`).join('<br>'):'No contract differences.';toast("contract comparison saved");}catch(e){toast(e.message,"err");}};
+    $("api_contract_export_json").onclick=()=>downloadAPI(`/api/security/contracts/${encodeURIComponent(contractID)}/export?format=json`,`openapi-${contractID}.json`).catch(e=>toast(e.message,"err"));
+    $("api_contract_export_yaml").onclick=()=>downloadAPI(`/api/security/contracts/${encodeURIComponent(contractID)}/export?format=yaml`,`openapi-${contractID}.yaml`).catch(e=>toast(e.message,"err"));
+  }
+
+  async function loadAPISecurity(){
+    try{
+      const [ops,schemas,enforcements,violations,contracts,identityIssuers,identityPolicies,identityViolations,sequenceModel,sequenceSessions,sequenceRecentSessions,sequenceTransitions,sequenceWorkflows,sequenceViolations,sequenceExceptions,sequenceStates,objectLocators,objectLocatorOverrides,objectRelationships,objectRelationshipStatus,bolaCandidates,bolaDetectionStatus,bolaEvidence,bolaPolicies,bolaPolicyStatus,graphqlOperations,graphqlPersisted,graphqlContracts,graphqlPolicies,graphqlViolations,graphqlStatus]=await Promise.all([
+        api("/api/security/operations"),
+        api("/api/security/schema/candidates"),
+        api("/api/security/schema/enforcement"),
+        api("/api/security/schema/enforcement/violations?limit=50"),
+        api("/api/security/contracts"),
+        api("/api/security/identity/issuers"),
+        api("/api/security/identity/policies"),
+        api("/api/security/identity/violations?limit=50"),
+        api("/api/security/sequence/model"),
+        api("/api/security/sequence/sessions"),
+        api("/api/security/sequence/recent-sessions"),
+        api("/api/security/sequence/transitions"),
+        api("/api/security/sequence/workflows"),
+        api("/api/security/sequence/violations"),
+        api("/api/security/sequence/exceptions"),
+        api("/api/security/sequence/learning-state"),
+        api("/api/security/object-locators"),
+        api("/api/security/object-locators/overrides"),
+        api("/api/security/object-relationships"),
+        api("/api/security/object-relationships/status"),
+        api("/api/security/bola/candidates"),
+        api("/api/security/bola/status"),
+        api("/api/security/bola/evidence"),
+        api("/api/security/bola/policies"),
+        api("/api/security/bola/policy-status"),
+        api("/api/security/graphql/operations"),
+        api("/api/security/graphql/persisted-queries"),
+        api("/api/security/graphql/schema-contracts"),
+        api("/api/security/graphql/policies"),
+        api("/api/security/graphql/violations?limit=100"),
+        api("/api/security/graphql/status")
+      ]);
+      setSelectOptions("api_sequence_ex_workflow",sequenceWorkflows,x=>`${x.site} · ${x.identity_kind} · ${x.id}`,"— any workflow —");
+      setSelectOptions("api_bola_policy_locator",objectLocators.filter(x=>x.status!=="SUPPRESSED"),x=>`${x.location}/${x.field} · ${x.operation_id} · ${x.id}`,"— any locator for operation —");
+      setSelectOptions("api_gql_schema_contract",graphqlContracts,x=>`${x.name} · ${x.endpoint_operation_id} · ${x.id}`,"— no SDL contract —");
+      $("api_sequence_ex_workflow").onchange=()=>{const w=sequenceWorkflows.find(x=>x.id===$("api_sequence_ex_workflow").value);if(w)$("api_sequence_ex_site").value=w.site||"";};
+      $("api_bola_policy_locator").onchange=()=>{const x=objectLocators.find(v=>v.id===$("api_bola_policy_locator").value);if(x)$("api_bola_policy_op").value=x.operation_id||"";};
+      $("api_gql_schema_contract").onchange=()=>{const x=graphqlContracts.find(v=>v.id===$("api_gql_schema_contract").value);if(x)$("api_gql_endpoint").value=x.endpoint_operation_id||"";};
+      $("api_ops_count").textContent=`${ops.length} operations`;
+      $("api_ops_empty").style.display=ops.length?"none":"";
+      $("api_ops_body").innerHTML=ops.map(o=>`<tr data-api-op="${esc(o.id)}">
+        <td><b>${esc(o.site||"—")}</b><br><span class="muted">${esc(o.host||"—")}</span></td>
+        <td class="mono"><b>${esc(o.method)}</b> ${esc(o.path)}<br><span class="muted">${esc((o.raw_path_examples||[]).slice(0,2).join(" · "))}</span></td>
+        <td>${countSummary(o.auth_observed)}</td><td>${countSummary(o.content_types)}</td><td>${Number(o.samples)||0}</td><td>${esc(o.last_seen||"—")}</td>
+        <td>${o.ignored?'<span class="tag" style="color:var(--amber)">ignored</span>':`<span class="tag src-seen">${esc(o.classification||"API")}</span>`}</td>
+        <td><div class="actions" style="margin:0"><button class="btn sm api-op-ignore" data-id="${esc(o.id)}" data-ignored="${o.ignored?"1":"0"}">${o.ignored?"Unignore":"Ignore"}</button><button class="btn sm api-op-classify" data-id="${esc(o.id)}" data-path="${esc(o.path)}" data-class="${esc(o.classification||"API")}">Reclassify</button><button class="btn sm api-op-identity" data-id="${esc(o.id)}">Identity</button></div></td>
+      </tr>`).join("");
+
+      $("api_schema_count").textContent=`${schemas.length} candidates`;
+      $("api_schema_empty").style.display=schemas.length?"none":"";
+      $("api_schema_body").innerHTML=schemas.map(s=>`<tr>
+        <td class="mono">${esc(s.operation_id)}</td><td><span class="tag ${s.status==="REVIEWED"?"src-seen":s.status==="CANDIDATE"?"src-crawled":"method"}">${esc(s.status)}</span></td>
+        <td>${Number(s.sample_count)||0}</td><td>${pct(s.confidence)}</td><td>${(s.fields||[]).length}</td>
+        <td>${s.review?`${esc(s.review.source)}: ${esc(s.review.recommendation)} (${Number(s.review.confidence)||0}%)${s.review.candidate_version&&s.review.candidate_version!==s.version?'<br><span style="color:var(--amber)">stale review</span>':''}`:"—"}</td>
+        <td><div class="actions" style="margin:0"><button class="btn sm api-schema-ai" data-id="${esc(s.id)}">AI review</button><button class="btn sm primary api-schema-approve" data-id="${esc(s.id)}" ${s.status==="LEARNING"?"disabled title=\"insufficient deterministic evidence\"":""}>Approve</button><button class="btn sm api-schema-return" data-id="${esc(s.id)}" ${s.status!=="REVIEWED"?"disabled title=\"only reviewed candidates can be returned\"":""}>Return</button><button class="btn sm api-schema-promote" data-id="${esc(s.id)}" ${s.status!=="REVIEWED"?"disabled title=\"operator approval required\"":""}>Promote</button></div></td>
+      </tr>`).join("");
+
+      $("api_enforce_count").textContent=`${enforcements.length} deployed`;
+      $("api_enforce_empty").style.display=enforcements.length?"none":"";
+      $("api_enforce_body").innerHTML=enforcements.map(d=>{
+        const next=d.mode==="LEARN"?"DETECT":d.mode==="DETECT"?"ENFORCE":"DETECT";
+        return `<tr><td class="mono">${esc(d.operation_id)}</td><td><span class="tag ${d.mode==="ENFORCE"?"code4":d.mode==="DETECT"?"src-crawled":"method"}">${esc(d.mode)}</span></td><td class="mono">${esc((d.profile_version_id||"").slice(0,12))}…</td><td>${Number(d.block_status)||400}</td><td>${esc(d.updated_at||"—")}</td><td><div class="actions" style="margin:0"><button class="btn sm api-enforce-detail" data-op="${esc(d.operation_id)}">Details</button><button class="btn sm api-enforce-next" data-op="${esc(d.operation_id)}" data-mode="${esc(next)}" data-status="${Number(d.block_status)||400}">${esc(next)}</button><button class="btn sm api-enforce-exception" data-op="${esc(d.operation_id)}" data-profile="${esc(d.profile_version_id||"")}">Exception</button><button class="btn sm api-enforce-rollback" data-op="${esc(d.operation_id)}">Rollback</button></div></td></tr>`;
+      }).join("");
+
+      $("api_violation_count").textContent=`${violations.length} recent`;
+      $("api_violation_empty").style.display=violations.length?"none":"";
+      $("api_violation_body").innerHTML=violations.map(v=>`<tr><td>${esc(v.time||"—")}</td><td class="mono">${esc(v.operation_id)}</td><td>${esc(v.mode||"—")} / ${esc(v.action||"—")}${v.exempted?' <span class="tag">exempt</span>':''}</td><td>${esc(v.type||"—")}</td><td class="mono">${esc((v.location?`${v.location}|`:"")+(v.path||""))}</td><td>${esc(v.observed||"—")}</td></tr>`).join("");
+
+      $("api_identity_count").textContent=`${identityIssuers.length} issuers`;
+      $("api_identity_issuers_empty").style.display=identityIssuers.length?"none":"";
+      $("api_identity_issuers").innerHTML=identityIssuers.map(i=>`<tr><td><b>${esc(i.name||i.id)}</b><br><span class="mono muted">${esc(i.issuer)}</span>${i.enabled?'':'<br><span class="tag" style="color:var(--amber)">disabled</span>'}</td><td>${esc((i.audiences||[]).join(", "))}</td><td>${esc((i.allowed_algs||[]).join(", "))}</td><td class="mono">sub=${esc(i.subject_claim||"sub")}<br>tenant=${esc(i.tenant_claim||"—")}<br>roles=${esc(i.roles_claim||"roles")} scope=${esc(i.scopes_claim||"scope")}</td><td><button class="btn sm api-idp-refresh" data-id="${esc(i.id)}">Refresh JWKS</button></td></tr>`).join("");
+      $("api_identity_policy_count").textContent=`${identityPolicies.length} policies`;
+      $("api_identity_policies_empty").style.display=identityPolicies.length?"none":"";
+      $("api_identity_policies").innerHTML=identityPolicies.map(p=>`<tr><td class="mono">${esc(p.operation_id)}</td><td>${esc(p.issuer_id)}</td><td><span class="tag ${p.mode==="ENFORCE"?"code4":"src-crawled"}">${esc(p.mode)}</span></td><td>${esc((p.required_roles||[]).join(", ")||"—")}</td><td>${esc((p.required_scopes||[]).join(", ")||"—")}</td><td>${esc(p.required_tenant||"—")}<br><span class="muted">${esc((p.allowed_client_ids||[]).join(", ")||"any client")}</span></td><td><div class="actions" style="margin:0"><button class="btn sm api-idpol-mode" data-op="${esc(p.operation_id)}" data-mode="${p.mode==="DETECT"?"ENFORCE":"DETECT"}">${p.mode==="DETECT"?"ENFORCE":"DETECT"}</button><button class="btn sm api-idpol-delete" data-op="${esc(p.operation_id)}">Delete</button></div></td></tr>`).join("");
+      $("api_identity_violation_count").textContent=`${identityViolations.length} recent`;
+      $("api_identity_violations_empty").style.display=identityViolations.length?"none":"";
+      $("api_identity_violations").innerHTML=identityViolations.map(v=>`<tr><td>${esc(v.time||"—")}</td><td class="mono">${esc(v.operation_id)}</td><td>${esc(v.mode||"—")} / ${esc(v.action||"—")}</td><td>${esc(v.type||"—")}</td><td>${esc(v.issuer_id||"—")}</td><td class="mono">${esc(v.subject_hash||"—")}</td></tr>`).join("");
+
+      const seqOp=new Map(ops.map(o=>[o.id,`${String(o.method||"").toUpperCase()} ${o.path||o.id}`]));
+      const seqLabel=id=>id?(seqOp.get(id)||id):"—";
+      const seqEnds=m=>{
+        const entries=(m.entry_operations||[]).slice(0,2).map(x=>seqLabel(x.operation_id)).join(" / ")||"—";
+        const terminals=(m.terminal_operations||[]).slice(0,2).map(x=>seqLabel(x.operation_id)).join(" / ")||"—";
+        return `${entries} → ${terminals}`;
+      };
+      $("api_sequence_count").textContent=`${Number(sequenceModel.session_count)||0} active · ${Number(sequenceModel.recent_session_count)||0} recent`;
+      $("api_sequence_transition_count").textContent=`${Number(sequenceModel.transition_count)||0} edges`;
+      $("api_sequence_workflow_count").textContent=`${Number(sequenceModel.workflow_count)||0} models`;
+      $("api_sequence_violation_count").textContent=`${sequenceViolations.length} recent`;
+      $("api_sequence_exception_count").textContent=`${sequenceExceptions.length} configured`;
+      $("api_sequence_state_count").textContent=`${sequenceStates.length} sites`;
+      $("api_sequence_session_count").textContent=`${sequenceSessions.length} active · ${sequenceRecentSessions.length} recent`;
+      $("api_sequence_model").textContent=`idle ${Number(sequenceModel.session_ttl_seconds)||0}s · absolute ${Number(sequenceModel.session_absolute_seconds)||0}s · recent ${Number(sequenceModel.recent_session_ttl_seconds)||0}s · LEARN threshold ${Number(sequenceModel.min_observations)||0} observations / ${Number(sequenceModel.min_sessions)||0} sessions / ${Number(sequenceModel.min_learning_duration_seconds)||0}s · DETECT evidence ${Number(sequenceModel.violation_count)||0}/${Number(sequenceModel.max_violations)||0} · caps ${Number(sequenceModel.max_sessions)||0} active / ${Number(sequenceModel.max_recent_sessions)||0} recent / ${Number(sequenceModel.max_transitions)||0} transitions / ${Number(sequenceModel.max_workflows)||0} workflows · queue ${Number(sequenceModel.queue_depth)||0}/${Number(sequenceModel.queue_capacity)||0} · dropped ${Number(sequenceModel.dropped_observations)||0}`;
+
+      $("api_sequence_states_empty").style.display=sequenceStates.length?"none":"";
+      $("api_sequence_states").innerHTML=sequenceStates.map(st=>`<tr><td><b>${esc(st.site)}</b></td><td><span class="tag ${st.mode==="DETECT"?"src-crawled":"method"}">${esc(st.mode||"LEARN")}</span></td><td>${Number(st.generation)||0}</td><td>${Number(st.workflow_count)||0} <span class="muted">(${Number(st.mature_workflows)||0} mature / ${Number(st.learning_workflows)||0} learning / ${Number(st.stale_workflows)||0} stale)</span></td><td>${Number(st.transition_count)||0}</td><td>${Number(st.active_sessions)||0} active / ${Number(st.recent_sessions)||0} recent</td><td>${Number(st.violation_count)||0}</td><td>${Number(st.exception_count)||0}</td></tr>`).join("");
+
+      const activeRows=sequenceSessions.slice(-100).reverse().map(x=>`<tr><td><span class="tag src-seen">ACTIVE</span></td><td>${esc(x.last_seen||"—")}</td><td>${esc(x.correlation_kind||"—")}</td><td class="mono">${esc(x.key||"—")}</td><td class="mono">${esc(seqLabel(x.entry_operation_id))}</td><td class="mono">${esc(seqLabel(x.current_operation_id))}</td><td>${Number(x.request_count)||0}</td></tr>`);
+      const recentRows=sequenceRecentSessions.slice(-100).reverse().map(x=>`<tr><td><span class="tag">RECENT</span></td><td>${esc(x.ended_at||"—")}</td><td>${esc(x.correlation_kind||"—")}</td><td class="mono">${esc(x.session_fingerprint||"—")}</td><td class="mono">${esc(seqLabel(x.entry_operation_id))}</td><td class="mono">${esc(seqLabel(x.terminal_operation_id))}</td><td>${Number(x.request_count)||0}</td></tr>`);
+      $("api_sequence_sessions_empty").style.display=(activeRows.length+recentRows.length)?"none":"";
+      $("api_sequence_sessions").innerHTML=[...activeRows,...recentRows].join("");
+
+      $("api_sequence_workflows_empty").style.display=sequenceWorkflows.length?"none":"";
+      $("api_sequence_workflows").innerHTML=sequenceWorkflows.slice(-100).reverse().map(m=>`<tr><td>${esc(m.last_seen||"—")}</td><td><b>${esc(m.site||"—")}</b><br>${esc(m.identity_kind||"—")}<br><span class="mono muted">${esc((m.id||"").slice(0,16))}…</span></td><td class="mono">${esc(seqEnds(m))}</td><td>${Number(m.session_count)||0}</td><td>${Number(m.observation_count)||0}</td><td>${Number(m.max_observed_depth)||0}</td><td><span class="tag">${esc(m.maturity||"LEARNING")}</span></td><td><span class="tag ${m.detection_state==="DETECT"?"src-crawled":"method"}">${esc(m.detection_state||"LEARN")}</span></td></tr>`).join("");
+
+      $("api_sequence_transitions_empty").style.display=sequenceTransitions.length?"none":"";
+      $("api_sequence_transitions").innerHTML=sequenceTransitions.slice(-100).reverse().map(t=>`<tr><td>${esc(t.last_seen||"—")}</td><td>${esc(t.site||"—")}</td><td class="mono">${esc(seqLabel(t.from_operation_id))}</td><td class="mono">${esc(seqLabel(t.to_operation_id))}</td><td>${Number(t.observation_count)||Number(t.count)||0}</td><td>${Number(t.session_count)||0}</td><td>${pct(t.confidence)}</td><td><span class="tag">${esc(t.maturity||"LEARNING")}</span></td></tr>`).join("");
+
+      $("api_sequence_violations_empty").style.display=sequenceViolations.length?"none":"";
+      $("api_sequence_violations").innerHTML=sequenceViolations.slice(-100).reverse().map(v=>`<tr><td>${esc(v.time||"—")}</td><td>${esc(v.site||"—")}</td><td><span class="tag">${esc(v.type||"—")}</span></td><td class="mono">${esc(seqLabel(v.from_operation_id))} → ${esc(seqLabel(v.to_operation_id))}</td><td class="mono">${esc(seqLabel(v.related_operation_id))}</td><td>${pct(v.transition_confidence)} / expected ${pct(v.expected_confidence)}</td><td>${Number(v.evidence_sessions)||0}</td><td>${esc(v.expires_at||"—")}</td></tr>`).join("");
+
+      $("api_sequence_exceptions_empty").style.display=sequenceExceptions.length?"none":"";
+      $("api_sequence_exceptions").innerHTML=sequenceExceptions.map(e=>`<tr><td>${esc(e.site||"—")}</td><td>${esc(e.type||"—")}</td><td class="mono">${esc((e.workflow_id||"—").slice(0,16))}${e.workflow_id?"…":""}</td><td class="mono">${esc(seqLabel(e.from_operation_id))}</td><td class="mono">${esc(seqLabel(e.to_operation_id))}</td><td class="mono">${esc(seqLabel(e.related_operation_id))}</td><td>${esc(e.expires_at||"—")}</td><td><button class="btn sm api-sequence-ex-delete" data-id="${esc(e.id)}">Delete</button></td></tr>`).join("");
+      document.querySelectorAll(".api-sequence-ex-delete").forEach(b=>b.onclick=async()=>{
+        if(!confirm("Delete this sequence exception?")) return;
+        try{ await api(`/api/security/sequence/exceptions/${encodeURIComponent(b.dataset.id)}`,{method:"DELETE"}); toast("sequence exception deleted"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+
+
+      $("api_object_locator_count").textContent=`${objectLocators.length} locators`;
+      $("api_object_locators_empty").style.display=objectLocators.length?"none":"";
+      $("api_object_locators").innerHTML=objectLocators.map(v=>`<tr><td class="mono">${esc(seqLabel(v.operation_id))}<br><span class="muted">${esc(v.operation_id)}</span></td><td class="mono">${esc(v.location)} · ${esc(v.field)}</td><td>${esc(v.semantic_name||"—")}</td><td>${esc(v.schema_type||"—")}</td><td>${pct(v.confidence)}</td><td>${esc((v.sources||[]).join(", "))}</td><td>${Number(v.observation_count)||0} obs · ${(v.value_fingerprints||[]).length} keyed</td><td><span class="tag ${v.status==="SUPPRESSED"?"method":"src-seen"}">${esc(v.status||"ACTIVE")}</span></td></tr>`).join("");
+      $("api_object_override_count").textContent=`${objectLocatorOverrides.length} overrides`;
+      $("api_object_overrides_empty").style.display=objectLocatorOverrides.length?"none":"";
+      $("api_object_overrides").innerHTML=objectLocatorOverrides.map(v=>`<tr><td class="mono">${esc(seqLabel(v.operation_id))}</td><td class="mono">${esc(v.location)} · ${esc(v.field)}</td><td><span class="tag">${esc(v.action)}</span></td><td>${esc(v.semantic_name||"—")}</td><td>${esc(v.updated_at||"—")}</td><td><button class="btn sm api-object-override-delete" data-id="${esc(v.id)}">Delete</button></td></tr>`).join("");
+      document.querySelectorAll(".api-object-override-delete").forEach(b=>b.onclick=async()=>{
+        if(!confirm("Delete this object locator override?")) return;
+        try{ await api(`/api/security/object-locators/overrides/${encodeURIComponent(b.dataset.id)}`,{method:"DELETE"}); toast("object locator override deleted"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+
+      $("api_object_relationship_count").textContent=`${objectRelationships.length} relationships`;
+      $("api_object_relationship_status").textContent=`bounded ${Number(objectRelationshipStatus.relationship_count)||0}/${Number(objectRelationshipStatus.max_relationships)||0} · per identity ${Number(objectRelationshipStatus.max_per_identity)||0} · per object ${Number(objectRelationshipStatus.max_per_object)||0} · TTL ${Number(objectRelationshipStatus.ttl_seconds)||0}s · queue ${Number(objectRelationshipStatus.queue_depth)||0}/${Number(objectRelationshipStatus.queue_capacity)||0} · dropped ${Number(objectRelationshipStatus.dropped_observations)||0}`;
+      $("api_object_relationships_empty").style.display=objectRelationships.length?"none":"";
+      $("api_object_relationships").innerHTML=objectRelationships.slice(-100).reverse().map(v=>`<tr><td>${esc(v.last_seen||"—")}</td><td class="mono">${esc(seqLabel(v.operation_id))}</td><td class="mono">${esc(v.location)} · ${esc(v.field)}<br><span class="muted">${esc((v.locator_id||"").slice(0,16))}…</span></td><td>${esc(v.identity_kind||"—")}</td><td class="mono">${esc((v.identity_fingerprint||"").slice(0,20))}…</td><td class="mono">tenant ${esc((v.tenant_fingerprint||"—").slice(0,16))}${v.tenant_fingerprint?"…":""}<br>client ${esc((v.client_fingerprint||"—").slice(0,16))}${v.client_fingerprint?"…":""}</td><td class="mono">${esc((v.object_fingerprint||"").slice(0,20))}…</td><td><span class="tag">${esc(v.evidence_level||"OBSERVED")}</span><br>${Number(v.observation_count)||0} obs</td></tr>`).join("");
+
+      $("api_bola_evidence_count").textContent=`${bolaEvidence.length} evidence · ${bolaCandidates.length} candidates`;
+      $("api_bola_evidence_empty").style.display=bolaEvidence.length?"none":"";
+      $("api_bola_status").textContent=`detection-only candidates ${Number(bolaDetectionStatus.candidate_count)||0}/${Number(bolaDetectionStatus.max_candidates)||0} · evidence ${Number(bolaPolicyStatus.evidence_count)||0} · policies ${Number(bolaPolicyStatus.policy_count)||0}/${Number(bolaPolicyStatus.max_policies)||0} · reviews ${Number(bolaPolicyStatus.review_count)||0}/${Number(bolaPolicyStatus.max_reviews)||0} · suppressed ${Number(bolaPolicyStatus.suppressed_count)||0} · reopened ${Number(bolaPolicyStatus.reopened_count)||0} · inferred blocking ${bolaPolicyStatus.inference_blocking?"ENABLED":"disabled"}`;
+      $("api_bola_evidence").innerHTML=bolaEvidence.slice(0,150).map(v=>{ const c=v.candidate||{}; const p=v.policy||null; return `<tr><td>${esc(c.last_seen||"—")}</td><td><span class="tag ${c.confidence==="HIGH"?"code4":"src-crawled"}">${esc(c.type||"—")}</span><br>${esc(c.confidence||"—")}</td><td class="mono">${esc(seqLabel(c.operation_id||""))}<br>${esc(c.location||"—")} · ${esc(c.field||"—")}<br><span class="muted">${esc((c.locator_id||"").slice(0,16))}…</span></td><td class="mono">identity ${esc((c.identity_fingerprint||"").slice(0,16))}…<br>object ${esc((c.object_fingerprint||"").slice(0,16))}…</td><td>${Number(c.baseline_observations)||0} obs · ${Number(c.baseline_identities)||0} identities · ${Number(c.recent_identity_objects)||0} fan-out</td><td><span class="tag ${v.suppressed?"method":"src-seen"}">${esc(v.effective_action||"REVIEW")}</span>${p?`<br><span class="muted">${esc((p.id||"").slice(0,12))}…</span>`:""}</td><td><span class="tag">${esc(v.workflow_state||"OPEN")}</span>${v.reopened?' <span class="tag code4">reopened</span>':''}<br>${esc(v.reason_code||"—")}</td><td><div class="actions" style="margin:0"><button class="btn sm api-bola-workflow" data-id="${esc(c.id||"")}" data-state="ACKNOWLEDGED" data-reason="INVESTIGATING">Ack</button><button class="btn sm api-bola-workflow" data-id="${esc(c.id||"")}" data-state="DISMISSED" data-reason="FALSE_POSITIVE">Dismiss</button><button class="btn sm api-bola-workflow" data-id="${esc(c.id||"")}" data-state="RESOLVED" data-reason="FIX_DEPLOYED">Resolve</button><button class="btn sm api-bola-workflow" data-id="${esc(c.id||"")}" data-state="OPEN" data-reason="">Reopen</button></div></td></tr>`; }).join("");
+      $("api_bola_policy_count").textContent=`${bolaPolicies.length} policies`;
+      $("api_bola_policies_empty").style.display=bolaPolicies.length?"none":"";
+      $("api_bola_policies").innerHTML=bolaPolicies.map(p=>`<tr><td class="mono">${esc(seqLabel(p.operation_id||""))}<br><span class="muted">${esc(p.operation_id||"")}</span></td><td class="mono">${p.locator_id?esc(p.locator_id.slice(0,16))+"…":"all locators"}</td><td>${esc(p.candidate_type||"all types")}</td><td>${esc(p.min_confidence||"MEDIUM")}</td><td><span class="tag ${p.action==="SUPPRESS"?"method":"src-seen"}">${esc(p.action||"REVIEW")}${p.enabled?"":" (disabled)"}</span></td><td>${esc(p.expires_at||"—")}</td><td><button class="btn sm api-bola-policy-delete" data-id="${esc(p.id||"")}">Delete</button></td></tr>`).join("");
+      document.querySelectorAll(".api-bola-workflow").forEach(b=>b.onclick=async()=>{
+        const state=b.dataset.state||"OPEN", reason_code=b.dataset.reason||"";
+        if((state==="DISMISSED"||state==="RESOLVED")&&!confirm(`${state.toLowerCase()} this evidence? New detector evidence will reopen it.`)) return;
+        try{ await api(`/api/security/bola/evidence/${encodeURIComponent(b.dataset.id)}/workflow`,{method:"POST",body:JSON.stringify({state,reason_code})}); toast(`BOLA evidence -> ${state}`); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-bola-policy-delete").forEach(b=>b.onclick=async()=>{
+        if(!confirm("Delete this BOLA evidence-handling policy?")) return;
+        try{ await api(`/api/security/bola/policies/${encodeURIComponent(b.dataset.id)}`,{method:"DELETE"}); toast("BOLA policy deleted"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+
+      $("api_graphql_count").textContent=`${graphqlOperations.length} operations`;
+      $("api_graphql_status").textContent=`operations ${Number(graphqlStatus.operation_count)||0}/${Number(graphqlStatus.max_operations)||0} · persisted ${Number(graphqlStatus.persisted_query_count)||0}/${Number(graphqlStatus.max_persisted_queries)||0} · schemas ${Number(graphqlStatus.schema_contract_count)||0} · policies ${Number(graphqlStatus.policy_count)||0} · violations ${Number(graphqlStatus.violation_count)||0} · queue ${Number(graphqlStatus.queue_depth)||0}/${Number(graphqlStatus.queue_capacity)||0} · dropped ${Number(graphqlStatus.dropped_observations)||0} · hard ceilings depth ${Number(graphqlStatus.absolute_max_depth)||64}, complexity ${Number(graphqlStatus.absolute_max_complexity)||10000}`;
+      $("api_graphql_operations_empty").style.display=graphqlOperations.length?"none":"";
+      $("api_graphql_operations").innerHTML=graphqlOperations.slice(0,150).map(g=>`<tr><td>${esc(g.last_seen||"—")}</td><td class="mono">${esc(seqLabel(g.endpoint_operation_id||""))}<br><b>${esc(g.operation_name||"anonymous")}</b><br><span class="muted">${esc((g.id||"").slice(0,16))}…</span></td><td><span class="tag">${esc(g.operation_type||"query")}</span></td><td>${Number(g.depth)||0}</td><td>${Number(g.complexity)||0}</td><td>${(g.fields||[]).length}<br><span class="muted">${esc((g.fields||[]).slice(0,3).join(" · "))}</span></td><td>${g.persisted_query_hash?`<span class="tag src-seen">APQ</span><br><span class="mono muted">${esc(g.persisted_query_hash.slice(0,12))}…</span>`:"—"}</td><td>${g.introspection?'<span class="tag code4">yes</span>':'no'}</td></tr>`).join("");
+      $("api_graphql_persisted_count").textContent=`${graphqlPersisted.length} profiles`;
+      $("api_graphql_persisted_empty").style.display=graphqlPersisted.length?"none":"";
+      $("api_graphql_persisted").innerHTML=graphqlPersisted.slice(0,150).map(g=>`<tr><td class="mono">${esc((g.sha256_hash||"").slice(0,20))}…</td><td>${esc(g.operation_type||"query")} <b>${esc(g.operation_name||"anonymous")}</b></td><td>${Number(g.depth)||0} / ${Number(g.complexity)||0}</td><td>${esc(g.last_seen||"—")}</td><td>${esc(g.expires_at||"—")}</td></tr>`).join("");
+      $("api_graphql_contract_count").textContent=`${graphqlContracts.length} contracts`;
+      $("api_graphql_contracts_empty").style.display=graphqlContracts.length?"none":"";
+      $("api_graphql_contracts").innerHTML=graphqlContracts.map(c=>`<tr><td><b>${esc(c.name||"—")}</b></td><td class="mono">${esc(seqLabel(c.endpoint_operation_id||""))}</td><td>${esc(c.query_root||"—")} / ${esc(c.mutation_root||"—")}</td><td>${Object.keys(c.types||{}).length}</td><td class="mono">${esc((c.source_sha256||"").slice(0,16))}…</td><td>${esc(c.updated_at||"—")}</td><td><button class="btn sm api-gql-contract-delete" data-id="${esc(c.id||"")}">Delete</button></td></tr>`).join("");
+      document.querySelectorAll(".api-gql-contract-delete").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this GraphQL SDL contract?"))return;try{await api(`/api/security/graphql/schema-contracts/${encodeURIComponent(b.dataset.id)}`,{method:"DELETE"});toast("GraphQL SDL contract deleted");loadAPISecurity();}catch(e){toast(e.message,"err");}});
+      $("api_graphql_policy_count").textContent=`${graphqlPolicies.length} policies`;
+      $("api_graphql_policies_empty").style.display=graphqlPolicies.length?"none":"";
+      $("api_graphql_policies").innerHTML=graphqlPolicies.map(p=>`<tr><td class="mono">${esc(seqLabel(p.endpoint_operation_id||""))}<br>${esc(p.operation_name||"all GraphQL operations")}${p.schema_contract_id?`<br><span class="muted">schema ${esc(p.schema_contract_id.slice(0,12))}…</span>`:""}</td><td><span class="tag ${p.mode==="ENFORCE"?"code4":p.mode==="DETECT"?"src-crawled":"method"}">${esc(p.mode||"LEARN")}</span></td><td>${Number(p.max_depth)||"—"}</td><td>${Number(p.max_complexity)||"—"}</td><td>${p.allow_mutation?"allow":"deny"} / sub ${p.allow_subscription?"allow":"deny"}</td><td>${p.allow_introspection?"allow":"deny"}</td><td>${p.require_persisted_queries?"required":"optional"}</td><td>${(p.allowed_fields||[]).length} allow / ${(p.denied_fields||[]).length} deny</td><td><div class="actions" style="margin:0"><button class="btn sm api-gql-mode" data-id="${esc(p.id)}" data-mode="${p.mode==="LEARN"?"DETECT":p.mode==="DETECT"?"ENFORCE":"DETECT"}">${p.mode==="LEARN"?"DETECT":p.mode==="DETECT"?"ENFORCE":"DETECT"}</button><button class="btn sm api-gql-delete" data-id="${esc(p.id)}">Delete</button></div></td></tr>`).join("");
+      $("api_graphql_violation_count").textContent=`${graphqlViolations.length} recent`;
+      $("api_graphql_violations_empty").style.display=graphqlViolations.length?"none":"";
+      $("api_graphql_violations").innerHTML=graphqlViolations.map(v=>`<tr><td>${esc(v.time||"—")}</td><td>${esc(v.operation_name||"anonymous")}<br><span class="mono muted">${esc((v.graphql_operation_id||"").slice(0,16))}…</span></td><td>${esc(v.mode||"LEARN")} / ${esc(v.action||"learn")}</td><td><span class="tag">${esc(v.type||"—")}</span></td><td class="mono">${esc(v.field||"—")}</td><td>${esc(v.observed||"—")}</td></tr>`).join("");
+      document.querySelectorAll(".api-gql-mode").forEach(b=>b.onclick=async()=>{ const mode=b.dataset.mode; let reason=""; if(mode==="ENFORCE"){reason=prompt("Reason for deterministic GraphQL ENFORCE promotion")||"";if(!reason)return;} try{await api(`/api/security/graphql/policies/${encodeURIComponent(b.dataset.id)}/mode`,{method:"POST",body:JSON.stringify({mode,reason})});toast(`GraphQL policy -> ${mode}`);loadAPISecurity();}catch(e){toast(e.message,"err");}});
+      document.querySelectorAll(".api-gql-delete").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this GraphQL policy?"))return;try{await api(`/api/security/graphql/policies/${encodeURIComponent(b.dataset.id)}`,{method:"DELETE"});toast("GraphQL policy deleted");loadAPISecurity();}catch(e){toast(e.message,"err");}});
+
+      $("api_contract_count").textContent=`${contracts.length} contracts`;
+      $("api_contract_empty").style.display=contracts.length?"none":"";
+      $("api_contract_body").innerHTML=contracts.map(c=>`<tr><td>${esc(c.application||"—")}</td><td>${esc(c.name)}</td><td>${esc(c.updated_at||"—")}</td><td class="mono">${esc(c.id)}</td><td><button class="btn sm api-contract-open" data-id="${esc(c.id)}">Open</button></td></tr>`).join("");
+
+      document.querySelectorAll(".api-contract-open").forEach(b=>b.onclick=()=>loadOpenAPIContract(b.dataset.id).catch(e=>toast(e.message,"err")));
+
+      document.querySelectorAll(".api-op-ignore").forEach(b=>b.onclick=async()=>{
+        try{ await api(`/api/security/operations/${encodeURIComponent(b.dataset.id)}/ignore`,{method:"POST",body:JSON.stringify({ignored:b.dataset.ignored!=="1"})}); toast("operation inventory updated"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-op-classify").forEach(b=>b.onclick=async()=>{
+        const path=prompt("Normalized path",b.dataset.path||""); if(path===null) return;
+        const classification=prompt("Classification: API, NON_API, STATIC, or UNKNOWN",b.dataset.class||"API"); if(classification===null) return;
+        try{ await api("/api/security/operations/reclassify",{method:"POST",body:JSON.stringify({id:b.dataset.id,normalized_path:path,classification})}); toast("operation reclassified"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-op-identity").forEach(b=>b.onclick=async()=>{
+        if(!identityIssuers.length){ toast("configure a trusted JWT issuer first","warn"); return; }
+        const issuer=(prompt("Issuer ID", identityIssuers[0]?.id||"")||"").trim(); if(!issuer) return;
+        const roles=(prompt("Required roles (comma-separated; blank = none)", "")||"").split(",").map(x=>x.trim()).filter(Boolean);
+        const scopes=(prompt("Required scopes (comma-separated; blank = none)", "")||"").split(",").map(x=>x.trim()).filter(Boolean);
+        const tenant=(prompt("Required tenant claim value (blank = any)", "")||"").trim();
+        const clients=(prompt("Allowed client_id values (comma-separated; blank = any)", "")||"").split(",").map(x=>x.trim()).filter(Boolean);
+        try{ await api(`/api/security/identity/policies/${encodeURIComponent(b.dataset.id)}`,{method:"POST",body:JSON.stringify({issuer_id:issuer,required_roles:roles,required_scopes:scopes,required_tenant:tenant,allowed_client_ids:clients,role_match:"all",scope_match:"all",require_authenticated:true})}); toast("identity policy saved in DETECT"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-idp-refresh").forEach(b=>b.onclick=async()=>{
+        try{ await api(`/api/security/identity/issuers/${encodeURIComponent(b.dataset.id)}/refresh`,{method:"POST",body:"{}"}); toast("JWKS refreshed and validated"); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-idpol-mode").forEach(b=>b.onclick=async()=>{
+        const target=b.dataset.mode; if(target==="ENFORCE"&&!confirm("Promote verified identity policy from DETECT to blocking ENFORCE?")) return;
+        try{ await api(`/api/security/identity/policies/${encodeURIComponent(b.dataset.op)}/mode`,{method:"POST",body:JSON.stringify({mode:target,reason:`operator transition to ${target}`})}); toast(`identity mode -> ${target}`); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-idpol-delete").forEach(b=>b.onclick=async()=>{
+        if(!confirm("Delete this identity policy? Requests will no longer be identity-checked for this operation.")) return;
+        try{ await api(`/api/security/identity/policies/${encodeURIComponent(b.dataset.op)}`,{method:"DELETE"}); toast("identity policy deleted"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-schema-ai").forEach(b=>b.onclick=async()=>{
+        try{ const r=await api(`/api/security/schema/${encodeURIComponent(b.dataset.id)}/ai-review`,{method:"POST",body:"{}"}); toast(`AI review: ${r.review?.recommendation||"complete"}`); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-schema-approve").forEach(b=>b.onclick=async()=>{
+        if(b.disabled) return;
+        try{ await api(`/api/security/schema/${encodeURIComponent(b.dataset.id)}/review`,{method:"POST",body:JSON.stringify({decision:"approve"})}); toast("schema candidate reviewed"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-schema-return").forEach(b=>b.onclick=async()=>{
+        if(b.disabled)return; if(!confirm("Return this reviewed schema to CANDIDATE for more learning/review?"))return;
+        try{await api(`/api/security/schema/${encodeURIComponent(b.dataset.id)}/review`,{method:"POST",body:JSON.stringify({decision:"return_to_candidate"})});toast("schema returned to candidate");loadAPISecurity();}catch(e){toast(e.message,"err");}
+      });
+      document.querySelectorAll(".api-schema-promote").forEach(b=>b.onclick=async()=>{
+        if(b.disabled) return;
+        const unknown=(prompt("Unknown-field policy: allow or deny", "allow")||"").trim().toLowerCase(); if(!unknown) return;
+        const enforceContentType=confirm("Enforce the content types observed for this operation?");
+        const enforceFormats=confirm("Enforce learned string formats (UUID/date/etc.)? Use DETECT first to validate false positives.");
+        try{ await api(`/api/security/schema/${encodeURIComponent(b.dataset.id)}/enforcement`,{method:"POST",body:JSON.stringify({unknown_fields:unknown,enforce_content_type:enforceContentType,enforce_formats:enforceFormats,enforce_enums:true,activate:true,block_status:422,note:"promoted from reviewed candidate"})}); toast("positive schema profile created in LEARN"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-enforce-detail").forEach(b=>b.onclick=()=>loadPositiveSchemaDetail(b.dataset.op).catch(e=>toast(e.message,"err")));
+      document.querySelectorAll(".api-enforce-next").forEach(b=>b.onclick=async()=>{
+        const target=b.dataset.mode;
+        if(target==="ENFORCE"&&!confirm("Move this operation from DETECT to blocking ENFORCE?")) return;
+        try{ await api(`/api/security/schema/enforcement/${encodeURIComponent(b.dataset.op)}/mode`,{method:"POST",body:JSON.stringify({mode:target,block_status:Number(b.dataset.status)||422,reason:`operator transition to ${target}`})}); toast(`schema mode -> ${target}`); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-enforce-rollback").forEach(b=>b.onclick=async()=>{
+        if(!confirm("Rollback this operation to its previous positive-schema deployment state?")) return;
+        try{ await api(`/api/security/schema/enforcement/${encodeURIComponent(b.dataset.op)}/rollback`,{method:"POST",body:JSON.stringify({reason:"operator rollback"})}); toast("positive schema deployment rolled back"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+      document.querySelectorAll(".api-enforce-exception").forEach(b=>b.onclick=async()=>{
+        const violation=(prompt("Violation type to exempt (blank = all types)", "ENUM_MISMATCH")||"").trim();
+        const field=(prompt("Field as location|path (blank = all fields)", "body|currency")||"").trim();
+        const reason=(prompt("Exception reason (required)", "temporary compatibility exception")||"").trim(); if(!reason) return;
+        const expires_at=(prompt("Expiry RFC3339 (optional)", "")||"").trim();
+        try{ await api(`/api/security/schema/enforcement/${encodeURIComponent(b.dataset.op)}/exceptions`,{method:"POST",body:JSON.stringify({profile_version_id:b.dataset.profile,violation_type:violation,field,reason,expires_at})}); toast("positive schema exception created"); loadAPISecurity(); }
+        catch(e){ toast(e.message,"err"); }
+      });
+    }catch(e){ toast("API security: "+e.message,"err"); }
+  }
+  $("api_sequence_mode_apply").onclick=async()=>{
+    const site=$("api_sequence_site").value.trim(), mode=$("api_sequence_mode").value;
+    if(!site){ toast("sequence site is required","warn"); return; }
+    try{ await api("/api/security/sequence/mode",{method:"POST",body:JSON.stringify({site,mode})}); toast(`sequence ${site} -> ${mode}`); loadAPISecurity(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  $("api_sequence_relearn").onclick=async()=>{
+    const site=$("api_sequence_site").value.trim();
+    if(!site){ toast("sequence site is required","warn"); return; }
+    if(!confirm(`Reset learned sequence state for ${site}, clear its active/recent sessions and violations, and return it to LEARN? Explicit exceptions are preserved.`)) return;
+    try{ await api("/api/security/sequence/relearn",{method:"POST",body:JSON.stringify({site})}); toast(`sequence relearn started for ${site}`); loadAPISecurity(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  $("api_sequence_exception_create").onclick=async()=>{
+    const body={site:$("api_sequence_ex_site").value.trim(),type:$("api_sequence_ex_type").value,workflow_id:$("api_sequence_ex_workflow").value.trim(),from_operation_id:$("api_sequence_ex_from").value.trim(),to_operation_id:$("api_sequence_ex_to").value.trim(),related_operation_id:$("api_sequence_ex_related").value.trim(),ttl_seconds:Number($("api_sequence_ex_ttl").value)||86400};
+    if(!body.site){ toast("exception site is required","warn"); return; }
+    if(!body.workflow_id&&!body.from_operation_id&&!body.to_operation_id&&!body.related_operation_id){ toast("scope the exception to a workflow or normalized operation","warn"); return; }
+    try{ await api("/api/security/sequence/exceptions",{method:"POST",body:JSON.stringify(body)}); toast("bounded sequence exception created"); loadAPISecurity(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  $("api_object_override_save").onclick=async()=>{
+    const body={operation_id:$("api_obj_op").value.trim(),location:$("api_obj_location").value,field:$("api_obj_field").value.trim(),schema_type:$("api_obj_type").value.trim(),semantic_name:$("api_obj_semantic").value.trim(),action:$("api_obj_action").value};
+    if(!body.operation_id||!body.field){ toast("normalized operation ID and field are required","warn"); return; }
+    try{ await api("/api/security/object-locators/overrides",{method:"POST",body:JSON.stringify(body)}); toast("object locator override saved"); loadAPISecurity(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  $("api_bola_policy_save").onclick=async()=>{
+    const body={operation_id:$("api_bola_policy_op").value.trim(),locator_id:$("api_bola_policy_locator").value.trim(),candidate_type:$("api_bola_policy_type").value,min_confidence:$("api_bola_policy_conf").value,action:$("api_bola_policy_action").value,enabled:$("api_bola_policy_enabled").checked,ttl_seconds:Number($("api_bola_policy_ttl").value)||2592000};
+    if(!body.operation_id){ toast("normalized operation ID is required","warn"); return; }
+    try{ await api("/api/security/bola/policies",{method:"POST",body:JSON.stringify(body)}); toast("BOLA evidence policy saved"); loadAPISecurity(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  $("api_graphql_contract_import").onclick=async()=>{
+    const body={name:$("api_gql_schema_name").value.trim(),endpoint_operation_id:$("api_gql_schema_endpoint").value.trim(),sdl:$("api_gql_schema_sdl").value};
+    if(!body.name||!body.endpoint_operation_id||!body.sdl.trim()){toast("schema name, endpoint operation ID and SDL are required","warn");return;}
+    try{await api("/api/security/graphql/schema-contracts",{method:"POST",body:JSON.stringify(body)});toast("GraphQL SDL contract imported");loadAPISecurity();}catch(e){toast(e.message,"err");}
+  };
+  $("api_graphql_policy_save").onclick=async()=>{
+    const split=v=>v.split(",").map(x=>x.trim()).filter(Boolean);
+    const body={endpoint_operation_id:$("api_gql_endpoint").value.trim(),operation_name:$("api_gql_name").value.trim(),schema_contract_id:$("api_gql_schema_contract").value.trim(),max_depth:Number($("api_gql_depth").value)||0,max_complexity:Number($("api_gql_complexity").value)||0,allow_introspection:$("api_gql_introspection").checked,allow_mutation:$("api_gql_mutation").checked,allow_subscription:$("api_gql_subscription").checked,require_persisted_queries:$("api_gql_persisted_required").checked,allowed_fields:split($("api_gql_allowed").value),denied_fields:split($("api_gql_denied").value),block_status:Number($("api_gql_block").value)||400,reason:"operator-reviewed GraphQL policy"};
+    if(!body.endpoint_operation_id){toast("endpoint API operation ID is required","warn");return;}
+    try{await api("/api/security/graphql/policies",{method:"POST",body:JSON.stringify(body)});toast("GraphQL policy saved in LEARN");loadAPISecurity();}catch(e){toast(e.message,"err");}
+  };
+  $("api_idp_save").onclick=async()=>{
+    const id=$("api_idp_id").value.trim(), issuer=$("api_idp_issuer").value.trim(), jwks=$("api_idp_jwks").value.trim();
+    if(!id||!issuer||!jwks){ toast("issuer ID, issuer, and JWKS URL are required","warn"); return; }
+    const split=v=>v.split(",").map(x=>x.trim()).filter(Boolean);
+    try{ await api("/api/security/identity/issuers",{method:"POST",body:JSON.stringify({id,name:$("api_idp_name").value.trim(),issuer,jwks_url:jwks,audiences:split($("api_idp_aud").value),allowed_algs:split($("api_idp_algs").value),tenant_claim:$("api_idp_tenant").value.trim(),roles_claim:$("api_idp_roles").value.trim(),scopes_claim:$("api_idp_scopes").value.trim(),enabled:$("api_idp_enabled").checked})}); toast("trusted issuer saved"); loadAPISecurity(); }
+    catch(e){ toast(e.message,"err"); }
+  };
+  $("api_refresh").onclick=()=>loadAPISecurity();
+  $("api_contract_import").onclick=async()=>{
+    const document=$("api_contract_doc").value.trim();
+    if(!document){ toast("paste an OpenAPI 3.x document first","warn"); return; }
+    try{
+      await api("/api/security/contracts/import",{method:"POST",body:JSON.stringify({name:$("api_contract_name").value.trim(),application:$("api_contract_app").value.trim(),document})});
+      toast("OpenAPI contract version imported"); loadAPISecurity();
+    }catch(e){ toast(e.message,"err"); }
+  };
 
   // ── site map ──
   function codeClass(c){ c=Number(c)||0; return c>=500?"code5":c>=400?"code4":c>=300?"code3":c>=200?"code2":""; }
@@ -1542,6 +2292,7 @@
       const rec=await api("/api/learn?site="+encodeURIComponent(site));
       const plNote = rec.suggest_paranoia>0 ? ` · suggested paranoia <b>PL${rec.suggest_paranoia}</b>` : "";
       let html=`<div class="hint" style="margin-bottom:8px">${esc(rec.summary)}${plNote}</div>`;
+      if(curUser&&curUser.can_review) html+=`<div class="actions" style="margin:0 0 8px"><button class="btn danger sm clearlearn" data-required-capability="review" data-site="${esc(site)}">Clear learning state</button></div>`;
       if(!rec.pages||!rec.pages.length){ html+=`<div class="empty">No per-page findings yet — send more traffic through the WAF.</div>`; box.innerHTML=html; return; }
       html+=`<table><thead><tr><th>Page</th><th>Risk</th><th>Hits</th><th>Findings</th><th>Suggestion</th><th></th></tr></thead><tbody>`;
       rec.pages.forEach((pg,idx)=>{
@@ -1552,6 +2303,12 @@
       });
       html+=`</tbody></table>`;
       box.innerHTML=html;
+      const clearBtn=box.querySelector(".clearlearn");
+      if(clearBtn) clearBtn.onclick=async()=>{
+        if(!confirm(`Clear learned state for ${site}? This does not remove already-applied policy changes.`)) return;
+        try{ await api("/api/learn/clear?site="+encodeURIComponent(site),{method:"POST",body:"{}"}); toast("learning state cleared for "+site); loadLearn(site,box); }
+        catch(e){ toast(e.message,"err"); }
+      };
       box.querySelectorAll(".applyx").forEach(b=>b.onclick=async()=>{
         const ids=b.dataset.ids.split(",").map(x=>+x).filter(Boolean);
         try{
@@ -1633,6 +2390,11 @@
   }
   $("ha_save").onclick=()=>saveConfig().then(()=>toast("HA settings — draft saved")).catch(e=>toast(e.message,"err"));
   $("nt_save").onclick=()=>saveConfig().then(()=>toast("notifications — draft saved")).catch(e=>toast(e.message,"err"));
+  $("nt_clear_webhook").onclick=async()=>{
+    if(!confirm("Remove the stored notification webhook URL? This cannot be recovered from the Console.")) return;
+    try{ await api("/api/notifications/webhook",{method:"DELETE"}); $("nt_webhook_url").value=""; toast("stored notification webhook cleared"); }
+    catch(e){ toast(e.message,"err"); }
+  };
   $("ha_syncnow").onclick=()=>api("/api/ha/sync",{method:"POST"}).then(()=>toast("sync triggered")).catch(e=>toast(e.message,"err"));
 
   // ── notification bell ──
@@ -1645,6 +2407,9 @@
     try{
       const r=await api("/api/notifications?limit=100");
       const items=r.items||[];
+      const wd=r.webhook_delivery||{};
+      const dropped=Number(wd.dropped||0), depth=Number(wd.queue_depth||0), cap=Number(wd.queue_capacity||0);
+      $("bell").title=dropped?`Notifications — webhook delivery dropped ${dropped}; queue ${depth}/${cap}`:`Notifications — webhook queue ${depth}/${cap}`;
       $("bellempty").style.display=items.length?"none":"";
       $("belllist").innerHTML=items.map(n=>{
         const applyBtn=n.action==="apply_exclusion"?`<button class="btn sm applyn" data-id="${n.id}">Apply</button>`:"";
@@ -1822,8 +2587,13 @@
   async function loadWhoami(){
     try{ curUser=await api("/api/whoami"); }catch(e){ curUser=null; }
     const hdr=$("whoami-hdr"); if(hdr) hdr.textContent=curUser?curUser.user:"—";
-    const w=$("whoami"); if(w && curUser){ w.innerHTML=`<div>signed in as <b>${esc(curUser.user)}</b></div><div>role <b>${esc(curUser.role||"—")}</b></div>`; }
+    const w=$("whoami"); if(w && curUser){
+      const caps=[curUser.can_edit_config?"config edit":"read-only config",curUser.can_review?"security review":"no review actions",curUser.can_manage_users?"user admin":"no user admin"];
+      w.innerHTML=`<div>signed in as <b>${esc(curUser.user)}</b></div><div>role <b>${esc(curUser.role||"—")}</b></div><div class="muted">${esc(caps.join(" · "))}</div>`;
+    }
     const um=$("usermgmt"); if(um) um.style.display=(curUser&&curUser.can_manage_users)?"":"none";
+    document.body.dataset.role=curUser?curUser.role:"";
+    applyRoleUI();
   }
   const roleOpts=(sel)=>["viewer","reviewer","operator","admin"].map(r=>`<option value="${r}" ${r===sel?"selected":""}>${r}</option>`).join("");
   async function loadUsers(){
@@ -1905,6 +2675,7 @@
   };
 
   // ── signed self-update ──
+  let updateInstallSupported=false;
   async function loadUpdate(){
     try{
       const st=await api("/api/update/status");
@@ -1914,8 +2685,14 @@
         `<div>publisher key <b>${esc(fp)}</b></div>`+
         `<div>catalog <b>${st.catalog_url?esc(st.catalog_url):"upload-only"}</b></div>`+
         `<div>backup <b>${st.has_backup?"available":"none"}</b></div>`;
+      updateInstallSupported=!!st.install_supported;
       $("upd_catalogwrap").style.display=st.catalog_url?"":"none";
+      $("upd_install").disabled=!updateInstallSupported;
+      $("upd_rollback").disabled=!updateInstallSupported;
       $("upd_rollback").style.display=st.has_backup?"":"none";
+      $("upd_mode_hint").innerHTML=updateInstallSupported
+        ? "Install mode: <b>explicit standalone directory</b>. In-process install/rollback is enabled only for this operator-configured writable directory."
+        : "Install mode: <b>external package manager</b>. Verification/staging remains available, but install/rollback is intentionally disabled in the hardened service; deploy the verified DEB/RPM/package through the privileged package manager.";
       if(st.staged){ renderStaged(st.staged, null); } else { $("upd_staged").style.display="none"; }
     }catch(e){
       // 404 = feature disabled (no key / not localhost); anything else = show off state too
@@ -1934,6 +2711,7 @@
     }
     if(summary&&summary.needs_restart) html+=`<div class="hint" style="color:var(--amber);margin-top:6px">Installing requires a restart.</div>`;
     $("upd_staged_body").innerHTML=html;
+    $("upd_install").disabled=!updateInstallSupported;
   }
   $("upd_stage").onclick=async()=>{
     const f=$("upd_file").files[0];
@@ -2120,7 +2898,7 @@
 
   async function startConsole(){
     try{
-      const loaded=await Promise.all([api("/api/config"),api("/api/interfaces").catch(()=>[])]);
+      const loaded=await Promise.all([api("/api/config?draft=1"),api("/api/interfaces").catch(()=>[])]);
       interfaces=loaded[1]||[];
       fill(loaded[0]);
     }catch(e){ toast(e.message,"err"); }

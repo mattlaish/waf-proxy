@@ -69,7 +69,7 @@ func TestPassiveDiscoveryWrapRestoresBodyAndAddsContext(t *testing.T) {
 	})
 	r := httptest.NewRequest(http.MethodPost, "http://waf.local/login", strings.NewReader(original))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	requestBodyPrefixWrap(false, true, passiveDiscoveryWrap(true, next)).ServeHTTP(httptest.NewRecorder(), r)
+	requestBodyPrefixWrap(false, true, false, passiveDiscoveryWrap(true, next)).ServeHTTP(httptest.NewRecorder(), r)
 	if gotBody != original {
 		t.Fatalf("body changed: got %q want %q", gotBody, original)
 	}
@@ -89,7 +89,7 @@ func TestPassiveDiscoveryDisabledLeavesBodyUntouched(t *testing.T) {
 	})
 	r := httptest.NewRequest(http.MethodPost, "http://waf.local/login", strings.NewReader(original))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	requestBodyPrefixWrap(false, false, passiveDiscoveryWrap(false, next)).ServeHTTP(httptest.NewRecorder(), r)
+	requestBodyPrefixWrap(false, false, false, passiveDiscoveryWrap(false, next)).ServeHTTP(httptest.NewRecorder(), r)
 	if gotBody != original {
 		t.Fatalf("body changed: got %q want %q", gotBody, original)
 	}
@@ -111,7 +111,7 @@ func TestRequestBodyPrefixSharedByPassiveAndAIConsumer(t *testing.T) {
 	})
 	r := httptest.NewRequest(http.MethodPost, "http://waf.local/account", strings.NewReader(original))
 	r.Header.Set("Content-Type", "application/json")
-	requestBodyPrefixWrap(true, true, passiveDiscoveryWrap(true, next)).ServeHTTP(httptest.NewRecorder(), r)
+	requestBodyPrefixWrap(true, true, false, passiveDiscoveryWrap(true, next)).ServeHTTP(httptest.NewRecorder(), r)
 	if gotBody != original {
 		t.Fatalf("body changed: got %q want %q", gotBody, original)
 	}
@@ -144,12 +144,12 @@ func TestPassiveFieldsReachRecorderOnlyAfterBackendResponse(t *testing.T) {
 	var recorded []DiscoveredField
 	proxy := buildProxy(pool, SiteConfig{}, Config{BackendTimeoutSec: 5},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		func(_, _, _, _ string, _ int, fields []DiscoveredField) { recorded = fields })
+		func(_, _, _, _ string, _ int, fields []DiscoveredField, _ apiObservationMeta) { recorded = fields })
 	original := "username=alice&password=secret"
 	r := httptest.NewRequest(http.MethodPost, "http://waf.local/login", strings.NewReader(original))
 	r.RemoteAddr = "192.0.2.10:1234"
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	requestBodyPrefixWrap(false, true, passiveDiscoveryWrap(true, proxy)).ServeHTTP(httptest.NewRecorder(), r)
+	requestBodyPrefixWrap(false, true, false, passiveDiscoveryWrap(true, proxy)).ServeHTTP(httptest.NewRecorder(), r)
 	if backendBody != original {
 		t.Fatalf("backend body changed: got %q want %q", backendBody, original)
 	}
@@ -202,5 +202,23 @@ func TestDiscoverFormActionsNormalizesAndRejectsExternal(t *testing.T) {
 	got := discoverFormActions(html, "/account/")
 	if !reflect.DeepEqual(got, []string{"/account/login"}) {
 		t.Fatalf("actions = %#v", got)
+	}
+}
+
+func TestRequestBodyPrefixSchemaCaptureIndependent(t *testing.T) {
+	original := `{"amount":12,"currency":"TWD"}`
+	var got []byte
+	next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		got = append([]byte(nil), requestBodyPrefixFromRequest(r)...)
+		b, _ := io.ReadAll(r.Body)
+		if string(b) != original {
+			t.Fatalf("body not restored for schema capture: %q", string(b))
+		}
+	})
+	r := httptest.NewRequest(http.MethodPost, "http://waf.local/api/payment", strings.NewReader(original))
+	r.Header.Set("Content-Type", "application/json")
+	requestBodyPrefixWrap(false, false, true, next).ServeHTTP(httptest.NewRecorder(), r)
+	if string(got) != original {
+		t.Fatalf("schema capture should be independent from passive/AI: %q", string(got))
 	}
 }
