@@ -1,0 +1,21 @@
+Build and Admin Route Registration Fix — 2026-09-29
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+PASS dependency-free source gates:
+API12 69; API3 47; API4 46; API5 72; API61 33; API62 56; API63 45;
+API64 58; API71 83; API72 100; API73 110; API74 156; API8 259;
+API8 post-audit 134; Production hardening 190; Code duplication 83 / 139 routes.
+OpenAI source contract 16/16 + isolated PASS; WAF package-source PASS;
+package-builder 9/9 PASS; root Go source shape 95 files PASS.
+
+BLOCKED_ENVIRONMENT / NOT_RUN locally before compilation:
+- go build ./...
+- go vet ./...
+- go test ./...
+- TestAdminHandlerRouteRegistrationDoesNotPanic
+- TestAPI64AdminControlsRequireReviewerPersistAndAudit
+Reason: host Go 1.23.2; go.mod requires Go 1.25.0; external toolchain retrieval unavailable.
+
+External/user-supplied evidence: reporter states that after adding the missing
+errors import, build and vet are clean in a Go 1.25-capable environment. This is
+not promoted to canonical local PASS.

@@ -60,6 +60,8 @@ jobs:
         run: python3 ./tools/tests/test-production-control-plane-hardening-source.py
       - name: Code duplication review source gate
         run: python3 ./tools/tests/test-code-duplication-review-source.py
+      - name: Build/startup blocker fix source gate
+        run: python3 ./tools/tests/test-build-startup-blocker-fix-source.py
       - name: Markdown review source gate
         run: python3 ./tools/tests/test-markdown-review-source.py
 

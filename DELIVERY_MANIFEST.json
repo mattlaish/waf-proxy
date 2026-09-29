@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "artifact_label": "waf-proxy-code-duplication-consolidation-2026-09-28",
-  "generated_at": "2026-09-28T10:11:17+08:00",
+  "artifact_label": "waf-proxy-build-admin-startup-blocker-fix-2026-09-30",
+  "generated_at": "2026-09-30T00:30:54+08:00",
   "status": "IMPLEMENTED_TESTING_DEFERRED",
   "source_baseline": {
-    "filename": "waf-proxy-production-control-plane-hardening-2026-09-25.zip",
-    "sha256": "90acc977db2998f4a3c1c4cacc07e19f0087f8bc033bce6b9934b83415957be8"
+    "filename": "waf-proxy-code-duplication-consolidation-2026-09-28.zip",
+    "sha256": "0756e864dd6ef8cc474477665666b2e3000a75cff18c49e627b0553dfd7400c5"
   },
   "implementation_state": {
     "API-1": "IMPLEMENTED_TESTING_DEFERRED",
@@ -43,26 +43,29 @@
     "API-8 post-audit hardening: 134 PASS",
     "Production control-plane hardening: 190 PASS",
     "Code duplication review: 80 PASS / 139 unique Admin-update routes",
+    "Build/startup blocker fix: 13 PASS / 139 ServeMux registrations accepted",
     "Markdown review: 86 files PASS / 20 current-canonical",
-    "OpenAI source contract: 16/16 PASS + isolated tests PASS",
+    "OpenAI source contract: 16/16 PASS plus isolated tests PASS",
     "WAF package-source: PASS",
-    "package-builder: 9/9 PASS",
-    "root Go source-shape: 95 files PASS",
-    "consolidation Go gofmt + Admin JS + 35 shell + 26 Python syntax: PASS"
+    "Package-builder: 9/9 PASS",
+    "Root Go source shape: 96 files PASS",
+    "Admin embedded JavaScript syntax: PASS",
+    "Changed Go gofmt: PASS"
   ],
   "blocked_required_gates": [
     "Go 1.25 go mod tidy -diff",
     "Go 1.25 repository build/vet/test",
+    "Go 1.25 targeted Admin/API64 regression tests",
     "Go 1.25 race tests",
     "target-host watchdog/QAT/systemd qualification",
     "HA two-node live failover/config-sync qualification"
   ],
-  "qualification_boundary": "Host Go is 1.23.2 while go.mod requires Go 1.25.0; canonical Go 1.25 tidy/build/vet/test/race remain BLOCKED_ENVIRONMENT / NOT_RUN. Dependency-free source/static evidence does not promote this baseline to TESTED or RELEASED.",
+  "qualification_boundary": "Host Go is 1.23.2 while go.mod requires Go 1.25.0; canonical Go 1.25 tidy/build/vet/test/race remain BLOCKED_ENVIRONMENT / NOT_RUN. The 139-route standalone stdlib ServeMux registration gate passes, but source/static/packaging evidence does not substitute for exact-byte root compilation.",
   "authority_boundary": "Coraza/CRS, explicit API-4 policy, verified API-5 policy and explicit API-8 GraphQL ENFORCE retain deterministic authority. API-6 sequence and API-7 inferred BOLA remain non-enforcing; OpenAI has no request-path authority.",
   "duplication_boundary": "Only proven unwired, superseded or functionally duplicative layers were removed. Shared SecLang parsing is centralized in internal/capability. Similar API-6/API-7/API-8 bounded stores/workers remain separate because they own distinct state and authority.",
-  "documentation_boundary": "All 86 Markdown files were reviewed on 2026-09-28. Current/canonical documents were synchronized; dated historical evidence was preserved and marked with review metadata and precedence pointing to DOCUMENTATION_INDEX.md/current source truth.",
+  "documentation_boundary": "All Markdown files retain the 2026-09-28 repository review metadata. Current/canonical documents were synchronized on 2026-09-30 to the build/startup blocker fix; dated historical evidence remains historical and does not override DOCUMENTATION_INDEX.md/current source truth.",
   "git_boundary": "This complete-source artifact contains no .git metadata; branch/remote/main synchronization and commit/fresh-clone claims are not made. Parent artifact SHA-256 and manifests are source identity.",
-  "roadmap_boundary": "No API-9 is defined. This is source consolidation/documentation synchronization after the completed API-8 implementation and production control-plane hardening.",
+  "roadmap_boundary": "No API-9 is defined. This maintenance fix corrects build/startup blockers without changing API-security enforcement authority.",
   "source_tree": {
     "manifest_excludes": [
       "DELIVERY_MANIFEST.json",
@@ -72,18 +75,17 @@
       "build binaries/provenance",
       "*.log",
       "*.zip",
-      "*.patch",
       "cache/runtime outputs"
     ],
     "aggregate_algorithm": "sha256(path\\0size\\0mode\\0sha256\\n for sorted source entries)",
-    "file_count": 355,
-    "aggregate_sha256": "174589833505e5b864f7a6b70761252438b38b91d05aee990818f45b9f69ed8a",
+    "file_count": 358,
+    "aggregate_sha256": "d6b24794e706ebca1e5fb7a276fdbe5f254c24b46d1322a8c867bfb51097b518",
     "files": [
       {
         "path": ".github/workflows/ci.yml",
-        "size": 3772,
+        "size": 3900,
         "mode": "0644",
-        "sha256": "bb259d1bd39c7a5d493b761853272d4a0c78d08b33cbb637bd6b93f3310402e4"
+        "sha256": "7c3600f61f25e1754ab2fdf7d43632ed1b1f65aee2d025af351e8e15b788b7e4"
       },
       {
         "path": "AGENTS.md",
@@ -93,9 +95,9 @@
       },
       {
         "path": "AI_HANDOFF.md",
-        "size": 153959,
+        "size": 156626,
         "mode": "0644",
-        "sha256": "de0b912c93bc84d2322e71bd9076c47a8a3ab1c6b46aa7e4182d564a11fa257b"
+        "sha256": "dad34e552a6572e58157708977e36962f9d29473d9df30da6d1dae88bd580383"
       },
       {
         "path": "API1_FINAL_QUALIFICATION_REPORT.md",
@@ -297,15 +299,15 @@
       },
       {
         "path": "API8_GRAPHQL_SECURITY.md",
-        "size": 7054,
+        "size": 9704,
         "mode": "0644",
-        "sha256": "3b94a57ca26ce05c0f6068dfa8ee798d59eefb5f71e363ef26af5f0df661723e"
+        "sha256": "4380079b1acbec98f510e98dd993deff8b914625c79b5553449a7ea35aaaa6bb"
       },
       {
         "path": "API8_POST_AUDIT_HARDENING.md",
-        "size": 6366,
+        "size": 9016,
         "mode": "0644",
-        "sha256": "46ccf057bb681a424b5a1fcde92ec0aa08273266fad8d1fc4cd657e62ad5bdfe"
+        "sha256": "ead546521072197fd3d63cfead4f81eb5fb7d678fdfdddcea1506c9e7456aada"
       },
       {
         "path": "API8_POST_AUDIT_HARDENING_SOURCE_GATE_RESULT.md",
@@ -333,15 +335,15 @@
       },
       {
         "path": "API_SECURITY_CLOSURE_RESULT.md",
-        "size": 22751,
+        "size": 25401,
         "mode": "0644",
-        "sha256": "d85238d9bebd354be9ae753ba8b130ad2d7a1920a2107bd84398ddc200f7d64f"
+        "sha256": "5f18d0f8ac98ed19eb0251025705bcdd45e8679615f66f9b7afb691250b03100"
       },
       {
         "path": "API_SECURITY_ROADMAP.md",
-        "size": 27292,
+        "size": 29942,
         "mode": "0644",
-        "sha256": "ee9928dc65ee2d5f145120ab2b9dc8abb0673a63cfac2c52d351b410594ea1ef"
+        "sha256": "06922d63f483c388d3d6b856619d01d47eb19fb3d3063e31b69f6eb6eb5ec2a3"
       },
       {
         "path": "API_SECURITY_ROADMAP_CHANGE.md",
@@ -351,9 +353,15 @@
       },
       {
         "path": "API_SECURITY_SLICE_IMPLEMENTATION_ROADMAP.md",
-        "size": 20759,
+        "size": 23409,
         "mode": "0644",
-        "sha256": "33ab633f441ad1a7d31236d3e782f5568c0ced7aba99f4bb7e3c6f22c9531172"
+        "sha256": "28f32215c20f16dc2b3468db676fde33b209fd68616efc9c859a1fed7167e953"
+      },
+      {
+        "path": "BUILD_STARTUP_BLOCKER_FIX_TEST_SUMMARY.txt",
+        "size": 1757,
+        "mode": "0644",
+        "sha256": "dd8b6b36c3da02942710d6ce403a5c5706ba58b3be12e46346d3f9914c2c5b2c"
       },
       {
         "path": "CLAUDE.md",
@@ -369,15 +377,15 @@
       },
       {
         "path": "CODE_DUPLICATION_REVIEW.md",
-        "size": 8834,
+        "size": 11074,
         "mode": "0644",
-        "sha256": "433dafbc8b8e2854ba124aedd32a1dea4de210f0df9645067d5f64132de97537"
+        "sha256": "df3c25c9c53686fb6fb5e0206cd76bf1a5c51dab2000015cca8d2c0ee562a4f1"
       },
       {
         "path": "CODE_DUPLICATION_REVIEW_SOURCE_GATE_RESULT.md",
-        "size": 1405,
+        "size": 3645,
         "mode": "0644",
-        "sha256": "275dfe77965c2fc6e8ae9b4ed1a46bcfbc84b5c16878c528f52d377369f0e6b7"
+        "sha256": "5a0e12e3554bbaed3c6a1d755d95dfb478a6da4051d421b592474a2b862a66e0"
       },
       {
         "path": "CODE_DUPLICATION_REVIEW_TEST_SUMMARY.txt",
@@ -393,45 +401,45 @@
       },
       {
         "path": "DEVELOPMENT.md",
-        "size": 57393,
+        "size": 59633,
         "mode": "0644",
-        "sha256": "dabe406d0b7dd8c47c09ed689c250dcdb879573ad1c027779a0dc9724174e149"
+        "sha256": "15866cd5f5358e94a7f1227f5cea709dffb0e3a0cea8d9ceacb740cd8c5f1e90"
       },
       {
         "path": "DEVELOPMENT_ROADMAP.md",
-        "size": 50996,
+        "size": 53236,
         "mode": "0644",
-        "sha256": "5cc96e8cce0dd601ca20338b004d97dc37e52e2f6fe885b30bcff7084461aba9"
+        "sha256": "437f46534c65beb7b0bee54233198fbbb88dfe08d85dc6c5f5f1b56a772cd94f"
       },
       {
         "path": "DOCUMENTATION_INDEX.md",
-        "size": 27296,
+        "size": 29536,
         "mode": "0644",
-        "sha256": "43c37ad5577bde18814f6ec937595024f37a861ec8eef4d9207617636c441884"
+        "sha256": "7ff9d97a97d80d5379c3ba4e5b4bfafef101e2dca6f4368e590e886144808074"
       },
       {
         "path": "HANDOVER_PROMPT.md",
-        "size": 20281,
+        "size": 22948,
         "mode": "0644",
-        "sha256": "de97f9f5007e2c079ca130a2cd00554057bd9257f1f4d63424eb23d09bc99e8a"
+        "sha256": "83c2603bcd6cee1d2f47097b366b731b3208209e744db6369a314f92ed6b9eff"
       },
       {
         "path": "HANDOVER_STATUS.md",
-        "size": 26863,
+        "size": 29530,
         "mode": "0644",
-        "sha256": "c8ffe853cfaca2a3f815e7d38e57a0f6384b853a38cc6dc7f3f0f1ed8d7904c2"
+        "sha256": "1838724878353ea5b119ee9d02585808550b4ac04cedf0e04a100753c1f36d36"
       },
       {
         "path": "INSTALL.md",
-        "size": 44415,
+        "size": 46655,
         "mode": "0644",
-        "sha256": "33a0694af360e22fd04413800dca6b8faff495c1a15a171a08a7277cd7709ec6"
+        "sha256": "cc364e8b5f190a6578b3d8ceb0ba7c8cfac19c49940e50a8c1ecd754ad30fc98"
       },
       {
         "path": "MANIFEST.md",
-        "size": 46082,
+        "size": 48678,
         "mode": "0644",
-        "sha256": "0af10dae325bd9d74ffdedb6517d88321f71177510a0dcc1edaab9cb9917f3ba"
+        "sha256": "99bc857b07574866a69eb72c04ec7b737036bae8e641f6e3d524563d20acb8f5"
       },
       {
         "path": "MARKDOWN_REVIEW_2026-09-28.md",
@@ -441,9 +449,9 @@
       },
       {
         "path": "NEXT_CHAT_HANDOVER.md",
-        "size": 22990,
+        "size": 25657,
         "mode": "0644",
-        "sha256": "d5ad5c1ddf6a89cfcd412323e0916e1b938782e3dbebbb80245dbcd77f5f83f7"
+        "sha256": "fd99459d557a350ed4c89c978238bc947f8114b87d33cfc7118d3224f3096e54"
       },
       {
         "path": "OPENAI_INTEGRATION_GATE_RESULT.md",
@@ -465,15 +473,15 @@
       },
       {
         "path": "PACKAGING_TOOL.md",
-        "size": 8162,
+        "size": 10782,
         "mode": "0644",
-        "sha256": "887be7b28d066901bb3425d28f27e6f63e4932e2468ad51f910189ac34dc578a"
+        "sha256": "55cda0bbbd11908949a808c3bc0f8024d4f64bbb1c99b5aef126845f9c88621c"
       },
       {
         "path": "PRODUCTION_CONTROL_PLANE_HARDENING.md",
-        "size": 6314,
+        "size": 8554,
         "mode": "0644",
-        "sha256": "88cbf71f2582d85e5609f8fce76e7a64e1efeae58742abdd5138295364a03e48"
+        "sha256": "c852416d8265da69c9c0d49ce85be65c2bff3ba2ee2680d0a2faa2ba9595276c"
       },
       {
         "path": "PRODUCTION_CONTROL_PLANE_HARDENING_SOURCE_GATE_RESULT.md",
@@ -489,15 +497,15 @@
       },
       {
         "path": "README.md",
-        "size": 97617,
+        "size": 99857,
         "mode": "0644",
-        "sha256": "0f585b7909c2ec21ac6aa45c286146501121f0f8c64a97a4355c95a1eea2993b"
+        "sha256": "9028a3d2f449d0d968bb108812a8a643af5a74e9d649fb903297e0467a96d03d"
       },
       {
         "path": "RELEASE_PROCESS.md",
-        "size": 34512,
+        "size": 37132,
         "mode": "0644",
-        "sha256": "3c295de093e7160b922de7af33e6fb44b500648a6c0fde793b1608391e67d1f0"
+        "sha256": "d141239b0bfc1f5c4a9d930c8ae9c887813ab009055a0e574d50cbe7cfe380e5"
       },
       {
         "path": "RPM_PACKAGE_GATE_RESULT.md",
@@ -513,27 +521,33 @@
       },
       {
         "path": "TESTING.md",
-        "size": 42614,
+        "size": 45234,
         "mode": "0644",
-        "sha256": "496905bf937578ccdc937382440828bdd2b92a9a21d7e867b4e6082c88cf43fc"
+        "sha256": "489c65f56d116fe150669a098b7afec9402c1d61454f63b996439e7f80e56a40"
       },
       {
         "path": "TESTING_RESULTS.md",
-        "size": 79500,
+        "size": 82120,
         "mode": "0644",
-        "sha256": "afe752a27fceeae4a31c82eb555c9e9d754574595596293bcddf05d010af9d55"
+        "sha256": "bdfead3e52014b7606b1304869c4190a39545cff436d1e80627e84419d6cb9ea"
       },
       {
         "path": "admin.go",
-        "size": 65287,
+        "size": 65304,
         "mode": "0644",
-        "sha256": "f1080e1e05091d1e03d840dad71fe2ce251ca222f105e13a39381b381a8f364e"
+        "sha256": "8b665cd305414911651260126a2250abf6e5614edebbd6773d7ab18501a10237"
       },
       {
         "path": "admin_login_hardening.go",
         "size": 3116,
         "mode": "0644",
         "sha256": "61879908785038fe2f187077fcac0427cf3bea3a47699f4ada1a5773939aebf9"
+      },
+      {
+        "path": "admin_route_registration_test.go",
+        "size": 461,
+        "mode": "0644",
+        "sha256": "d7fa49ac8347adf1cfd389317218824fb964fb10caaf10b35c534e25053d74a9"
       },
       {
         "path": "ai.go",
@@ -663,9 +677,9 @@
       },
       {
         "path": "build.sh",
-        "size": 6847,
+        "size": 6910,
         "mode": "0755",
-        "sha256": "70aa8d28da4c800853b762d58e145ec8fb82c1e672e78e0e0e7b4961140527d3"
+        "sha256": "01241847a5a8842cc99150e33623f142dcef5884e6e333be9974baaff2e9cafd"
       },
       {
         "path": "cidr_policy.go",
@@ -1563,9 +1577,9 @@
       },
       {
         "path": "patch.md",
-        "size": 209234,
+        "size": 78279,
         "mode": "0644",
-        "sha256": "cd5c68fe70a0eecda645ed2766d4bb53ca9e166c00158e7bb8d32d6bdc05f8d4"
+        "sha256": "c28b0d1973d89dbd4549665c8021486cae5575a133b8dc19d15d8f8931963a93"
       },
       {
         "path": "pki.go",
@@ -1947,9 +1961,9 @@
       },
       {
         "path": "static/admin.html",
-        "size": 250272,
+        "size": 250279,
         "mode": "0644",
-        "sha256": "d45746447da5083d5ac925d3e1e862406f85499d6b638628b00c3e2662af9c39"
+        "sha256": "42b931890bda3de47b9bb24c878e5de4eb18442cec2d722af1f7039c20601df1"
       },
       {
         "path": "static/theme.css",
@@ -2088,6 +2102,12 @@
         "size": 18311,
         "mode": "0755",
         "sha256": "6abb6372a57e5b15241d9cb2a621087a52b0d0732336e262c1a8674a777af83a"
+      },
+      {
+        "path": "tools/tests/test-build-startup-blocker-fix-source.py",
+        "size": 3536,
+        "mode": "0755",
+        "sha256": "b2f0811781ebd69b2e52fc74eb341f3dde5d1c1f8ccdb5e8ae1c9dcf77c61b44"
       },
       {
         "path": "tools/tests/test-code-duplication-review-source.py",

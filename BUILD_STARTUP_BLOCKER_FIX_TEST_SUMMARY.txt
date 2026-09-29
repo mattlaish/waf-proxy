@@ -1,0 +1,36 @@
+Build and Admin Startup Blocker Fix — 2026-09-30
+Status: IMPLEMENTED_TESTING_DEFERRED
+
+Parent source:
+  waf-proxy-code-duplication-consolidation-2026-09-28.zip
+  SHA-256 0756e864dd6ef8cc474477665666b2e3000a75cff18c49e627b0553dfd7400c5
+
+Implemented fixes:
+  - admin.go imports standard-library errors for existing errors.New paths.
+  - Positive-Schema exception toggle route is now:
+      POST /api/security/schema/enforcement/exceptions/{exception_id}/toggle
+  - Shipping Console calls the same explicit toggle route.
+  - admin_route_registration_test.go fails on any Admin handler registration panic.
+  - dependency-free blocker source gate is wired into build.sh and CI and
+    registers the complete route inventory with stdlib http.ServeMux.
+
+Executed exact-source evidence:
+  BUILD_STARTUP_BLOCKER_FIX_SOURCE_GATE_PASS checks=13 routes=139
+  Standalone stdlib ServeMux registration: PASS, routes=139
+  API/source gates: 69/47/46/72/33/56/45/58/83/100/110/156/259/134/190/80 PASS
+  Markdown review gate: 86 files PASS
+  Root Go source shape: 96 files PASS
+  OpenAI source contract: 16/16 PASS; isolated tests PASS
+  WAF package-source: PASS
+  Package-builder tests: 9/9 PASS
+  Admin embedded JavaScript syntax: PASS
+  Changed Go gofmt: PASS
+
+Canonical Go qualification on this host:
+  GOTOOLCHAIN=local go mod tidy -diff: BLOCKED_ENVIRONMENT / NOT_RUN
+  GOTOOLCHAIN=local CGO_ENABLED=0 go build ./...: BLOCKED_ENVIRONMENT / NOT_RUN
+  GOTOOLCHAIN=local CGO_ENABLED=0 go vet ./...: BLOCKED_ENVIRONMENT / NOT_RUN
+  Targeted route/API64 Go tests: BLOCKED_ENVIRONMENT / NOT_RUN
+  Reason: host Go 1.23.2; go.mod requires Go 1.25.0; external toolchain/module retrieval unavailable.
+
+No TESTED/RELEASED/buildable claim is made from source or packaging gates.

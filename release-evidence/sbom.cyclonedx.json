@@ -191,7 +191,7 @@
         }
       ],
       "type": "application",
-      "version": "code-duplication-consolidation-2026-09-28"
+      "version": "build-admin-startup-blocker-fix-2026-09-30"
     },
     "tools": {
       "components": [
@@ -203,7 +203,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:82a581dc-a783-50c5-9099-9ed6fd525831",
+  "serialNumber": "urn:uuid:2ab1935e-6102-5b3f-aa62-18e1f7280d4e",
   "specVersion": "1.5",
   "version": 1
 }

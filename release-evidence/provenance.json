@@ -1,11 +1,11 @@
 {
   "artifact_type": "SOURCE_ARCHIVE",
   "build_variant": "source",
-  "cyclonedx_sha256": "0f96f57251e7fe7270bc7faca3dfd6cb9b3469521e13bf651d9c9d158eee2727",
-  "release_evidence_sha256": "58469205818808da27e4756bfb76f661ef3a6e20535484ce6e94304ebee469de",
+  "cyclonedx_sha256": "0055f3d7e463ae440c6ec0d8a2a29274382b488042740d4f15b166a99c63e254",
+  "release_evidence_sha256": "5ac64d3c7347014b097d19997c3c1228d6b2dc23d3ccf9f0b8d9d0f274fe7834",
   "schema_version": 1,
   "signature_state": "NOT_VERIFIED_IN_ARCHIVE",
-  "source_manifest_sha256": "7e13a8e6b3b93a31e8af336b6cd3f86105be8e228896f0fc507fa19b2b8ee0f8",
-  "spdx_sha256": "7f76cfbb50ad04417ceadf965e0dfe00d7175b498dae2496cec3ceae686b30b8",
+  "source_manifest_sha256": "5148a96488d29d42fc6540b1cbab53987b4c34610c876f28e67915eb65dcf2a8",
+  "spdx_sha256": "f660a202115e4d5d03f8e6bbe003d776fddc61881a6ca9a296634f6b0b39aed7",
   "truth_boundary": "Cross-digest binding proves internal consistency only. Producer authenticity requires detached signature verification with an approved public key."
 }

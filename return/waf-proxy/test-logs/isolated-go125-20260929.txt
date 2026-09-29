@@ -1,0 +1,20 @@
+Environment: Windows, official portable Go 1.25.0, named-file isolated harness.
+Shared page schema: OWI-1.0 page.schema.json from user-supplied packet.
+
+> go test -v dashboard_reader.go dashboard_reader_store.go dashboard_reader_isolated_test.go
+=== RUN   TestDashboardReaderAuthScopeRevocation
+--- PASS: TestDashboardReaderAuthScopeRevocation (0.03s)
+=== RUN   TestDashboardReaderSnapshotRecoveryAndGap
+--- PASS: TestDashboardReaderSnapshotRecoveryAndGap (0.05s)
+=== RUN   TestDashboardReaderDetectionDeltaPrivacy
+--- PASS: TestDashboardReaderDetectionDeltaPrivacy (0.02s)
+=== RUN   TestDashboardReaderSharedPageSchema
+--- PASS: TestDashboardReaderSharedPageSchema (0.05s)
+PASS
+ok  command-line-arguments  0.360s
+
+> go vet dashboard_reader.go dashboard_reader_store.go dashboard_reader_isolated_test.go
+exit 0 (no diagnostics)
+
+Full-root test and tidy-diff failure details are recorded in test-results.md;
+they were not represented as passing in this log.
