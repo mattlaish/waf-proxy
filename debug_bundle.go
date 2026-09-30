@@ -3,7 +3,6 @@ package main
 import (
 	"archive/zip"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
