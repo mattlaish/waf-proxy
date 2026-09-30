@@ -1,0 +1,10 @@
+{
+  "contract": "operator-workspace.integration.v1",
+  "schema_version": "1.0",
+  "source_product": "WAF",
+  "source_instance_id": "waf-proxy-fixture-01",
+  "status": "READY",
+  "observed_at": "2026-09-30T03:54:11Z",
+  "export_ready": true,
+  "reason_codes": []
+}

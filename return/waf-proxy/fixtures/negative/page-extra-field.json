@@ -1,0 +1,133 @@
+{
+  "contract": "operator-workspace.integration.v1",
+  "schema_version": "1.0",
+  "source_product": "WAF",
+  "source_instance_id": "waf-proxy-fixture-01",
+  "resource_kind": "DETECTION",
+  "sync_mode": "SNAPSHOT",
+  "source_snapshot_id": "snap-49a3fcdf9da48ee49c22fe52",
+  "coverage": {
+    "state": "COMPLETE",
+    "reason_codes": []
+  },
+  "generated_at": "2026-09-30T03:54:11Z",
+  "records": [
+    {
+      "external_id": "det-c628147399ca24ca4948ae32",
+      "revision": "1",
+      "stream_sequence": "1",
+      "operation": "UPSERT",
+      "source_observed_at": "2026-09-30T03:54:11Z",
+      "source_updated_at": null,
+      "provenance": {
+        "origin": {
+          "source_product": "WAF",
+          "source_instance_id": "waf-proxy-fixture-01",
+          "resource_kind": "DETECTION",
+          "external_id": "det-c628147399ca24ca4948ae32"
+        },
+        "origin_revision": "1",
+        "origin_event_id": "det-c628147399ca24ca4948ae32",
+        "forwarded_by": [],
+        "derived_from": [],
+        "evidence_refs": [],
+        "detail_path": null
+      },
+      "payload": {
+        "attention": {
+          "code": "WAF.HIGH_SIGNAL_ATTACK",
+          "confidence": 0.85,
+          "reason_codes": [
+            "WAF_RULE_MATCH"
+          ],
+          "recommended_action_codes": [],
+          "severity": "CRITICAL",
+          "status": "OPEN"
+        },
+        "category": "WAF_RULE_MATCH",
+        "confidence": 0.85,
+        "detector_id": "coraza:942100",
+        "entity_refs": [
+          {
+            "confidence": 1,
+            "network_namespace": null,
+            "observed_at": "2026-09-30T03:54:11Z",
+            "ref": {
+              "external_id": "site:site-a",
+              "resource_kind": "ASSET",
+              "source_instance_id": "waf-proxy-fixture-01",
+              "source_product": "WAF"
+            },
+            "role": "SUBJECT",
+            "valid_until": null
+          }
+        ],
+        "lure_type": null,
+        "match_strength": "EXACT",
+        "rule_version": null,
+        "status": "OPEN",
+        "summary": "WAF rule 942100 matched on site site-a at path /api/users/{id}."
+      }
+    },
+    {
+      "external_id": "det-72c0a2120c25eee810c3ae39",
+      "revision": "1",
+      "stream_sequence": "2",
+      "operation": "UPSERT",
+      "source_observed_at": "2026-09-30T03:54:11Z",
+      "source_updated_at": null,
+      "provenance": {
+        "origin": {
+          "source_product": "WAF",
+          "source_instance_id": "waf-proxy-fixture-01",
+          "resource_kind": "DETECTION",
+          "external_id": "det-72c0a2120c25eee810c3ae39"
+        },
+        "origin_revision": "1",
+        "origin_event_id": "det-72c0a2120c25eee810c3ae39",
+        "forwarded_by": [],
+        "derived_from": [],
+        "evidence_refs": [],
+        "detail_path": null
+      },
+      "payload": {
+        "attention": {
+          "code": "WAF.HIGH_SIGNAL_ATTACK",
+          "confidence": 0.85,
+          "reason_codes": [
+            "WAF_RULE_MATCH"
+          ],
+          "recommended_action_codes": [],
+          "severity": "CRITICAL",
+          "status": "OPEN"
+        },
+        "category": "WAF_RULE_MATCH",
+        "confidence": 0.85,
+        "detector_id": "coraza:942101",
+        "entity_refs": [
+          {
+            "confidence": 1,
+            "network_namespace": null,
+            "observed_at": "2026-09-30T03:54:11Z",
+            "ref": {
+              "external_id": "site:site-a",
+              "resource_kind": "ASSET",
+              "source_instance_id": "waf-proxy-fixture-01",
+              "source_product": "WAF"
+            },
+            "role": "SUBJECT",
+            "valid_until": null
+          }
+        ],
+        "lure_type": null,
+        "match_strength": "EXACT",
+        "rule_version": null,
+        "status": "OPEN",
+        "summary": "WAF rule 942101 matched on site site-a at path /api/users/{id}."
+      }
+    }
+  ],
+  "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IlNOQVBTSE9UIiwibiI6InNuYXAtNDlhM2ZjZGY5ZGE0OGVlNDljMjJmZTUyIiwibyI6MiwidyI6NSwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2CfginhFKoeoUAce73JmITFJ-dbBvWI_Alz_j2RFj-dw",
+  "has_more": true,
+  "unexpected_secret_field": "must-be-rejected"
+}

@@ -1,0 +1,104 @@
+{
+  "contract": "operator-workspace.integration.v1",
+  "schema_version": "1.0",
+  "source_product": "WAF",
+  "source_instance_id": "waf-proxy-fixture-01",
+  "auth_profile": "opaque_bearer",
+  "resources": [
+    {
+      "path": "/api/integrations/dashboard/v1/assets",
+      "resource_kind": "ASSET",
+      "capability": "LIST_ASSETS",
+      "enabled": true,
+      "qualification": "IMPLEMENTED_UNQUALIFIED",
+      "sync_modes": [
+        "SNAPSHOT",
+        "INCREMENTAL"
+      ],
+      "stream_semantics": "STATE",
+      "bootstrap_retention_days": null,
+      "cursor_ttl_seconds": 86400,
+      "max_page_size": 500,
+      "reason_codes": []
+    },
+    {
+      "path": "/api/integrations/dashboard/v1/detections",
+      "resource_kind": "DETECTION",
+      "capability": "LIST_DETECTIONS",
+      "enabled": true,
+      "qualification": "IMPLEMENTED_UNQUALIFIED",
+      "sync_modes": [
+        "SNAPSHOT",
+        "INCREMENTAL"
+      ],
+      "stream_semantics": "HISTORY",
+      "bootstrap_retention_days": 30,
+      "cursor_ttl_seconds": 86400,
+      "max_page_size": 500,
+      "reason_codes": []
+    },
+    {
+      "path": "/api/integrations/dashboard/v1/policies",
+      "resource_kind": "POLICY",
+      "capability": "OBSERVE_POLICY",
+      "enabled": true,
+      "qualification": "IMPLEMENTED_UNQUALIFIED",
+      "sync_modes": [
+        "SNAPSHOT",
+        "INCREMENTAL"
+      ],
+      "stream_semantics": "STATE",
+      "bootstrap_retention_days": null,
+      "cursor_ttl_seconds": 86400,
+      "max_page_size": 500,
+      "reason_codes": []
+    },
+    {
+      "path": "/api/integrations/dashboard/v1/health-observations",
+      "resource_kind": "HEALTH",
+      "capability": "HEALTH",
+      "enabled": true,
+      "qualification": "IMPLEMENTED_UNQUALIFIED",
+      "sync_modes": [
+        "SNAPSHOT",
+        "INCREMENTAL"
+      ],
+      "stream_semantics": "STATE",
+      "bootstrap_retention_days": null,
+      "cursor_ttl_seconds": 86400,
+      "max_page_size": 500,
+      "reason_codes": []
+    },
+    {
+      "path": "/api/integrations/dashboard/v1/events",
+      "resource_kind": "EVENT",
+      "capability": "LIST_EVENTS",
+      "enabled": false,
+      "qualification": "NOT_IMPLEMENTED",
+      "sync_modes": [],
+      "stream_semantics": "HISTORY",
+      "bootstrap_retention_days": null,
+      "cursor_ttl_seconds": 86400,
+      "max_page_size": 500,
+      "reason_codes": [
+        "OPTIONAL_NOT_IMPLEMENTED"
+      ]
+    },
+    {
+      "path": "/api/integrations/dashboard/v1/action-status",
+      "resource_kind": "ACTION_STATUS",
+      "capability": "LIST_ACTIONS",
+      "enabled": false,
+      "qualification": "NOT_IMPLEMENTED",
+      "sync_modes": [],
+      "stream_semantics": "STATE",
+      "bootstrap_retention_days": null,
+      "cursor_ttl_seconds": 86400,
+      "max_page_size": 500,
+      "reason_codes": [
+        "OPTIONAL_NOT_IMPLEMENTED"
+      ]
+    }
+  ],
+  "actions": []
+}

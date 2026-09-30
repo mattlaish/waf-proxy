@@ -1,0 +1,58 @@
+{
+  "contract": "operator-workspace.integration.v1",
+  "schema_version": "1.0",
+  "source_product": "WAF",
+  "source_instance_id": "waf-proxy-fixture-01",
+  "resource_kind": "POLICY",
+  "sync_mode": "SNAPSHOT",
+  "source_snapshot_id": "snap-4925b3e98b1feaef0c265661",
+  "coverage": {
+    "state": "COMPLETE",
+    "reason_codes": []
+  },
+  "generated_at": "2026-09-30T03:54:11Z",
+  "records": [
+    {
+      "external_id": "policy:default",
+      "revision": "1",
+      "stream_sequence": "1",
+      "operation": "UPSERT",
+      "source_observed_at": "2026-09-30T03:54:11Z",
+      "source_updated_at": null,
+      "provenance": {
+        "origin": {
+          "source_product": "WAF",
+          "source_instance_id": "waf-proxy-fixture-01",
+          "resource_kind": "POLICY",
+          "external_id": "policy:default"
+        },
+        "origin_revision": "1",
+        "origin_event_id": null,
+        "forwarded_by": [],
+        "derived_from": [],
+        "evidence_refs": [],
+        "detail_path": null
+      },
+      "payload": {
+        "active_generation": "5e8ed7834f746ffb",
+        "attention": null,
+        "content_digest": "sha256:5e8ed7834f746ffbc7118d0865c0f5377a10bc347949bc89486f2351812867e1",
+        "desired_generation": "5e8ed7834f746ffb",
+        "enforcement_state": "ENFORCING",
+        "entity_refs": [],
+        "policy_type": "CORAZA_CRS_POLICY",
+        "scope_refs": [
+          {
+            "external_id": "site:site-a",
+            "resource_kind": "ASSET",
+            "source_instance_id": "waf-proxy-fixture-01",
+            "source_product": "WAF"
+          }
+        ],
+        "summary": "WAF policy default."
+      }
+    }
+  ],
+  "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiUE9MSUNZIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MSwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX0MUYAr0l6TlWCFyYf2Jol2kiKX0ngXVOtNKtjFLDJeWA",
+  "has_more": false
+}

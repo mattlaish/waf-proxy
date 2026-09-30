@@ -1,0 +1,127 @@
+[
+  {
+    "case_id": "T-01",
+    "stage": "transport",
+    "setup": "exact connector httptest; no Authorization header",
+    "request_fixture": "GET /health",
+    "expected_status": 401,
+    "expected_code": "AUTH_REQUIRED",
+    "expected_headers": {},
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  },
+  {
+    "case_id": "T-02",
+    "stage": "transport",
+    "setup": "health-only principal requests assets",
+    "request_fixture": "GET /assets",
+    "expected_status": 403,
+    "expected_code": "FORBIDDEN",
+    "expected_headers": {},
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  },
+  {
+    "case_id": "T-03",
+    "stage": "transport",
+    "setup": "snapshot cursor replayed by different principal",
+    "request_fixture": "GET /assets?limit=2&cursor=<fixture>",
+    "expected_status": 409,
+    "expected_code": "RESET_REQUIRED",
+    "expected_headers": {},
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  },
+  {
+    "case_id": "T-04",
+    "stage": "transport",
+    "setup": "test quota rate=0.01 burst=1",
+    "request_fixture": "GET /health twice",
+    "expected_status": 429,
+    "expected_code": "RATE_LIMITED",
+    "expected_headers": {
+      "Retry-After": "integer seconds; equals retry_after_seconds"
+    },
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  },
+  {
+    "case_id": "T-05",
+    "stage": "transport",
+    "setup": "source hook blocks until server context deadline",
+    "request_fixture": "GET /assets",
+    "expected_status": 503,
+    "expected_code": "TEMPORARY_UNAVAILABLE",
+    "expected_headers": {},
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  },
+  {
+    "case_id": "T-06",
+    "stage": "transport",
+    "setup": "Phase A reader",
+    "request_fixture": "POST /assets",
+    "expected_status": 405,
+    "expected_code": "INVALID_REQUEST",
+    "expected_headers": {},
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  },
+  {
+    "case_id": "T-07",
+    "stage": "transport",
+    "setup": "exact ServeMux path; redirects are not followed/generated",
+    "request_fixture": "GET /health/",
+    "expected_status": 404,
+    "expected_code": "NOT_FOUND",
+    "expected_headers": {
+      "Location": "absent"
+    },
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  },
+  {
+    "case_id": "T-08",
+    "stage": "transport",
+    "setup": "Accept header validation",
+    "request_fixture": "GET /health Accept:text/html",
+    "expected_status": 400,
+    "expected_code": "INVALID_REQUEST",
+    "expected_headers": {},
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  },
+  {
+    "case_id": "T-09",
+    "stage": "transport",
+    "setup": "exact connector probe sets MaxResponseBytes below capabilities response size",
+    "request_fixture": "oversize synthetic response",
+    "expected_status": 503,
+    "expected_code": "TEMPORARY_UNAVAILABLE",
+    "expected_headers": {},
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  },
+  {
+    "case_id": "T-10",
+    "stage": "transport",
+    "setup": "real HTTPS worker-to-product path requires deployment cert/DNS/ACL",
+    "request_fixture": "TLS handshake and hostname/revocation checks",
+    "expected_status": null,
+    "expected_code": null,
+    "expected_headers": {},
+    "actual_result": "NOT_RUN",
+    "evidence_ref": null
+  },
+  {
+    "case_id": "T-11",
+    "stage": "transport",
+    "setup": "exact connector probe cancels request context and verifies limiter cleanup; live TCP disconnect remains G3",
+    "request_fixture": "client context cancel",
+    "expected_status": 503,
+    "expected_code": "TEMPORARY_UNAVAILABLE",
+    "expected_headers": {},
+    "actual_result": "PASS",
+    "evidence_ref": "test-logs/core-probe.txt"
+  }
+]

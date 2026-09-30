@@ -1,43 +1,21 @@
-# OWI-1.0 WAF reader verification (2026-09-29)
+<!-- documentation-review: 2026-09-28; classification: current-generated-return -->
+# R3 qualification results
 
-Environment: Windows host, portable Go 1.25.0; source was not deployed.
-Named-file command (with `DASHBOARD_PAGE_SCHEMA_PATH` set to supplied
-`outputs/operator-workspace-integration-2026-09-21/schemas/page.schema.json`):
+Source identity SHA-256: `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c`. Environment: local Linux sandbox; Go 1.23.2 available. Repository declares Go 1.25.x; network/module/toolchain retrieval is blocked, so integrated root Go 1.25 build/vet/test/race remains `BLOCKED_ENVIRONMENT / NOT_RUN`. Supporting connector tests are explicitly separated from product-release qualification.
 
-```text
-go test -v dashboard_reader.go dashboard_reader_store.go dashboard_reader_isolated_test.go
-go vet dashboard_reader.go dashboard_reader_store.go dashboard_reader_isolated_test.go
-```
-
-Both **PASS**. Four isolated tests cover scoped/revocable machine auth,
-cookie-only/admin-token and mutation rejection, >2-page snapshot with a
-restart and concurrent insertion, signed cursor GAP/scope reset, detection
-delta/privacy, and supplied shared-schema validation for ASSET, DETECTION,
-POLICY, HEALTH plus ASSET DELETE. The shared schema is read from the packet,
-not reproduced as a private variant.
-
-`go test -run '^TestDashboardReader' ./...` **FAIL** at root compilation on
-pre-existing duplicate `isSensitiveDebugKey`/`sanitizeDebugValue`/
-`sanitizeDebugMap` and missing `debugContextFrom`/`debugRequestContext`/
-`newDebugTransactionID`/`tlsVersionName` symbols. `go mod tidy -diff`
-**FAIL** on current `go.sum` drift. Neither issue was changed in this slice.
-`go test -race` is **NOT_RUN**: Windows race requires CGO and no C compiler
-was available. Real TLS, VM, and production traffic tests are **NOT_RUN**.
-
-| Gate | State | Scope |
-|---|---|---|
-| A01 | PARTIAL | Token/scope/revoke/cookie/admin/mutation tested; live disabled listener and TLS not tested. |
-| A02 | PARTIAL | Cursor binds tenant and scope; true multi-tenant deployment not tested. |
-| A03 | NOT_RUN | No live network/TLS binding. |
-| A04 | PARTIAL | Four UPSERT kinds and ASSET DELETE pass shared schema; negative fixture matrix incomplete. |
-| A05 | PARTIAL | Three-page/restart/insertion and empty checkpoint behavior tested; concurrency/load incomplete. |
-| A06 | PARTIAL | Revision/sequence and detection delta exercised; replay conflict matrix incomplete. |
-| A07 | NOT_RUN | Real crash/rotation/backpressure qualification absent. |
-| A08 | PARTIAL | GAP and scope-change return RESET_REQUIRED; retention expiry not tested. |
-| A09 | PARTIAL | Seeded site/query secret excluded from journal; full headers/body/config/log corpus absent. |
-| A10 | PARTIAL | Distinct asset IDs and site association schema checked; NAT/DHCP cases absent. |
-| A11 | PARTIAL | Rule hit yields no high-signal attention; pool evidence edge cases incomplete. |
-| A12 | PARTIAL | Health/capability handler exists; live deadlines, lag, quota absent. |
-| A13 | PARTIAL | ASSET DELETE schema checked; lifecycle/reopen matrix absent. |
-| A14 | PARTIAL | POST rejected in isolated handler; no live routing proof. |
-
+| Case ID | M/C/N/A | Reason | Code/config location | Test command | Environment | Source hash | Result | Evidence path | Gap owner |
+|---|---|---|---|---|---|---|---|---|---|
+| O-01 | M | R3 inventory/mapping | connector source + return package | `python3 tools/dashboard_connector_r3_source_gate.py` | local source gate | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS | `mapping.md`; `test-logs/source-gate.txt` | product |
+| O-02 | M | quota/concurrency/capacity | HTTP limiter + store caps | `go test -run 'TestOWI(RateLimit|Limiter|SnapshotCapacity|DetectionExportCapacity)'` | exact isolated connector source, Go 1.23.2 | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS supporting | `test-logs/core-probe.txt` | G3 capacity sizing |
+| O-03 | M | bounded source/lock/page + cleanup | request deadline + context-aware store lock | `go test -run 'TestOWI(DeadlineReleasesLimiter|ClientCancelReleasesLimiter|StoreContentionHonorsDeadlineAndRetry)'` | exact isolated connector source | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS supporting | `test-logs/core-probe.txt`; `core-probe-race.txt` | real socket G3 |
+| O-04 | M/C | durable snapshots/history/faults | durable JSON store + export journal | `go test -run 'TestOWI(RealProcessKillMarksCoverageGap|StoreWriteFailureFailsClosedAndRecovers|CursorAndDetectionRetentionExpiry|.*Restart.*)'` | exact isolated connector source/local filesystem | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS supporting | `test-logs/core-probe.txt` | intended filesystem/runtime G3 |
+| O-05 | C/M | opaque token + tenant/scope + GET-only | reader auth/token source + TLS listener | `go test -run 'TestOWI.*(Auth|Token|Scope|GETOnly|Mutation|Cursor)'` | exact isolated connector source | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS supporting | `test-logs/core-probe.txt` | live credential/TLS G3 |
+| O-06 | M | WAF mapper/function truth | native exporter | `go test -run 'TestOWI.*(Detection|Saniti|Fixture)'` | exact isolated connector source | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS supporting | `fixtures/attention-examples.json`; positive fixtures | live capacity thresholds G3 |
+| O-07 | M | executable return + catalogs | fixture generator + assembler/validator | `python3 tools/validate_waf_dashboard_return.py --return-dir return/waf-proxy` | local validator | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS | `test-logs/fixture-generation.txt`; `SHA256SUMS` | Dashboard G2 |
+| O-08 | M | handoff/hash integrity | return package | `sha256sum -c SHA256SUMS` | clean return tree | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS | `SHA256SUMS` | Dashboard review/pin |
+| HISTORY-30D | C | enabled DETECTION HISTORY | retention cleanup + capability declaration | `go test -run TestOWICursorAndDetectionRetentionExpiry` | accelerated local clock | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS supporting | `test-logs/core-probe.txt` | real elapsed G3 |
+| T-09 | M | oversize fail-closed | response bound | `go test -run TestOWIOversizeResponseFailsClosed` | exact isolated connector source | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS supporting | `test-logs/core-probe.txt` | product |
+| T-11 | M | cancel cleanup | context cancel | `go test -run TestOWIClientCancelReleasesLimiter` | exact isolated connector source | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | PASS supporting | `test-logs/core-probe.txt` | real TCP disconnect G3 |
+| Root-Go-1.25 | M for release | exact integrated product qualification | repository root | `GOTOOLCHAIN=local go mod tidy -diff && go build ./... && go vet ./... && go test ./... && go test -race ./...` | required toolchain unavailable | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | BLOCKED_ENVIRONMENT / NOT_RUN | `open-gaps.md` | qualification environment |
+| G2 | M | Dashboard consumer acceptance | Dashboard checkout | Dashboard fixture CLI | Dashboard unavailable | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | NOT_RUN | null | Dashboard |
+| G3 | M | real TLS/ACL/intended runtime | deployment | see deployment.md | production-like environment unavailable | `d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c` | NOT_RUN | null | deployment + Dashboard |

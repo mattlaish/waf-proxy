@@ -1,0 +1,35 @@
+TLS Session Resumption + Handshake Observability — 2026-09-30
+State: IMPLEMENTED_TESTING_DEFERRED
+Parent: waf-proxy-build-admin-startup-blocker-fix-2026-09-30.zip
+Parent SHA-256: 49450dfffeca2e45f17def136e122fac115c8fba4e8beb70a9307fe5eb6cb0e3
+
+PASS — isolated exact-core repository TLS tests (Go 1.23.2): 5 tests PASS
+PASS — isolated exact-core `go test -race`: PASS
+  - deterministic shared ticket-key derivation + rotation overlap
+  - secret/file validation
+  - real TLS 1.2 AND TLS 1.3 cross-config resumption using independent server tls.Config values
+  - full -> resumed observer accounting from tls.ConnectionState.DidResume
+  - TLS version / RSA certificate algorithm / latency accounting
+  - policy reject accounting
+
+PASS — TLS session/resumption source gate: 33/33
+PASS — root Go source shape: 99 root Go files
+PASS — existing API/source gates: 69/47/46/72/33/56/45/58/83/100/110/156/259/134/190
+PASS — duplication/route source gate: 80/80; 139 Admin/update patterns
+PASS — build/startup blocker source gate: 13/13; 139 Admin/update patterns
+PASS — package-source gate
+PASS — package-builder tests: 9/9
+
+BLOCKED_ENVIRONMENT / NOT_RUN on exact repository bytes:
+  - Go 1.25.x go mod tidy -diff
+  - Go 1.25.x go build ./...
+  - Go 1.25.x go vet ./...
+  - Go 1.25.x go test ./...
+  - Go 1.25.x race qualification
+  - real-Coraza gate
+  - real runtime .deb/.rpm build and lifecycle qualification
+
+Host Go: go1.23.2 linux/amd64
+Go 1.25 automatic toolchain retrieval: blocked by outbound DNS/network.
+Direct official Go 1.25.14 archive retrieval was also attempted but unavailable in this environment.
+A temporary full-project Go 1.23 probe was not counted as qualification and was blocked by missing external module downloads.

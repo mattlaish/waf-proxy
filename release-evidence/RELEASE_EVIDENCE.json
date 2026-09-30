@@ -2,7 +2,7 @@
   "artifact_type": "SOURCE_ARCHIVE",
   "authenticity": "UNAUTHENTICATED_UNLESS_DETACHED_SIGNATURE_VERIFIED",
   "build_variant": "source",
-  "generated_from_source_date_epoch": "2026-09-30T00:00:00Z",
+  "generated_from_source_date_epoch": "2026-09-30T04:00:00Z",
   "govulncheck": {
     "evidence_type": "govulncheck",
     "executed_at": null,
@@ -10,7 +10,7 @@
     "reason": "no govulncheck evidence supplied",
     "result_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "schema_version": 1,
-    "source_manifest_sha256": "5148a96488d29d42fc6540b1cbab53987b4c34610c876f28e67915eb65dcf2a8",
+    "source_manifest_sha256": "be085da6cebf3d9a15a8a1205d8c50f759d3f521e43acd0b7cee129d9b42d8c8",
     "status": "NOT_RUN",
     "tool": "govulncheck",
     "tool_version": "NOT_AVAILABLE"
@@ -20,12 +20,12 @@
     "required": false,
     "status": "NOT_REQUIRED_FOR_ARTIFACT_TYPE"
   },
-  "release": "build-admin-startup-blocker-fix-2026-09-30",
+  "release": "OWI-R3-CONNECTOR-2026-09-30",
   "reproducible_metadata": true,
   "schema_version": 2,
-  "source_date_epoch": 1790726400,
-  "source_file_count": 359,
-  "source_manifest_sha256": "5148a96488d29d42fc6540b1cbab53987b4c34610c876f28e67915eb65dcf2a8",
+  "source_date_epoch": 1790740800,
+  "source_file_count": 440,
+  "source_manifest_sha256": "be085da6cebf3d9a15a8a1205d8c50f759d3f521e43acd0b7cee129d9b42d8c8",
   "truth_boundary": "Integrity-bound metadata does not authenticate its producer and does not qualify Coraza, VectorScan, CRS, kTLS, QAT, or target-host runtime behavior.",
   "versions": {
     "coraza": {

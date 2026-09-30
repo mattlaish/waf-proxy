@@ -1,22 +1,9 @@
-# Open gates and requested decisions
+<!-- documentation-review: 2026-09-28; classification: current-generated-return -->
+# Open gaps
 
-1. **Approval/binding:** Auto-review blocked wiring the separate HTTPS reader
-   into WAF startup. Need explicit user authorization of the read-only metadata
-   exposure and actual A/B profile, management IP, TLS hostname/cert/CA,
-   source instance and tenant IDs. Do not bypass the rejection. No fabricated
-   `binding.json` was created.
-2. **Build baseline:** Existing dirty root source has duplicate/missing debug
-   symbols; Go 1.25 `tidy -diff` shows `go.sum` drift. Repair in a separate,
-   reviewed slice without overwriting unrelated edits.
-3. **Runtime wiring:** No detection callback, apply reconciliation, health
-   sampler, token-mint CLI, independent default-off listener lifecycle,
-   systemd/ACL/TLS deployment, or end-to-end worker connection yet.
-4. **Durability/scale:** 64 MiB append journal is intentionally fail-closed
-   with GAP; 30-day detection retention, compaction, backpressure throughput,
-   race, crash boundaries and multi-principal rotation need qualification.
-5. **Contract qualification:** A01–A14 are only partial/NOT_RUN as detailed in
-   `test-results.md`. No source-aware Dashboard adapter is supplied here.
-   Optional events/action-status and all Phase B actions remain disabled.
-6. **Return packet:** Real `binding.json`, deployed integration test logs,
-   reviewed fixture corpus and deploy-ready schema copy are withheld until
-   environment/approval and full qualification are available.
+- PRODUCT_API_LOCAL: BLOCKED. Exact connector source tests, including race, deadline/lock contention, client cancel, oversize fail-closed, real subprocess SIGKILL recovery-to-GAP, accelerated retention expiry and injected write failure/recovery, PASS on the available Go 1.23.2 supporting probe. The integrated product repository requires Go 1.25 and cannot be compiled/qualified here because the required toolchain/modules cannot be obtained; supporting probe PASS is not promoted to product-local qualification.
+- RETURN_PACKAGE: PASS for product-owned R3 return construction, schema validation and SHA256SUMS.
+- DASHBOARD_OFFLINE_ACCEPTANCE: NOT_RUN. No Dashboard checkout/fixture CLI was available in this execution environment. Dashboard owns consumer issue C-03 if it rejects `bootstrap_retention_days:null` for the disabled EVENT HISTORY lane; WAF deliberately does not claim nonexistent retention for a disabled capability.
+- LIVE_DEPLOYMENT: NOT_RUN. Requires real DNS/IP/CA/SNI, worker ACL, opaque secret provisioning, intended OS/filesystem/backend, real HTTPS transport, load/capacity and deployed restart/failure evidence.
+- Oversize response and request-context cancel are PASS locally. A real TCP socket disconnect/worker hard-deadline path remains NOT_RUN until G3.
+- Optional EVENT/ACTION_STATUS and all Phase B writers are NOT_IMPLEMENTED by design for this round.

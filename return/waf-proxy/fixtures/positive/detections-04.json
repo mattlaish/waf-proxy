@@ -1,0 +1,75 @@
+{
+  "contract": "operator-workspace.integration.v1",
+  "schema_version": "1.0",
+  "source_product": "WAF",
+  "source_instance_id": "waf-proxy-fixture-01",
+  "resource_kind": "DETECTION",
+  "sync_mode": "INCREMENTAL",
+  "source_snapshot_id": null,
+  "coverage": {
+    "state": "COMPLETE",
+    "reason_codes": []
+  },
+  "generated_at": "2026-09-30T03:54:11Z",
+  "records": [
+    {
+      "external_id": "det-ee4d26e4880fb920dfc0c804",
+      "revision": "1",
+      "stream_sequence": "6",
+      "operation": "UPSERT",
+      "source_observed_at": "2026-09-30T03:54:11Z",
+      "source_updated_at": null,
+      "provenance": {
+        "origin": {
+          "source_product": "WAF",
+          "source_instance_id": "waf-proxy-fixture-01",
+          "resource_kind": "DETECTION",
+          "external_id": "det-ee4d26e4880fb920dfc0c804"
+        },
+        "origin_revision": "1",
+        "origin_event_id": "det-ee4d26e4880fb920dfc0c804",
+        "forwarded_by": [],
+        "derived_from": [],
+        "evidence_refs": [],
+        "detail_path": null
+      },
+      "payload": {
+        "attention": {
+          "code": "WAF.HIGH_SIGNAL_ATTACK",
+          "confidence": 0.85,
+          "reason_codes": [
+            "WAF_RULE_MATCH"
+          ],
+          "recommended_action_codes": [],
+          "severity": "HIGH",
+          "status": "OPEN"
+        },
+        "category": "WAF_RULE_MATCH",
+        "confidence": 0.85,
+        "detector_id": "coraza:949110",
+        "entity_refs": [
+          {
+            "confidence": 1,
+            "network_namespace": null,
+            "observed_at": "2026-09-30T03:54:11Z",
+            "ref": {
+              "external_id": "site:site-a",
+              "resource_kind": "ASSET",
+              "source_instance_id": "waf-proxy-fixture-01",
+              "source_product": "WAF"
+            },
+            "role": "SUBJECT",
+            "valid_until": null
+          }
+        ],
+        "lure_type": null,
+        "match_strength": "EXACT",
+        "rule_version": null,
+        "status": "OPEN",
+        "summary": "WAF rule 949110 matched on site site-a at path /admin/{id}."
+      }
+    }
+  ],
+  "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6NiwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX1_TBKk4VnT7O0cloqWPUCP5gAqt6utOl13jlfYSHGrDA",
+  "has_more": false
+}

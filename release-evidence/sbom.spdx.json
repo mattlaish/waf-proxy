@@ -7,8 +7,8 @@
     ]
   },
   "dataLicense": "CC0-1.0",
-  "documentNamespace": "https://waf-proxy.invalid/spdx/2ab1935e-6102-5b3f-aa62-18e1f7280d4e",
-  "name": "build-admin-startup-blocker-fix-2026-09-30-sbom",
+  "documentNamespace": "https://waf-proxy.invalid/spdx/12639d61-5f21-5dc0-a918-454a2061fbc6",
+  "name": "OWI-R3-CONNECTOR-2026-09-30-sbom",
   "packages": [
     {
       "SPDXID": "SPDXRef-Package-WAF",
@@ -24,7 +24,7 @@
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
       "name": "waf-proxy",
-      "versionInfo": "build-admin-startup-blocker-fix-2026-09-30"
+      "versionInfo": "OWI-R3-CONNECTOR-2026-09-30"
     },
     {
       "SPDXID": "SPDXRef-GoModule-1",

@@ -1,0 +1,16 @@
+{
+  "adapter_id": "waf-proxy-owi-fixture-v1",
+  "product_type": "WAF",
+  "vendor": "Internal",
+  "protocol_version": 1,
+  "identity_sha256": "d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c",
+  "capabilities": [
+    "HEALTH",
+    "LIST_ASSETS",
+    "LIST_DETECTIONS",
+    "OBSERVE_POLICY"
+  ],
+  "capability_generation": 1,
+  "qualification_status": "UNQUALIFIED",
+  "qualification_evidence_sha256": null
+}

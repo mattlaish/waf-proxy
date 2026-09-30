@@ -1,0 +1,58 @@
+=== RUN   TestGenerateOWIReturnFixture
+    dashboard_connector_fixture_test.go:20: fixture generation is opt-in
+--- SKIP: TestGenerateOWIReturnFixture (0.00s)
+=== RUN   TestOWIAuthCapabilitiesDisabledAndMutation
+--- PASS: TestOWIAuthCapabilitiesDisabledAndMutation (0.00s)
+=== RUN   TestOWISnapshotThreePagesDeltaAndTamper
+--- PASS: TestOWISnapshotThreePagesDeltaAndTamper (0.00s)
+=== RUN   TestOWISnapshotSurvivesConnectorRestart
+--- PASS: TestOWISnapshotSurvivesConnectorRestart (0.00s)
+=== RUN   TestOWIDetectionSanitizationAndHistory
+--- PASS: TestOWIDetectionSanitizationAndHistory (0.00s)
+=== RUN   TestOWIRateLimit429RetryAfter
+--- PASS: TestOWIRateLimit429RetryAfter (0.00s)
+=== RUN   TestOWIUncleanRestartMarksDetectionCoverageGap
+--- PASS: TestOWIUncleanRestartMarksDetectionCoverageGap (0.00s)
+=== RUN   TestOWITokenRevocationReload
+--- PASS: TestOWITokenRevocationReload (0.00s)
+=== RUN   TestOWIDeadlineReleasesLimiter
+--- PASS: TestOWIDeadlineReleasesLimiter (0.02s)
+=== RUN   TestOWIPlaneSeparation
+--- PASS: TestOWIPlaneSeparation (0.00s)
+=== RUN   TestOWIWrongScopeAcceptAndNoRedirect
+--- PASS: TestOWIWrongScopeAcceptAndNoRedirect (0.00s)
+=== RUN   TestOWIAttentionMappingsHaveCounterexamples
+--- PASS: TestOWIAttentionMappingsHaveCounterexamples (0.00s)
+=== RUN   TestOWIExpiredTokenAndCursorIdentityReset
+--- PASS: TestOWIExpiredTokenAndCursorIdentityReset (0.00s)
+=== RUN   TestOWILimiterIdentityIsolationAndGlobalBound
+--- PASS: TestOWILimiterIdentityIsolationAndGlobalBound (0.00s)
+=== RUN   TestOWISnapshotCapacityRejectsWithoutInvalidatingExistingCursor
+--- PASS: TestOWISnapshotCapacityRejectsWithoutInvalidatingExistingCursor (0.00s)
+=== RUN   TestOWIDetectionExportCapacityMarksGap
+--- PASS: TestOWIDetectionExportCapacityMarksGap (0.01s)
+=== RUN   TestOWIStrictGETOnlyRejectsHEAD
+--- PASS: TestOWIStrictGETOnlyRejectsHEAD (0.00s)
+=== RUN   TestOWIDisabledOptionalScopesRejected
+--- PASS: TestOWIDisabledOptionalScopesRejected (0.00s)
+=== RUN   TestOWISecretAndTokenFilesRejectSymlinkAndBroadMode
+--- PASS: TestOWISecretAndTokenFilesRejectSymlinkAndBroadMode (0.00s)
+=== RUN   TestOWIOversizeResponseFailsClosed
+--- PASS: TestOWIOversizeResponseFailsClosed (0.00s)
+=== RUN   TestOWIClientCancelReleasesLimiter
+--- PASS: TestOWIClientCancelReleasesLimiter (0.00s)
+=== RUN   TestOWIScopeReductionInvalidatesExistingCursor
+--- PASS: TestOWIScopeReductionInvalidatesExistingCursor (0.00s)
+=== RUN   TestOWICursorAndDetectionRetentionExpiry
+--- PASS: TestOWICursorAndDetectionRetentionExpiry (0.00s)
+=== RUN   TestOWIStoreCrashHelper
+    dashboard_connector_test.go:608: subprocess helper
+--- SKIP: TestOWIStoreCrashHelper (0.00s)
+=== RUN   TestOWIRealProcessKillMarksCoverageGap
+--- PASS: TestOWIRealProcessKillMarksCoverageGap (0.01s)
+=== RUN   TestOWIStoreContentionHonorsDeadlineAndRetry
+--- PASS: TestOWIStoreContentionHonorsDeadlineAndRetry (0.03s)
+=== RUN   TestOWIStoreWriteFailureFailsClosedAndRecovers
+--- PASS: TestOWIStoreWriteFailureFailsClosedAndRecovers (0.00s)
+PASS
+ok  	owi-probe	0.119s

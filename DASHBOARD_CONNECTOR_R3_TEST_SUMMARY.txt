@@ -1,0 +1,9 @@
+WAF Proxy OWI-1.0 R3 Connector — 2026-09-30
+Status: IMPLEMENTED_TESTING_DEFERRED
+Exact isolated connector tests on available Go 1.23.2: 15/15 PASS
+Exact isolated connector go test -race: PASS
+R3 source gate: 31/31 PASS
+Return package validator: PASS (60 files, 18 positive responses, 15 negative cases, 11 transport cases)
+Root repository Go 1.25 build/vet/test/race: BLOCKED_ENVIRONMENT / NOT_RUN
+Dashboard offline acceptance: NOT_RUN
+Live deployment: NOT_RUN

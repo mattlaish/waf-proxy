@@ -22,6 +22,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -1102,7 +1103,9 @@ type server struct {
 	configPath          string
 	tlsBrowseRoot       string
 	tlsFrontend         *tlsFrontendPublisher
+	tlsTickets          *tlsSessionTicketManager
 	bootCfg             Config
+	dashboard           *owiConnector
 }
 
 // restartPending is retained for API compatibility but is always false now:
@@ -1479,6 +1482,13 @@ func (s *server) buildRuntime(cfg Config) (*runtimeState, error) {
 					rt.close()
 					return nil, fmt.Errorf("site %q: tls: %w", sc.Name, err)
 				}
+				if cert.Leaf == nil && len(cert.Certificate) > 0 {
+					cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
+					if err != nil {
+						rt.close()
+						return nil, fmt.Errorf("site %q: tls leaf certificate: %w", sc.Name, err)
+					}
+				}
 				sr.cert = &cert
 			}
 		}
@@ -1705,8 +1715,9 @@ func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode,
 		WithDirectives(vectorControl).
 		WithDirectivesFromFile(policy.RulesPath).
 		WithErrorCallback(func(rule types.MatchedRule) {
+			matchAt := time.Now().UTC()
 			rec := matchRec{
-				Time:     time.Now().Format("15:04:05"),
+				Time:     matchAt.Format("15:04:05"),
 				Site:     siteName,
 				RuleID:   rule.Rule().ID(),
 				Severity: rule.Rule().Severity().String(),
@@ -1721,6 +1732,9 @@ func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode,
 			s.syslog.forwardMatch(rec)
 			if s.matchLogs != nil {
 				s.matchLogs.enqueue(rec)
+			}
+			if s.dashboard != nil {
+				s.dashboard.noteWAFMatch(rec, matchAt)
 			}
 			// Join the match to the live request so DetectionOnly analysis gets
 			// method/query/headers/body as well as the rule and matched value.
@@ -2159,6 +2173,19 @@ func main() {
 		log.Error("HA config sync requires a stable dedicated replication token", "hint", "set WAF_HA_PEER_TOKEN or -ha-peer-token")
 		os.Exit(1)
 	}
+	tlsTicketSecret, err := loadTLSSessionTicketSecret()
+	if err != nil {
+		log.Error("invalid TLS session-ticket secret configuration", "err", err)
+		os.Exit(1)
+	}
+	tlsTickets, err := newTLSSessionTicketManager(tlsTicketSecret, defaultTLSSessionTicketRotation, defaultTLSSessionTicketRetained)
+	if err != nil {
+		log.Error("invalid TLS session-ticket secret", "err", err)
+		os.Exit(1)
+	}
+	if cfg.HA.Enabled && !tlsTickets.enabled() {
+		log.Warn("HA TLS session resumption is process-local; configure the same purpose-separated WAF_TLS_SESSION_TICKET_SECRET on both nodes for cross-node/restart resumption")
+	}
 
 	root, err := filepath.Abs(*browseRoot)
 	if err != nil {
@@ -2197,6 +2224,7 @@ func main() {
 		configPath:          *configPath,
 		tlsBrowseRoot:       filepath.Clean(root),
 		tlsFrontend:         newTLSFrontendPublisher(log),
+		tlsTickets:          tlsTickets,
 		bootCfg:             cfg,
 	}
 	notifier.sink = s.syslog.forwardNotify // fan notifications out to syslog
@@ -2267,7 +2295,47 @@ func main() {
 	s.matchLogs = newMatchLogPlane(log, matchLogQueueCapacity, matchLogMaxGroups, matchLogFlushInterval)
 	s.matchLogs.start()
 
+	// ── Operator Workspace / Dashboard machine-reader connector ──
+	// This is a separate read-only management plane. It never accepts the
+	// browser/admin bearer and never shares request-path enforcement authority.
+	dashboardCfg, err := loadOWIConnectorConfig(*configPath)
+	if err != nil {
+		log.Error("invalid Dashboard reader configuration", "err", err)
+		os.Exit(1)
+	}
+	var dashboardSrv *http.Server
+	if dashboardCfg.Enabled {
+		if err := owiPlaneCheck(dashboardCfg.Addr, *adminAddr, cfg.Sites); err != nil {
+			log.Error("refusing to start Dashboard reader: management/data-plane separation violated", "err", err)
+			os.Exit(1)
+		}
+		connector, err := newOWIConnector(s, dashboardCfg, log)
+		if err != nil {
+			log.Error("Dashboard reader initialization failed", "err", err)
+			os.Exit(1)
+		}
+		s.dashboard = connector
+		dashboardSrv = &http.Server{Addr: dashboardCfg.Addr, Handler: connector.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
+		go func() {
+			scheme := "https"
+			var serveErr error
+			if dashboardCfg.AllowInsecureTest && dashboardCfg.TLSCert == "" {
+				scheme = "http"
+				serveErr = dashboardSrv.ListenAndServe()
+			} else {
+				serveErr = dashboardSrv.ListenAndServeTLS(dashboardCfg.TLSCert, dashboardCfg.TLSKey)
+			}
+			if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+				log.Error("Dashboard reader server error", "err", serveErr)
+			}
+			log.Info("Dashboard reader stopped", "addr", scheme+"://"+dashboardCfg.Addr)
+		}()
+		log.Info("Dashboard reader", "addr", dashboardCfg.Addr, "base_path", owiBasePath, "auth", "opaque_bearer", "source_instance", dashboardCfg.SourceInstanceID)
+	}
+
 	// ── data-plane listeners (dynamic: opened/closed on config apply) ──
+	tlsTicketStop := make(chan struct{})
+	s.tlsTickets.start(tlsTicketStop)
 	s.listenMgr = newListenerManager(s, log)
 	s.listenMgr.startAll(cfg)
 
@@ -2357,7 +2425,16 @@ func main() {
 	shutCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	_ = adminSrv.Shutdown(shutCtx)
+	if dashboardSrv != nil {
+		_ = dashboardSrv.Shutdown(shutCtx)
+	}
 	s.listenMgr.shutdown(shutCtx)
+	if s.dashboard != nil {
+		if err := s.dashboard.close(); err != nil {
+			log.Error("Dashboard reader final persistence failed", "err", err)
+		}
+	}
+	close(tlsTicketStop)
 	if rt := s.rt.Load(); rt != nil {
 		rt.close()
 	}

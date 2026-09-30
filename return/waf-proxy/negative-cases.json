@@ -1,0 +1,127 @@
+[
+  {
+    "case_id": "N-01",
+    "stage": "decode",
+    "input_fixture": "fixtures/negative/decode-missing-contract.json",
+    "request": null,
+    "expected_error": "DECODE_REJECT",
+    "reason": "Required contract field is missing."
+  },
+  {
+    "case_id": "N-02",
+    "stage": "page_validate",
+    "input_fixture": "fixtures/negative/page-extra-field.json",
+    "request": null,
+    "expected_error": "SCHEMA_REJECT",
+    "reason": "Closed page envelope contains an additional field."
+  },
+  {
+    "case_id": "N-03",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/wrong-product.json",
+    "request": null,
+    "expected_error": "SOURCE_PRODUCT_MISMATCH",
+    "reason": "Page is for a different product type."
+  },
+  {
+    "case_id": "N-04",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/wrong-source.json",
+    "request": null,
+    "expected_error": "SOURCE_INSTANCE_MISMATCH",
+    "reason": "Page is for a different source instance."
+  },
+  {
+    "case_id": "N-05",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/wrong-kind.json",
+    "request": null,
+    "expected_error": "RESOURCE_KIND_MISMATCH",
+    "reason": "Route/resource kind cannot change within a lane."
+  },
+  {
+    "case_id": "N-06",
+    "stage": "page_validate",
+    "input_fixture": "fixtures/negative/invalid-revision.json",
+    "request": null,
+    "expected_error": "SCHEMA_REJECT",
+    "reason": "revision must be a positive decimal string."
+  },
+  {
+    "case_id": "N-07",
+    "stage": "page_validate",
+    "input_fixture": "fixtures/negative/invalid-utc.json",
+    "request": null,
+    "expected_error": "SCHEMA_REJECT",
+    "reason": "source_observed_at must be UTC RFC3339."
+  },
+  {
+    "case_id": "N-08",
+    "stage": "page_validate",
+    "input_fixture": "fixtures/negative/delete-nonempty-payload.json",
+    "request": null,
+    "expected_error": "SCHEMA_REJECT",
+    "reason": "DELETE requires an empty payload."
+  },
+  {
+    "case_id": "N-09",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/empty-more.json",
+    "request": null,
+    "expected_error": "EMPTY_MORE_REJECT",
+    "reason": "has_more=true cannot carry an empty records array."
+  },
+  {
+    "case_id": "N-10",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/cursor-no-progress.json",
+    "request": null,
+    "expected_error": "CURSOR_NO_PROGRESS",
+    "reason": "A multi-page chain must advance its cursor."
+  },
+  {
+    "case_id": "N-11",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/snapshot-drift.json",
+    "request": null,
+    "expected_error": "SNAPSHOT_DRIFT",
+    "reason": "SNAPSHOT source_snapshot_id must remain stable."
+  },
+  {
+    "case_id": "N-12",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/old-revision.json",
+    "request": null,
+    "expected_error": "OLD_REVISION",
+    "reason": "Older revisions cannot roll back projected state."
+  },
+  {
+    "case_id": "N-13",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/equal-revision-drift.json",
+    "request": null,
+    "expected_error": "EQUAL_REVISION_DRIFT",
+    "reason": "Same revision with different content is a conflict."
+  },
+  {
+    "case_id": "N-14",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/cross-tenant.json",
+    "request": {
+      "tenant_id": "other-tenant"
+    },
+    "expected_error": "TENANT_MISMATCH",
+    "reason": "Fixture page cannot cross tenant visibility."
+  },
+  {
+    "case_id": "N-15",
+    "stage": "sync",
+    "input_fixture": "fixtures/negative/limit-bound-cursor-change.json",
+    "request": {
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiU05BUFNIT1QiLCJuIjoic25hcC00MWU2MjYwOTg3MGJkNzcwNzNiMWNlZjIiLCJvIjoyLCJ3Ijo2LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfS6_onDzTl1RM_ESUm4nKP3RR93j6Ntk7kGBJIqsFhay",
+      "page_size": 3
+    },
+    "expected_error": "RESET_REQUIRED",
+    "reason": "Product cursor is bound to page size; retry must preserve limit."
+  }
+]

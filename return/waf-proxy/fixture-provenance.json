@@ -1,0 +1,60 @@
+{
+  "purpose": "OFFLINE_FIXTURE_ONLY",
+  "source_version": "2026-09-30-OWI-R3-CONNECTOR-HARDENED",
+  "source_instance_id": "waf-proxy-fixture-01",
+  "tenant_id": "fixture-tenant-01",
+  "generator": "go test -run TestGenerateOWIReturnFixture with WAF_OWI_RETURN_FIXTURE_DIR, then tools/assemble_waf_dashboard_return.py",
+  "clock": "runtime UTC clock; cursor chains are internally consistent within this generated bundle",
+  "source_files": [
+    {
+      "path": "dashboard_connector_export.go",
+      "sha256": "b86264bf9aa0e762a0ef9bf08b2892e2bb2de2fdb31ffc7ed7a9cd1e9bf58c11"
+    },
+    {
+      "path": "dashboard_connector_fixture_test.go",
+      "sha256": "9586ef9a75c14f417f39a68a105102bc835eeb3de17e463aa9d0e4c0377daf30"
+    },
+    {
+      "path": "dashboard_connector_http.go",
+      "sha256": "711a613a7dc99e42ad01aba51eeb961deb3bd8cd3d1adc9e98d9c021a6696b0b"
+    },
+    {
+      "path": "dashboard_connector_store.go",
+      "sha256": "225266e0e96631a34cf9aeb35cbb21755d05d719dcddab6b632bf7cfc4bb82ef"
+    },
+    {
+      "path": "dashboard_connector_test.go",
+      "sha256": "a8d9515af0915c43d8d04624489b1de50188e125ae51c31bf4a8f71e326078dd"
+    },
+    {
+      "path": "dashboard_connector_types.go",
+      "sha256": "7f23023f7740bfd16a276a1d5394dec999ab00de75df7802ca93587c8ad7bd9e"
+    },
+    {
+      "path": "go.mod",
+      "sha256": "4b507543087e107799cd12d9c619add8f1f444ce65bf0bdef81efbc40eb84653"
+    },
+    {
+      "path": "main.go",
+      "sha256": "4b6091c5cdba3c7d381acc8e30847ad5c7ca04b1c694f7bb3ae858ee53161d36"
+    },
+    {
+      "path": "tools/waf_dashboard_token.py",
+      "sha256": "407ec7de02a47444892fc6e100688cb06d8eb920b50e049593272beb35dd758c"
+    }
+  ],
+  "sanitization": [
+    "URL query removed",
+    "numeric/hex-like path identifiers templated to {id}",
+    "Authorization/Cookie/request body/raw headers are not exported",
+    "machine token represented only by secret_ref outside product source"
+  ],
+  "scenarios": [
+    "health/capabilities authenticated control reads",
+    "ASSET 3-page snapshot -> non-empty delta -> empty delta",
+    "DETECTION 3-page snapshot -> non-empty delta -> empty delta",
+    "POLICY snapshot -> non-empty delta -> empty delta",
+    "HEALTH snapshot -> non-empty delta -> empty delta",
+    "three WAF attention positive/counterexample pairs"
+  ]
+}

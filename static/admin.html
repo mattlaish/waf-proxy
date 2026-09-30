@@ -2469,7 +2469,9 @@
         {lbl:"Requests",key:"req_per_sec",val:(cur.req_per_sec||0).toFixed(1)+"/s",        col:"rgb(220,190,120)"},
         {lbl:"Net out",key:"out_bps",     val:fmtBps(cur.out_bps||0),                       col:"rgb(200,150,220)"},
         {lbl:"Net in", key:"in_bps",      val:fmtBps(cur.in_bps||0),                        col:"rgb(160,160,220)"},
-        {lbl:"TLS handshakes",key:"tls_hs_per_sec",val:(cur.tls_hs_per_sec||0).toFixed(1)+"/s",col:"rgb(230,140,140)"},
+        {lbl:"TLS attempts",key:"tls_hs_per_sec",val:(cur.tls_hs_per_sec||0).toFixed(1)+"/s",col:"rgb(230,140,140)"},
+        {lbl:"TLS resumed",key:"tls_resumed_per_sec",val:(cur.tls_resume_pct||0).toFixed(0)+"%",col:"rgb(120,200,190)"},
+        {lbl:"TLS p95",key:"tls_handshake_p95_ms",val:(cur.tls_handshake_p95_ms||0).toFixed(0)+" ms",col:"rgb(210,170,120)"},
       ];
       const host=$("dash_metrics"); if(!host) return;
       // build cards once, then just redraw

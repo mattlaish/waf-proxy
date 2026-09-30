@@ -1,5 +1,45 @@
 # New Chat Handover Prompt
 
+
+## Current canonical addendum — 2026-09-30 — TLS Session Resumption + Handshake Observability
+
+This source now includes the **TLS Session Resumption + Handshake Observability**
+slice on top of `waf-proxy-build-admin-startup-blocker-fix-2026-09-30.zip`
+(parent SHA-256 `49450dfffeca2e45f17def136e122fac115c8fba4e8beb70a9307fe5eb6cb0e3`).
+Project state remains **IMPLEMENTED_TESTING_DEFERRED**. This is an operational
+TLS/performance slice, **not API-9**; API-1 through API-8 enforcement and state
+authority boundaries are unchanged.
+
+The built-in Go TLS path can now use a purpose-separated runtime-only shared
+session-ticket secret to derive a deterministic rotating current+previous key
+ring for restart-stable and HA cross-node resumption. The secret is supplied by
+`WAF_TLS_SESSION_TICKET_SECRET` or a private
+`WAF_TLS_SESSION_TICKET_SECRET_FILE`; it is not persisted in Config, returned by
+Admin APIs, HA-synchronized, or logged, and must not reuse the HA peer-token
+value. When unset, Go process-local automatic tickets remain the compatibility
+fallback and cross-node/restart resumption is not claimed. External TLS frontend
+termination remains outside this key manager.
+
+Handshake observability now records authoritative successful full/resumed state
+from `tls.ConnectionState.DidResume`, TLS 1.2/1.3, full-handshake certificate key
+algorithm, handshake-processing average/p95, and policy rejects. `/api/metrics`,
+`/api/status`, and the shipping Console expose the new data. See
+`TLS_SESSION_RESUMPTION_HANDSHAKE_OBSERVABILITY.md`.
+
+Current evidence: dedicated TLS source gate **33/33 PASS**, root Go source-shape
+**99 files PASS**, existing API/static source gates remain PASS, duplication and
+route gate remains **80/80 with 139 Admin/update patterns**, blocker-fix route
+gate remains **13/13 with 139 patterns**, package-source PASS, and package-builder
+**9/9 PASS**. A dependency-free isolated exact-core TLS probe on Go 1.23.2 passed all five
+repository TLS tests, including TLS 1.2/TLS 1.3 cross-config resumption, and
+passed `go test -race`; it is not canonical repository qualification. Exact-source Go 1.25 tidy/build/vet/test/race
+and runtime package qualification remain **BLOCKED_ENVIRONMENT / NOT_RUN** here
+because the required toolchain/modules cannot be retrieved on this host. No
+`TESTED` or `RELEASED` promotion is made.
+
+This section supersedes earlier sections labelled current/canonical when they
+conflict; dated historical evidence below remains historical.
+
 ## Current canonical baseline — 2026-09-28
 
 The current source is the **Code Duplication Review and Consolidation** working
@@ -170,5 +210,12 @@ The current source fixes two release-blocking defects found during external Go 1
 This does **not** promote the source to `TESTED` or `RELEASED`. On the current execution host, canonical `GOTOOLCHAIN=local` Go 1.25 `go mod tidy -diff`, root build, vet, targeted Admin/API64 tests, and race remain `BLOCKED_ENVIRONMENT / NOT_RUN` because only Go 1.23.2 is installed and external Go toolchain/module retrieval is unavailable. Packaging/source-manifest integrity is not a substitute for those root compilation gates. No API-security authority changes are introduced: API-6/API-7 remain non-enforcing, API-8 retains explicit deterministic GraphQL ENFORCE authority, and OpenAI remains advisory only.
 
 Continuation point: use this blocker-fixed tree as the current source, not the 2026-09-28 consolidation ZIP. Do not restore the ambiguous exception-toggle route. The next qualification step is to run the exact final bytes under pinned Go 1.25 with `go mod tidy -diff`, `CGO_ENABLED=0 go build ./...`, `go vet ./...`, the targeted Admin route/API64 tests, full tests, and race tests before any buildable/PASS or release claim.
+## 2026-09-30 — OWI-1.0 R3 Dashboard Connector
+
+Status remains **IMPLEMENTED_TESTING_DEFERRED**. This is a product integration slice, **not API-9**, and it does not change API-1 through API-8 enforcement authority. The WAF now exposes a separate read-only management reader at `/api/integrations/dashboard/v1` for required ASSET, DETECTION, POLICY and HEALTH lanes using a dedicated digest-only opaque bearer identity. Optional EVENT/ACTION_STATUS remain disabled and `actions=[]`.
+
+R3 controls implemented in source include per-tenant+principal rate/concurrency plus a global ceiling, strict GET-only handling including HEAD rejection, an 8s default request deadline propagated into source sync and context-aware store-lock acquisition, hard snapshot/export/response bounds, durable cursor/snapshot/revision state, non-blocking WAF security export with explicit GAP semantics, fail-closed durability after write errors, opaque-token expiry/rotation/revoke, owner-only non-symlink token/cursor-secret files, TLS >=1.2 on the built-in reader listener, tenant/scope-bound cursors, and allow-listed sanitization. No Dashboard registry/validator/UI code is modified.
+
+Supporting exact connector-source evidence on the available Go 1.23.2 host is **25 PASS / 2 intentional SKIP**, with the same set passing under `-race`; real subprocess SIGKILL→restart/GAP, store contention deadline/retry, injected write failure/recovery, client cancellation, oversize failure, scope reduction, and accelerated retention expiry are covered. The R3 source gate is **38/38 PASS**. The regenerated product return validates **61 files, 18 positive responses, 15 negative cases and 11 transport cases**. Integrated repository Go 1.25 build/vet/test/race remains `BLOCKED_ENVIRONMENT / NOT_RUN`; G2 Dashboard offline acceptance and G3 live TLS/ACL/intended-runtime qualification remain `NOT_RUN`.
 
 <!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->

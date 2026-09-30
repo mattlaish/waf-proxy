@@ -1,0 +1,4 @@
+=== RUN   TestGenerateOWIReturnFixture
+--- PASS: TestGenerateOWIReturnFixture (0.05s)
+PASS
+ok  	owi-probe	0.051s

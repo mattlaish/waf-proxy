@@ -1,0 +1,44 @@
+CREATE
+<redacted-one-time-token>
+ROTATE_TO_READER_2
+<redacted-one-time-token>
+REVOKE_OLD
+LIST_SAFE
+{
+  "version": 1,
+  "tokens": [
+    {
+      "id": "reader-1",
+      "principal": "dashboard-reader",
+      "tenant_id": "tenant-1",
+      "scopes": [
+        "dashboard:read:assets",
+        "dashboard:read:capabilities",
+        "dashboard:read:detections",
+        "dashboard:read:health",
+        "dashboard:read:health-observations",
+        "dashboard:read:policies"
+      ],
+      "issued_at": "2026-09-30T03:55:38Z",
+      "expires_at": "2026-10-01T03:55:39Z",
+      "revoked_at": "2026-09-30T03:55:39Z"
+    },
+    {
+      "id": "reader-2",
+      "principal": "dashboard-reader",
+      "tenant_id": "tenant-1",
+      "scopes": [
+        "dashboard:read:assets",
+        "dashboard:read:capabilities",
+        "dashboard:read:detections",
+        "dashboard:read:health",
+        "dashboard:read:health-observations",
+        "dashboard:read:policies"
+      ],
+      "issued_at": "2026-09-30T03:55:39Z",
+      "expires_at": "2026-10-30T03:55:39Z",
+      "revoked_at": null
+    }
+  ]
+}
+mode=600

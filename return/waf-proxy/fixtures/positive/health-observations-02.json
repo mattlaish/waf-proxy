@@ -1,0 +1,92 @@
+{
+  "contract": "operator-workspace.integration.v1",
+  "schema_version": "1.0",
+  "source_product": "WAF",
+  "source_instance_id": "waf-proxy-fixture-01",
+  "resource_kind": "HEALTH",
+  "sync_mode": "INCREMENTAL",
+  "source_snapshot_id": null,
+  "coverage": {
+    "state": "COMPLETE",
+    "reason_codes": []
+  },
+  "generated_at": "2026-09-30T03:54:11Z",
+  "records": [
+    {
+      "external_id": "health:waf-proxy",
+      "revision": "2",
+      "stream_sequence": "2",
+      "operation": "UPSERT",
+      "source_observed_at": "2026-09-30T03:54:00Z",
+      "source_updated_at": null,
+      "provenance": {
+        "origin": {
+          "source_product": "WAF",
+          "source_instance_id": "waf-proxy-fixture-01",
+          "resource_kind": "HEALTH",
+          "external_id": "health:waf-proxy"
+        },
+        "origin_revision": "2",
+        "origin_event_id": null,
+        "forwarded_by": [],
+        "derived_from": [],
+        "evidence_refs": [],
+        "detail_path": null
+      },
+      "payload": {
+        "attention": {
+          "code": "WAF.PROTECTION_DEGRADED",
+          "confidence": 1,
+          "reason_codes": [
+            "DRAINING"
+          ],
+          "recommended_action_codes": [],
+          "severity": "HIGH",
+          "status": "OPEN"
+        },
+        "component": "waf-proxy",
+        "entity_refs": [],
+        "metrics": [
+          {
+            "name": "observation_queue_utilization",
+            "observed_at": "2026-09-30T03:54:00Z",
+            "quality": "MEASURED",
+            "threshold": 0.8,
+            "threshold_operator": "GTE",
+            "unit": "ratio",
+            "value": 0,
+            "window_seconds": 60
+          },
+          {
+            "name": "match_log_queue_utilization",
+            "observed_at": "2026-09-30T03:54:00Z",
+            "quality": "MEASURED",
+            "threshold": 0.8,
+            "threshold_operator": "GTE",
+            "unit": "ratio",
+            "value": 0,
+            "window_seconds": 60
+          },
+          {
+            "name": "dashboard_export_queue_utilization",
+            "observed_at": "2026-09-30T03:54:00Z",
+            "quality": "MEASURED",
+            "threshold": 0.8,
+            "threshold_operator": "GTE",
+            "unit": "ratio",
+            "value": 0,
+            "window_seconds": 60
+          }
+        ],
+        "observed_at": "2026-09-30T03:54:00Z",
+        "reason_codes": [
+          "DRAINING"
+        ],
+        "state": "DEGRADED",
+        "summary": "WAF proxy runtime health observation."
+      }
+    }
+  ],
+  "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiSEVBTFRIIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MiwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2Wf2Wu2zErCPjsqCB2y68sGn0hqGCXC2G9kXbKwpAiTA",
+  "has_more": false
+}

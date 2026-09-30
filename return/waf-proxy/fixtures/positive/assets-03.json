@@ -1,0 +1,146 @@
+{
+  "contract": "operator-workspace.integration.v1",
+  "schema_version": "1.0",
+  "source_product": "WAF",
+  "source_instance_id": "waf-proxy-fixture-01",
+  "resource_kind": "ASSET",
+  "sync_mode": "SNAPSHOT",
+  "source_snapshot_id": "snap-41e62609870bd77073b1cef2",
+  "coverage": {
+    "state": "COMPLETE",
+    "reason_codes": []
+  },
+  "generated_at": "2026-09-30T03:54:11Z",
+  "records": [
+    {
+      "external_id": "virtual-service:9ae6a82500651d72bc84f151af469967",
+      "revision": "1",
+      "stream_sequence": "5",
+      "operation": "UPSERT",
+      "source_observed_at": "2026-09-30T03:54:11Z",
+      "source_updated_at": null,
+      "provenance": {
+        "origin": {
+          "source_product": "WAF",
+          "source_instance_id": "waf-proxy-fixture-01",
+          "resource_kind": "ASSET",
+          "external_id": "virtual-service:9ae6a82500651d72bc84f151af469967"
+        },
+        "origin_revision": "1",
+        "origin_event_id": null,
+        "forwarded_by": [],
+        "derived_from": [],
+        "evidence_refs": [],
+        "detail_path": null
+      },
+      "payload": {
+        "asset_type": "APPLICATION",
+        "attention": null,
+        "criticality": "UNKNOWN",
+        "display_name": "site-a@api.example.test",
+        "entity_refs": [
+          {
+            "confidence": 1,
+            "network_namespace": null,
+            "observed_at": "2026-09-30T03:54:11Z",
+            "ref": {
+              "external_id": "site:site-a",
+              "resource_kind": "ASSET",
+              "source_instance_id": "waf-proxy-fixture-01",
+              "source_product": "WAF"
+            },
+            "role": "SUBJECT",
+            "valid_until": null
+          }
+        ],
+        "identities": [
+          {
+            "assurance": "VERIFIED",
+            "kind": "PRODUCT_OBJECT_ID",
+            "namespace": "waf-proxy-fixture-01",
+            "observed_at": "2026-09-30T03:54:11Z",
+            "valid_until": null,
+            "value": "site-a@api.example.test"
+          },
+          {
+            "assurance": "VERIFIED",
+            "kind": "FQDN",
+            "namespace": "waf-proxy-fixture-01",
+            "observed_at": "2026-09-30T03:54:11Z",
+            "valid_until": null,
+            "value": "api.example.test"
+          }
+        ],
+        "last_seen_at": null,
+        "lifecycle": "ACTIVE",
+        "summary": "WAF virtual service for site site-a."
+      }
+    },
+    {
+      "external_id": "virtual-service:da0266f23a34135c25577cf690648816",
+      "revision": "1",
+      "stream_sequence": "6",
+      "operation": "UPSERT",
+      "source_observed_at": "2026-09-30T03:54:11Z",
+      "source_updated_at": null,
+      "provenance": {
+        "origin": {
+          "source_product": "WAF",
+          "source_instance_id": "waf-proxy-fixture-01",
+          "resource_kind": "ASSET",
+          "external_id": "virtual-service:da0266f23a34135c25577cf690648816"
+        },
+        "origin_revision": "1",
+        "origin_event_id": null,
+        "forwarded_by": [],
+        "derived_from": [],
+        "evidence_refs": [],
+        "detail_path": null
+      },
+      "payload": {
+        "asset_type": "APPLICATION",
+        "attention": null,
+        "criticality": "UNKNOWN",
+        "display_name": "site-a@app.example.test",
+        "entity_refs": [
+          {
+            "confidence": 1,
+            "network_namespace": null,
+            "observed_at": "2026-09-30T03:54:11Z",
+            "ref": {
+              "external_id": "site:site-a",
+              "resource_kind": "ASSET",
+              "source_instance_id": "waf-proxy-fixture-01",
+              "source_product": "WAF"
+            },
+            "role": "SUBJECT",
+            "valid_until": null
+          }
+        ],
+        "identities": [
+          {
+            "assurance": "VERIFIED",
+            "kind": "PRODUCT_OBJECT_ID",
+            "namespace": "waf-proxy-fixture-01",
+            "observed_at": "2026-09-30T03:54:11Z",
+            "valid_until": null,
+            "value": "site-a@app.example.test"
+          },
+          {
+            "assurance": "VERIFIED",
+            "kind": "FQDN",
+            "namespace": "waf-proxy-fixture-01",
+            "observed_at": "2026-09-30T03:54:11Z",
+            "valid_until": null,
+            "value": "app.example.test"
+          }
+        ],
+        "last_seen_at": null,
+        "lifecycle": "ACTIVE",
+        "summary": "WAF virtual service for site site-a."
+      }
+    }
+  ],
+  "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiSU5DUkVNRU5UQUwiLCJ3Ijo2LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfXTdbw4g-RcDyr-TByo5Gdg_YI8WvcxNDz-lIvdFxn96",
+  "has_more": false
+}

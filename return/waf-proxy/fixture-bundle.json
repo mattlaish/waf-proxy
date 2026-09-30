@@ -1,0 +1,1762 @@
+{
+  "manifest": {
+    "adapter_id": "waf-proxy-owi-fixture-v1",
+    "product_type": "WAF",
+    "vendor": "Internal",
+    "protocol_version": 1,
+    "identity_sha256": "d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c",
+    "capabilities": [
+      "HEALTH",
+      "LIST_ASSETS",
+      "LIST_DETECTIONS",
+      "OBSERVE_POLICY"
+    ],
+    "capability_generation": 1,
+    "qualification_status": "UNQUALIFIED",
+    "qualification_evidence_sha256": null
+  },
+  "product": {
+    "tenant_id": "fixture-tenant-01",
+    "product_id": "dashboard-waf-proxy-fixture-01",
+    "product_type": "WAF",
+    "enabled": true,
+    "secret_ref": "secret://systemd/waf-proxy-fixture-reader-token"
+  },
+  "responses": {
+    "/api/integrations/dashboard/v1/assets": [
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "ASSET",
+        "sync_mode": "SNAPSHOT",
+        "source_snapshot_id": "snap-41e62609870bd77073b1cef2",
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "node:app-1",
+            "revision": "1",
+            "stream_sequence": "1",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "ASSET",
+                "external_id": "node:app-1"
+              },
+              "origin_revision": "1",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "asset_type": "HOST",
+              "attention": null,
+              "criticality": "UNKNOWN",
+              "display_name": "app-1",
+              "entity_refs": [],
+              "identities": [
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "PRODUCT_OBJECT_ID",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "app-1"
+                },
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "IP",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "192.0.2.10"
+                }
+              ],
+              "last_seen_at": null,
+              "lifecycle": "ACTIVE",
+              "summary": "WAF origin node app-1."
+            }
+          },
+          {
+            "external_id": "node:app-2",
+            "revision": "1",
+            "stream_sequence": "2",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "ASSET",
+                "external_id": "node:app-2"
+              },
+              "origin_revision": "1",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "asset_type": "HOST",
+              "attention": null,
+              "criticality": "UNKNOWN",
+              "display_name": "app-2",
+              "entity_refs": [],
+              "identities": [
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "PRODUCT_OBJECT_ID",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "app-2"
+                },
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "IP",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "192.0.2.11"
+                }
+              ],
+              "last_seen_at": null,
+              "lifecycle": "ACTIVE",
+              "summary": "WAF origin node app-2."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiU05BUFNIT1QiLCJuIjoic25hcC00MWU2MjYwOTg3MGJkNzcwNzNiMWNlZjIiLCJvIjoyLCJ3Ijo2LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfS6_onDzTl1RM_ESUm4nKP3RR93j6Ntk7kGBJIqsFhay",
+        "has_more": true
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "ASSET",
+        "sync_mode": "SNAPSHOT",
+        "source_snapshot_id": "snap-41e62609870bd77073b1cef2",
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "pool:origin-a",
+            "revision": "1",
+            "stream_sequence": "3",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "ASSET",
+                "external_id": "pool:origin-a"
+              },
+              "origin_revision": "1",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "asset_type": "SERVICE",
+              "attention": null,
+              "criticality": "UNKNOWN",
+              "display_name": "origin-a",
+              "entity_refs": [],
+              "identities": [
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "PRODUCT_OBJECT_ID",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "origin-a"
+                }
+              ],
+              "last_seen_at": null,
+              "lifecycle": "ACTIVE",
+              "summary": "WAF origin pool origin-a."
+            }
+          },
+          {
+            "external_id": "site:site-a",
+            "revision": "1",
+            "stream_sequence": "4",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "ASSET",
+                "external_id": "site:site-a"
+              },
+              "origin_revision": "1",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "asset_type": "SITE",
+              "attention": null,
+              "criticality": "UNKNOWN",
+              "display_name": "site-a",
+              "entity_refs": [],
+              "identities": [
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "PRODUCT_OBJECT_ID",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "site-a"
+                },
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "FQDN",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "app.example.test"
+                },
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "FQDN",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "api.example.test"
+                }
+              ],
+              "last_seen_at": null,
+              "lifecycle": "ACTIVE",
+              "summary": "Protected WAF site site-a."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiU05BUFNIT1QiLCJuIjoic25hcC00MWU2MjYwOTg3MGJkNzcwNzNiMWNlZjIiLCJvIjo0LCJ3Ijo2LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfat__2ObPUT9RkwbeXu7kCBK4kj_3la8-0VF25BFtGw7",
+        "has_more": true
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "ASSET",
+        "sync_mode": "SNAPSHOT",
+        "source_snapshot_id": "snap-41e62609870bd77073b1cef2",
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "virtual-service:9ae6a82500651d72bc84f151af469967",
+            "revision": "1",
+            "stream_sequence": "5",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "ASSET",
+                "external_id": "virtual-service:9ae6a82500651d72bc84f151af469967"
+              },
+              "origin_revision": "1",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "asset_type": "APPLICATION",
+              "attention": null,
+              "criticality": "UNKNOWN",
+              "display_name": "site-a@api.example.test",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "identities": [
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "PRODUCT_OBJECT_ID",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "site-a@api.example.test"
+                },
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "FQDN",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "api.example.test"
+                }
+              ],
+              "last_seen_at": null,
+              "lifecycle": "ACTIVE",
+              "summary": "WAF virtual service for site site-a."
+            }
+          },
+          {
+            "external_id": "virtual-service:da0266f23a34135c25577cf690648816",
+            "revision": "1",
+            "stream_sequence": "6",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "ASSET",
+                "external_id": "virtual-service:da0266f23a34135c25577cf690648816"
+              },
+              "origin_revision": "1",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "asset_type": "APPLICATION",
+              "attention": null,
+              "criticality": "UNKNOWN",
+              "display_name": "site-a@app.example.test",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "identities": [
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "PRODUCT_OBJECT_ID",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "site-a@app.example.test"
+                },
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "FQDN",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "app.example.test"
+                }
+              ],
+              "last_seen_at": null,
+              "lifecycle": "ACTIVE",
+              "summary": "WAF virtual service for site site-a."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiSU5DUkVNRU5UQUwiLCJ3Ijo2LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfXTdbw4g-RcDyr-TByo5Gdg_YI8WvcxNDz-lIvdFxn96",
+        "has_more": false
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "ASSET",
+        "sync_mode": "INCREMENTAL",
+        "source_snapshot_id": null,
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "node:app-3",
+            "revision": "1",
+            "stream_sequence": "7",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "ASSET",
+                "external_id": "node:app-3"
+              },
+              "origin_revision": "1",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "asset_type": "HOST",
+              "attention": null,
+              "criticality": "UNKNOWN",
+              "display_name": "app-3",
+              "entity_refs": [],
+              "identities": [
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "PRODUCT_OBJECT_ID",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "app-3"
+                },
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "IP",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "192.0.2.12"
+                }
+              ],
+              "last_seen_at": null,
+              "lifecycle": "ACTIVE",
+              "summary": "WAF origin node app-3."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiSU5DUkVNRU5UQUwiLCJ3Ijo3LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfeVyMvP-cwpdPvHq61TCbz4ZGARFNjSJdO_G80yHDZG8",
+        "has_more": false
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "ASSET",
+        "sync_mode": "INCREMENTAL",
+        "source_snapshot_id": null,
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiSU5DUkVNRU5UQUwiLCJ3Ijo3LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfeVyMvP-cwpdPvHq61TCbz4ZGARFNjSJdO_G80yHDZG8",
+        "has_more": false
+      }
+    ],
+    "/api/integrations/dashboard/v1/capabilities": [
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "auth_profile": "opaque_bearer",
+        "resources": [
+          {
+            "path": "/api/integrations/dashboard/v1/assets",
+            "resource_kind": "ASSET",
+            "capability": "LIST_ASSETS",
+            "enabled": true,
+            "qualification": "IMPLEMENTED_UNQUALIFIED",
+            "sync_modes": [
+              "SNAPSHOT",
+              "INCREMENTAL"
+            ],
+            "stream_semantics": "STATE",
+            "bootstrap_retention_days": null,
+            "cursor_ttl_seconds": 86400,
+            "max_page_size": 500,
+            "reason_codes": []
+          },
+          {
+            "path": "/api/integrations/dashboard/v1/detections",
+            "resource_kind": "DETECTION",
+            "capability": "LIST_DETECTIONS",
+            "enabled": true,
+            "qualification": "IMPLEMENTED_UNQUALIFIED",
+            "sync_modes": [
+              "SNAPSHOT",
+              "INCREMENTAL"
+            ],
+            "stream_semantics": "HISTORY",
+            "bootstrap_retention_days": 30,
+            "cursor_ttl_seconds": 86400,
+            "max_page_size": 500,
+            "reason_codes": []
+          },
+          {
+            "path": "/api/integrations/dashboard/v1/policies",
+            "resource_kind": "POLICY",
+            "capability": "OBSERVE_POLICY",
+            "enabled": true,
+            "qualification": "IMPLEMENTED_UNQUALIFIED",
+            "sync_modes": [
+              "SNAPSHOT",
+              "INCREMENTAL"
+            ],
+            "stream_semantics": "STATE",
+            "bootstrap_retention_days": null,
+            "cursor_ttl_seconds": 86400,
+            "max_page_size": 500,
+            "reason_codes": []
+          },
+          {
+            "path": "/api/integrations/dashboard/v1/health-observations",
+            "resource_kind": "HEALTH",
+            "capability": "HEALTH",
+            "enabled": true,
+            "qualification": "IMPLEMENTED_UNQUALIFIED",
+            "sync_modes": [
+              "SNAPSHOT",
+              "INCREMENTAL"
+            ],
+            "stream_semantics": "STATE",
+            "bootstrap_retention_days": null,
+            "cursor_ttl_seconds": 86400,
+            "max_page_size": 500,
+            "reason_codes": []
+          },
+          {
+            "path": "/api/integrations/dashboard/v1/events",
+            "resource_kind": "EVENT",
+            "capability": "LIST_EVENTS",
+            "enabled": false,
+            "qualification": "NOT_IMPLEMENTED",
+            "sync_modes": [],
+            "stream_semantics": "HISTORY",
+            "bootstrap_retention_days": null,
+            "cursor_ttl_seconds": 86400,
+            "max_page_size": 500,
+            "reason_codes": [
+              "OPTIONAL_NOT_IMPLEMENTED"
+            ]
+          },
+          {
+            "path": "/api/integrations/dashboard/v1/action-status",
+            "resource_kind": "ACTION_STATUS",
+            "capability": "LIST_ACTIONS",
+            "enabled": false,
+            "qualification": "NOT_IMPLEMENTED",
+            "sync_modes": [],
+            "stream_semantics": "STATE",
+            "bootstrap_retention_days": null,
+            "cursor_ttl_seconds": 86400,
+            "max_page_size": 500,
+            "reason_codes": [
+              "OPTIONAL_NOT_IMPLEMENTED"
+            ]
+          }
+        ],
+        "actions": []
+      }
+    ],
+    "/api/integrations/dashboard/v1/detections": [
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "DETECTION",
+        "sync_mode": "SNAPSHOT",
+        "source_snapshot_id": "snap-49a3fcdf9da48ee49c22fe52",
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "det-c628147399ca24ca4948ae32",
+            "revision": "1",
+            "stream_sequence": "1",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "DETECTION",
+                "external_id": "det-c628147399ca24ca4948ae32"
+              },
+              "origin_revision": "1",
+              "origin_event_id": "det-c628147399ca24ca4948ae32",
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "attention": {
+                "code": "WAF.HIGH_SIGNAL_ATTACK",
+                "confidence": 0.85,
+                "reason_codes": [
+                  "WAF_RULE_MATCH"
+                ],
+                "recommended_action_codes": [],
+                "severity": "CRITICAL",
+                "status": "OPEN"
+              },
+              "category": "WAF_RULE_MATCH",
+              "confidence": 0.85,
+              "detector_id": "coraza:942100",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "lure_type": null,
+              "match_strength": "EXACT",
+              "rule_version": null,
+              "status": "OPEN",
+              "summary": "WAF rule 942100 matched on site site-a at path /api/users/{id}."
+            }
+          },
+          {
+            "external_id": "det-72c0a2120c25eee810c3ae39",
+            "revision": "1",
+            "stream_sequence": "2",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "DETECTION",
+                "external_id": "det-72c0a2120c25eee810c3ae39"
+              },
+              "origin_revision": "1",
+              "origin_event_id": "det-72c0a2120c25eee810c3ae39",
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "attention": {
+                "code": "WAF.HIGH_SIGNAL_ATTACK",
+                "confidence": 0.85,
+                "reason_codes": [
+                  "WAF_RULE_MATCH"
+                ],
+                "recommended_action_codes": [],
+                "severity": "CRITICAL",
+                "status": "OPEN"
+              },
+              "category": "WAF_RULE_MATCH",
+              "confidence": 0.85,
+              "detector_id": "coraza:942101",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "lure_type": null,
+              "match_strength": "EXACT",
+              "rule_version": null,
+              "status": "OPEN",
+              "summary": "WAF rule 942101 matched on site site-a at path /api/users/{id}."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IlNOQVBTSE9UIiwibiI6InNuYXAtNDlhM2ZjZGY5ZGE0OGVlNDljMjJmZTUyIiwibyI6MiwidyI6NSwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2CfginhFKoeoUAce73JmITFJ-dbBvWI_Alz_j2RFj-dw",
+        "has_more": true
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "DETECTION",
+        "sync_mode": "SNAPSHOT",
+        "source_snapshot_id": "snap-49a3fcdf9da48ee49c22fe52",
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "det-8578d4593fa288ef333e9d85",
+            "revision": "1",
+            "stream_sequence": "3",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "DETECTION",
+                "external_id": "det-8578d4593fa288ef333e9d85"
+              },
+              "origin_revision": "1",
+              "origin_event_id": "det-8578d4593fa288ef333e9d85",
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "attention": {
+                "code": "WAF.HIGH_SIGNAL_ATTACK",
+                "confidence": 0.85,
+                "reason_codes": [
+                  "WAF_RULE_MATCH"
+                ],
+                "recommended_action_codes": [],
+                "severity": "CRITICAL",
+                "status": "OPEN"
+              },
+              "category": "WAF_RULE_MATCH",
+              "confidence": 0.85,
+              "detector_id": "coraza:942102",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "lure_type": null,
+              "match_strength": "EXACT",
+              "rule_version": null,
+              "status": "OPEN",
+              "summary": "WAF rule 942102 matched on site site-a at path /api/users/{id}."
+            }
+          },
+          {
+            "external_id": "det-246d1d4accfe8092f17b81b0",
+            "revision": "1",
+            "stream_sequence": "4",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "DETECTION",
+                "external_id": "det-246d1d4accfe8092f17b81b0"
+              },
+              "origin_revision": "1",
+              "origin_event_id": "det-246d1d4accfe8092f17b81b0",
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "attention": {
+                "code": "WAF.HIGH_SIGNAL_ATTACK",
+                "confidence": 0.85,
+                "reason_codes": [
+                  "WAF_RULE_MATCH"
+                ],
+                "recommended_action_codes": [],
+                "severity": "CRITICAL",
+                "status": "OPEN"
+              },
+              "category": "WAF_RULE_MATCH",
+              "confidence": 0.85,
+              "detector_id": "coraza:942103",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "lure_type": null,
+              "match_strength": "EXACT",
+              "rule_version": null,
+              "status": "OPEN",
+              "summary": "WAF rule 942103 matched on site site-a at path /api/users/{id}."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IlNOQVBTSE9UIiwibiI6InNuYXAtNDlhM2ZjZGY5ZGE0OGVlNDljMjJmZTUyIiwibyI6NCwidyI6NSwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2ob_l68xva3aL61d16yxtBsbNKI8ZkU6WILYExhcSc7g",
+        "has_more": true
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "DETECTION",
+        "sync_mode": "SNAPSHOT",
+        "source_snapshot_id": "snap-49a3fcdf9da48ee49c22fe52",
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "det-106ecdc4f8354a6603a839ae",
+            "revision": "1",
+            "stream_sequence": "5",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "DETECTION",
+                "external_id": "det-106ecdc4f8354a6603a839ae"
+              },
+              "origin_revision": "1",
+              "origin_event_id": "det-106ecdc4f8354a6603a839ae",
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "attention": {
+                "code": "WAF.HIGH_SIGNAL_ATTACK",
+                "confidence": 0.85,
+                "reason_codes": [
+                  "WAF_RULE_MATCH"
+                ],
+                "recommended_action_codes": [],
+                "severity": "CRITICAL",
+                "status": "OPEN"
+              },
+              "category": "WAF_RULE_MATCH",
+              "confidence": 0.85,
+              "detector_id": "coraza:942104",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "lure_type": null,
+              "match_strength": "EXACT",
+              "rule_version": null,
+              "status": "OPEN",
+              "summary": "WAF rule 942104 matched on site site-a at path /api/users/{id}."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6NSwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX0ViVo3HxWA1k0uqbBi2tP7wAl-sJexjla-GZ42cDNQ_Q",
+        "has_more": false
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "DETECTION",
+        "sync_mode": "INCREMENTAL",
+        "source_snapshot_id": null,
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "det-ee4d26e4880fb920dfc0c804",
+            "revision": "1",
+            "stream_sequence": "6",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "DETECTION",
+                "external_id": "det-ee4d26e4880fb920dfc0c804"
+              },
+              "origin_revision": "1",
+              "origin_event_id": "det-ee4d26e4880fb920dfc0c804",
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "attention": {
+                "code": "WAF.HIGH_SIGNAL_ATTACK",
+                "confidence": 0.85,
+                "reason_codes": [
+                  "WAF_RULE_MATCH"
+                ],
+                "recommended_action_codes": [],
+                "severity": "HIGH",
+                "status": "OPEN"
+              },
+              "category": "WAF_RULE_MATCH",
+              "confidence": 0.85,
+              "detector_id": "coraza:949110",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "lure_type": null,
+              "match_strength": "EXACT",
+              "rule_version": null,
+              "status": "OPEN",
+              "summary": "WAF rule 949110 matched on site site-a at path /admin/{id}."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6NiwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX1_TBKk4VnT7O0cloqWPUCP5gAqt6utOl13jlfYSHGrDA",
+        "has_more": false
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "DETECTION",
+        "sync_mode": "INCREMENTAL",
+        "source_snapshot_id": null,
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6NiwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX1_TBKk4VnT7O0cloqWPUCP5gAqt6utOl13jlfYSHGrDA",
+        "has_more": false
+      }
+    ],
+    "/api/integrations/dashboard/v1/health": [
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "status": "READY",
+        "observed_at": "2026-09-30T03:54:11Z",
+        "export_ready": true,
+        "reason_codes": []
+      }
+    ],
+    "/api/integrations/dashboard/v1/health-observations": [
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "HEALTH",
+        "sync_mode": "SNAPSHOT",
+        "source_snapshot_id": "snap-735429249a59d9a557a077f2",
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "health:waf-proxy",
+            "revision": "1",
+            "stream_sequence": "1",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:00Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "HEALTH",
+                "external_id": "health:waf-proxy"
+              },
+              "origin_revision": "1",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "attention": null,
+              "component": "waf-proxy",
+              "entity_refs": [],
+              "metrics": [
+                {
+                  "name": "observation_queue_utilization",
+                  "observed_at": "2026-09-30T03:54:00Z",
+                  "quality": "MEASURED",
+                  "threshold": 0.8,
+                  "threshold_operator": "GTE",
+                  "unit": "ratio",
+                  "value": 0,
+                  "window_seconds": 60
+                },
+                {
+                  "name": "match_log_queue_utilization",
+                  "observed_at": "2026-09-30T03:54:00Z",
+                  "quality": "MEASURED",
+                  "threshold": 0.8,
+                  "threshold_operator": "GTE",
+                  "unit": "ratio",
+                  "value": 0,
+                  "window_seconds": 60
+                },
+                {
+                  "name": "dashboard_export_queue_utilization",
+                  "observed_at": "2026-09-30T03:54:00Z",
+                  "quality": "MEASURED",
+                  "threshold": 0.8,
+                  "threshold_operator": "GTE",
+                  "unit": "ratio",
+                  "value": 0,
+                  "window_seconds": 60
+                }
+              ],
+              "observed_at": "2026-09-30T03:54:00Z",
+              "reason_codes": [],
+              "state": "HEALTHY",
+              "summary": "WAF proxy runtime health observation."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiSEVBTFRIIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MSwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX18iS7bGKdn2T66hNM2gpuyMbPbGHOjZ08XkpIvqPAenQ",
+        "has_more": false
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "HEALTH",
+        "sync_mode": "INCREMENTAL",
+        "source_snapshot_id": null,
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "health:waf-proxy",
+            "revision": "2",
+            "stream_sequence": "2",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:00Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "HEALTH",
+                "external_id": "health:waf-proxy"
+              },
+              "origin_revision": "2",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "attention": {
+                "code": "WAF.PROTECTION_DEGRADED",
+                "confidence": 1,
+                "reason_codes": [
+                  "DRAINING"
+                ],
+                "recommended_action_codes": [],
+                "severity": "HIGH",
+                "status": "OPEN"
+              },
+              "component": "waf-proxy",
+              "entity_refs": [],
+              "metrics": [
+                {
+                  "name": "observation_queue_utilization",
+                  "observed_at": "2026-09-30T03:54:00Z",
+                  "quality": "MEASURED",
+                  "threshold": 0.8,
+                  "threshold_operator": "GTE",
+                  "unit": "ratio",
+                  "value": 0,
+                  "window_seconds": 60
+                },
+                {
+                  "name": "match_log_queue_utilization",
+                  "observed_at": "2026-09-30T03:54:00Z",
+                  "quality": "MEASURED",
+                  "threshold": 0.8,
+                  "threshold_operator": "GTE",
+                  "unit": "ratio",
+                  "value": 0,
+                  "window_seconds": 60
+                },
+                {
+                  "name": "dashboard_export_queue_utilization",
+                  "observed_at": "2026-09-30T03:54:00Z",
+                  "quality": "MEASURED",
+                  "threshold": 0.8,
+                  "threshold_operator": "GTE",
+                  "unit": "ratio",
+                  "value": 0,
+                  "window_seconds": 60
+                }
+              ],
+              "observed_at": "2026-09-30T03:54:00Z",
+              "reason_codes": [
+                "DRAINING"
+              ],
+              "state": "DEGRADED",
+              "summary": "WAF proxy runtime health observation."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiSEVBTFRIIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MiwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2Wf2Wu2zErCPjsqCB2y68sGn0hqGCXC2G9kXbKwpAiTA",
+        "has_more": false
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "HEALTH",
+        "sync_mode": "INCREMENTAL",
+        "source_snapshot_id": null,
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiSEVBTFRIIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MiwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2Wf2Wu2zErCPjsqCB2y68sGn0hqGCXC2G9kXbKwpAiTA",
+        "has_more": false
+      }
+    ],
+    "/api/integrations/dashboard/v1/policies": [
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "POLICY",
+        "sync_mode": "SNAPSHOT",
+        "source_snapshot_id": "snap-4925b3e98b1feaef0c265661",
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "policy:default",
+            "revision": "1",
+            "stream_sequence": "1",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "POLICY",
+                "external_id": "policy:default"
+              },
+              "origin_revision": "1",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "active_generation": "5e8ed7834f746ffb",
+              "attention": null,
+              "content_digest": "sha256:5e8ed7834f746ffbc7118d0865c0f5377a10bc347949bc89486f2351812867e1",
+              "desired_generation": "5e8ed7834f746ffb",
+              "enforcement_state": "ENFORCING",
+              "entity_refs": [],
+              "policy_type": "CORAZA_CRS_POLICY",
+              "scope_refs": [
+                {
+                  "external_id": "site:site-a",
+                  "resource_kind": "ASSET",
+                  "source_instance_id": "waf-proxy-fixture-01",
+                  "source_product": "WAF"
+                }
+              ],
+              "summary": "WAF policy default."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiUE9MSUNZIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MSwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX0MUYAr0l6TlWCFyYf2Jol2kiKX0ngXVOtNKtjFLDJeWA",
+        "has_more": false
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "POLICY",
+        "sync_mode": "INCREMENTAL",
+        "source_snapshot_id": null,
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [
+          {
+            "external_id": "policy:default",
+            "revision": "2",
+            "stream_sequence": "2",
+            "operation": "UPSERT",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "provenance": {
+              "origin": {
+                "source_product": "WAF",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "resource_kind": "POLICY",
+                "external_id": "policy:default"
+              },
+              "origin_revision": "2",
+              "origin_event_id": null,
+              "forwarded_by": [],
+              "derived_from": [],
+              "evidence_refs": [],
+              "detail_path": null
+            },
+            "payload": {
+              "active_generation": "332fad72432da081",
+              "attention": null,
+              "content_digest": "sha256:332fad72432da0812347f72a4179dbf6ca98401c68c87389e461eb3608b9af6b",
+              "desired_generation": "332fad72432da081",
+              "enforcement_state": "ENFORCING",
+              "entity_refs": [],
+              "policy_type": "CORAZA_CRS_POLICY",
+              "scope_refs": [
+                {
+                  "external_id": "site:site-a",
+                  "resource_kind": "ASSET",
+                  "source_instance_id": "waf-proxy-fixture-01",
+                  "source_product": "WAF"
+                }
+              ],
+              "summary": "WAF policy default."
+            }
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiUE9MSUNZIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MiwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX1gaqmnRSnzrkocfdmw0xISUmd_RHe9ivPQlnefYGHsDg",
+        "has_more": false
+      },
+      {
+        "contract": "operator-workspace.integration.v1",
+        "schema_version": "1.0",
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "POLICY",
+        "sync_mode": "INCREMENTAL",
+        "source_snapshot_id": null,
+        "coverage": {
+          "state": "COMPLETE",
+          "reason_codes": []
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "records": [],
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiUE9MSUNZIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MiwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX1gaqmnRSnzrkocfdmw0xISUmd_RHe9ivPQlnefYGHsDg",
+        "has_more": false
+      }
+    ]
+  },
+  "requests": [
+    {
+      "capability": "LIST_ASSETS",
+      "cursor": null,
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "ASSET",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "LIST_ASSETS",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiU05BUFNIT1QiLCJuIjoic25hcC00MWU2MjYwOTg3MGJkNzcwNzNiMWNlZjIiLCJvIjoyLCJ3Ijo2LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfS6_onDzTl1RM_ESUm4nKP3RR93j6Ntk7kGBJIqsFhay",
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "ASSET",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "LIST_ASSETS",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiU05BUFNIT1QiLCJuIjoic25hcC00MWU2MjYwOTg3MGJkNzcwNzNiMWNlZjIiLCJvIjo0LCJ3Ijo2LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfat__2ObPUT9RkwbeXu7kCBK4kj_3la8-0VF25BFtGw7",
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "ASSET",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "LIST_DETECTIONS",
+      "cursor": null,
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "DETECTION",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "LIST_DETECTIONS",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IlNOQVBTSE9UIiwibiI6InNuYXAtNDlhM2ZjZGY5ZGE0OGVlNDljMjJmZTUyIiwibyI6MiwidyI6NSwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2CfginhFKoeoUAce73JmITFJ-dbBvWI_Alz_j2RFj-dw",
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "DETECTION",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "LIST_DETECTIONS",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IlNOQVBTSE9UIiwibiI6InNuYXAtNDlhM2ZjZGY5ZGE0OGVlNDljMjJmZTUyIiwibyI6NCwidyI6NSwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2ob_l68xva3aL61d16yxtBsbNKI8ZkU6WILYExhcSc7g",
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "DETECTION",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "OBSERVE_POLICY",
+      "cursor": null,
+      "page_size": 1,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "POLICY",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "HEALTH",
+      "cursor": null,
+      "page_size": 1,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "HEALTH",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "LIST_ASSETS",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiSU5DUkVNRU5UQUwiLCJ3Ijo2LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfXTdbw4g-RcDyr-TByo5Gdg_YI8WvcxNDz-lIvdFxn96",
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "ASSET",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "LIST_DETECTIONS",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6NSwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX0ViVo3HxWA1k0uqbBi2tP7wAl-sJexjla-GZ42cDNQ_Q",
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "DETECTION",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "OBSERVE_POLICY",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiUE9MSUNZIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MSwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX0MUYAr0l6TlWCFyYf2Jol2kiKX0ngXVOtNKtjFLDJeWA",
+      "page_size": 1,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "POLICY",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "HEALTH",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiSEVBTFRIIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MSwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX18iS7bGKdn2T66hNM2gpuyMbPbGHOjZ08XkpIvqPAenQ",
+      "page_size": 1,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "HEALTH",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "LIST_ASSETS",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiSU5DUkVNRU5UQUwiLCJ3Ijo3LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfeVyMvP-cwpdPvHq61TCbz4ZGARFNjSJdO_G80yHDZG8",
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "ASSET",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "LIST_DETECTIONS",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6NiwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX1_TBKk4VnT7O0cloqWPUCP5gAqt6utOl13jlfYSHGrDA",
+      "page_size": 2,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "DETECTION",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "OBSERVE_POLICY",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiUE9MSUNZIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MiwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX1gaqmnRSnzrkocfdmw0xISUmd_RHe9ivPQlnefYGHsDg",
+      "page_size": 1,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "POLICY",
+      "tenant_id": "fixture-tenant-01"
+    },
+    {
+      "capability": "HEALTH",
+      "cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiSEVBTFRIIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MiwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2Wf2Wu2zErCPjsqCB2y68sGn0hqGCXC2G9kXbKwpAiTA",
+      "page_size": 1,
+      "product_id": "dashboard-waf-proxy-fixture-01",
+      "resource_kind": "HEALTH",
+      "tenant_id": "fixture-tenant-01"
+    }
+  ],
+  "negative_pages": [
+    {
+      "page": {
+        "coverage": {
+          "reason_codes": [],
+          "state": "COMPLETE"
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "has_more": true,
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiQVNTRVQiLCJtIjoiU05BUFNIT1QiLCJuIjoic25hcC00MWU2MjYwOTg3MGJkNzcwNzNiMWNlZjIiLCJvIjoyLCJ3Ijo2LCJsIjoyLCJhIjoxNzkwNzQwNDUxLCJlIjoxNzkwODI2ODUxfS6_onDzTl1RM_ESUm4nKP3RR93j6Ntk7kGBJIqsFhay",
+        "records": [
+          {
+            "external_id": "node:app-1",
+            "operation": "UPSERT",
+            "payload": {
+              "asset_type": "HOST",
+              "attention": null,
+              "criticality": "UNKNOWN",
+              "display_name": "app-1",
+              "entity_refs": [],
+              "identities": [
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "PRODUCT_OBJECT_ID",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "app-1"
+                },
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "IP",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "192.0.2.10"
+                }
+              ],
+              "last_seen_at": null,
+              "lifecycle": "ACTIVE",
+              "summary": "WAF origin node app-1."
+            },
+            "provenance": {
+              "derived_from": [],
+              "detail_path": null,
+              "evidence_refs": [],
+              "forwarded_by": [],
+              "origin": {
+                "external_id": "node:app-1",
+                "resource_kind": "ASSET",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "source_product": "WAF"
+              },
+              "origin_event_id": null,
+              "origin_revision": "1"
+            },
+            "revision": "1",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "stream_sequence": "1"
+          },
+          {
+            "external_id": "node:app-2",
+            "operation": "UPSERT",
+            "payload": {
+              "asset_type": "HOST",
+              "attention": null,
+              "criticality": "UNKNOWN",
+              "display_name": "app-2",
+              "entity_refs": [],
+              "identities": [
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "PRODUCT_OBJECT_ID",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "app-2"
+                },
+                {
+                  "assurance": "VERIFIED",
+                  "kind": "IP",
+                  "namespace": "waf-proxy-fixture-01",
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "valid_until": null,
+                  "value": "192.0.2.11"
+                }
+              ],
+              "last_seen_at": null,
+              "lifecycle": "ACTIVE",
+              "summary": "WAF origin node app-2."
+            },
+            "provenance": {
+              "derived_from": [],
+              "detail_path": null,
+              "evidence_refs": [],
+              "forwarded_by": [],
+              "origin": {
+                "external_id": "node:app-2",
+                "resource_kind": "ASSET",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "source_product": "WAF"
+              },
+              "origin_event_id": null,
+              "origin_revision": "1"
+            },
+            "revision": "1",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "stream_sequence": "2"
+          }
+        ],
+        "resource_kind": "ASSET",
+        "schema_version": "1.0",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "source_product": "WAF",
+        "source_snapshot_id": "snap-41e62609870bd77073b1cef2",
+        "sync_mode": "SNAPSHOT"
+      },
+      "route_name": "assets"
+    },
+    {
+      "page": {
+        "contract": "operator-workspace.integration.v1",
+        "coverage": {
+          "reason_codes": [],
+          "state": "COMPLETE"
+        },
+        "generated_at": "2026-09-30T03:54:11Z",
+        "has_more": true,
+        "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiREVURUNUSU9OIiwibSI6IlNOQVBTSE9UIiwibiI6InNuYXAtNDlhM2ZjZGY5ZGE0OGVlNDljMjJmZTUyIiwibyI6MiwidyI6NSwibCI6MiwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX2CfginhFKoeoUAce73JmITFJ-dbBvWI_Alz_j2RFj-dw",
+        "records": [
+          {
+            "external_id": "det-c628147399ca24ca4948ae32",
+            "operation": "UPSERT",
+            "payload": {
+              "attention": {
+                "code": "WAF.HIGH_SIGNAL_ATTACK",
+                "confidence": 0.85,
+                "reason_codes": [
+                  "WAF_RULE_MATCH"
+                ],
+                "recommended_action_codes": [],
+                "severity": "CRITICAL",
+                "status": "OPEN"
+              },
+              "category": "WAF_RULE_MATCH",
+              "confidence": 0.85,
+              "detector_id": "coraza:942100",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "lure_type": null,
+              "match_strength": "EXACT",
+              "rule_version": null,
+              "status": "OPEN",
+              "summary": "WAF rule 942100 matched on site site-a at path /api/users/{id}."
+            },
+            "provenance": {
+              "derived_from": [],
+              "detail_path": null,
+              "evidence_refs": [],
+              "forwarded_by": [],
+              "origin": {
+                "external_id": "det-c628147399ca24ca4948ae32",
+                "resource_kind": "DETECTION",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "source_product": "WAF"
+              },
+              "origin_event_id": "det-c628147399ca24ca4948ae32",
+              "origin_revision": "1"
+            },
+            "revision": "1",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "stream_sequence": "1"
+          },
+          {
+            "external_id": "det-72c0a2120c25eee810c3ae39",
+            "operation": "UPSERT",
+            "payload": {
+              "attention": {
+                "code": "WAF.HIGH_SIGNAL_ATTACK",
+                "confidence": 0.85,
+                "reason_codes": [
+                  "WAF_RULE_MATCH"
+                ],
+                "recommended_action_codes": [],
+                "severity": "CRITICAL",
+                "status": "OPEN"
+              },
+              "category": "WAF_RULE_MATCH",
+              "confidence": 0.85,
+              "detector_id": "coraza:942101",
+              "entity_refs": [
+                {
+                  "confidence": 1,
+                  "network_namespace": null,
+                  "observed_at": "2026-09-30T03:54:11Z",
+                  "ref": {
+                    "external_id": "site:site-a",
+                    "resource_kind": "ASSET",
+                    "source_instance_id": "waf-proxy-fixture-01",
+                    "source_product": "WAF"
+                  },
+                  "role": "SUBJECT",
+                  "valid_until": null
+                }
+              ],
+              "lure_type": null,
+              "match_strength": "EXACT",
+              "rule_version": null,
+              "status": "OPEN",
+              "summary": "WAF rule 942101 matched on site site-a at path /api/users/{id}."
+            },
+            "provenance": {
+              "derived_from": [],
+              "detail_path": null,
+              "evidence_refs": [],
+              "forwarded_by": [],
+              "origin": {
+                "external_id": "det-72c0a2120c25eee810c3ae39",
+                "resource_kind": "DETECTION",
+                "source_instance_id": "waf-proxy-fixture-01",
+                "source_product": "WAF"
+              },
+              "origin_event_id": "det-72c0a2120c25eee810c3ae39",
+              "origin_revision": "1"
+            },
+            "revision": "1",
+            "source_observed_at": "2026-09-30T03:54:11Z",
+            "source_updated_at": null,
+            "stream_sequence": "2"
+          }
+        ],
+        "resource_kind": "DETECTION",
+        "schema_version": "1.0",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "source_product": "WAF",
+        "source_snapshot_id": "snap-49a3fcdf9da48ee49c22fe52",
+        "sync_mode": "SNAPSHOT",
+        "unexpected_secret_field": "must-be-rejected"
+      },
+      "route_name": "detections"
+    }
+  ]
+}

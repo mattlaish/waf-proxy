@@ -181,22 +181,21 @@ func (m *listenerManager) buildServer(addr string, isTLS bool, cfg Config) *http
 			MinVersion:       tls.VersionTLS12,
 			CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
 			GetCertificate:   s.getCertificate(addr),
-			GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-				s.metrics.addTLSHandshake() // fires once per handshake attempt
-				rt := s.rt.Load()
-				if rt == nil || rt.l7Abuse == nil || hello == nil || hello.Conn == nil {
-					return nil, nil
-				}
-				peer := hello.Conn.RemoteAddr().String()
-				if host, _, err := net.SplitHostPort(peer); err == nil {
-					peer = host
-				}
-				if peer != "" && !rt.l7Abuse.allowTLSHandshakeAt(logicalAddr, peer, time.Now()) {
-					return nil, errors.New("tls handshake rate limit exceeded")
-				}
-				return nil, nil
-			},
 		}
+		installTLSHandshakeObserver(srv.TLSConfig, s.metrics, func(hello *tls.ClientHelloInfo) error {
+			rt := s.rt.Load()
+			if rt == nil || rt.l7Abuse == nil || hello == nil || hello.Conn == nil {
+				return nil
+			}
+			peer := hello.Conn.RemoteAddr().String()
+			if host, _, err := net.SplitHostPort(peer); err == nil {
+				peer = host
+			}
+			if peer != "" && !rt.l7Abuse.allowTLSHandshakeAt(logicalAddr, peer, time.Now()) {
+				return errors.New("tls handshake rate limit exceeded")
+			}
+			return nil
+		})
 	}
 	return srv
 }
@@ -244,11 +243,17 @@ func (m *listenerManager) prepare(addr string, isTLS bool, cfg Config) (*managed
 		return nil, err
 	}
 	ml.ln = ln
+	if ml.isTLS && m.srv.tlsTickets != nil {
+		m.srv.tlsTickets.attach(ml.srv.TLSConfig)
+	}
 	return ml, nil
 }
 
 func (m *listenerManager) serveBound(addr string, ml *managedListener, cfg Config) {
 	defer close(ml.done)
+	if ml.isTLS && m.srv.tlsTickets != nil {
+		defer m.srv.tlsTickets.detach(ml.srv.TLSConfig)
+	}
 	m.log.Info("listener up", "addr", addr, "public_addr", tlsfront.PublicListenForKey(cfg.TLSAcceleration, tlsFrontendSites(cfg), addr), "tls", ml.isTLS, "tls_frontend_internal", ml.socketPath != "")
 	defer func() {
 		if ml.ln != nil {

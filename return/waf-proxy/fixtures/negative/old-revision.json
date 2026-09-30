@@ -1,0 +1,102 @@
+{
+  "seen": {
+    "external_id": "node:app-1",
+    "revision": "2",
+    "stream_sequence": "1",
+    "operation": "UPSERT",
+    "source_observed_at": "2026-09-30T03:54:11Z",
+    "source_updated_at": null,
+    "provenance": {
+      "origin": {
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "ASSET",
+        "external_id": "node:app-1"
+      },
+      "origin_revision": "1",
+      "origin_event_id": null,
+      "forwarded_by": [],
+      "derived_from": [],
+      "evidence_refs": [],
+      "detail_path": null
+    },
+    "payload": {
+      "asset_type": "HOST",
+      "attention": null,
+      "criticality": "UNKNOWN",
+      "display_name": "app-1",
+      "entity_refs": [],
+      "identities": [
+        {
+          "assurance": "VERIFIED",
+          "kind": "PRODUCT_OBJECT_ID",
+          "namespace": "waf-proxy-fixture-01",
+          "observed_at": "2026-09-30T03:54:11Z",
+          "valid_until": null,
+          "value": "app-1"
+        },
+        {
+          "assurance": "VERIFIED",
+          "kind": "IP",
+          "namespace": "waf-proxy-fixture-01",
+          "observed_at": "2026-09-30T03:54:11Z",
+          "valid_until": null,
+          "value": "192.0.2.10"
+        }
+      ],
+      "last_seen_at": null,
+      "lifecycle": "ACTIVE",
+      "summary": "WAF origin node app-1."
+    }
+  },
+  "incoming": {
+    "external_id": "node:app-1",
+    "revision": "1",
+    "stream_sequence": "1",
+    "operation": "UPSERT",
+    "source_observed_at": "2026-09-30T03:54:11Z",
+    "source_updated_at": null,
+    "provenance": {
+      "origin": {
+        "source_product": "WAF",
+        "source_instance_id": "waf-proxy-fixture-01",
+        "resource_kind": "ASSET",
+        "external_id": "node:app-1"
+      },
+      "origin_revision": "1",
+      "origin_event_id": null,
+      "forwarded_by": [],
+      "derived_from": [],
+      "evidence_refs": [],
+      "detail_path": null
+    },
+    "payload": {
+      "asset_type": "HOST",
+      "attention": null,
+      "criticality": "UNKNOWN",
+      "display_name": "app-1",
+      "entity_refs": [],
+      "identities": [
+        {
+          "assurance": "VERIFIED",
+          "kind": "PRODUCT_OBJECT_ID",
+          "namespace": "waf-proxy-fixture-01",
+          "observed_at": "2026-09-30T03:54:11Z",
+          "valid_until": null,
+          "value": "app-1"
+        },
+        {
+          "assurance": "VERIFIED",
+          "kind": "IP",
+          "namespace": "waf-proxy-fixture-01",
+          "observed_at": "2026-09-30T03:54:11Z",
+          "valid_until": null,
+          "value": "192.0.2.10"
+        }
+      ],
+      "last_seen_at": null,
+      "lifecycle": "ACTIVE",
+      "summary": "WAF origin node app-1."
+    }
+  }
+}

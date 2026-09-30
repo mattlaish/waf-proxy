@@ -101,6 +101,9 @@ historical evidence.
 | `qualification/hsm/README.md` | current/canonical | Reviewed and synchronized where current source truth changed. |
 | `qualification/performance/README.md` | current/canonical | Reviewed and synchronized where current source truth changed. |
 
+| `TLS_SESSION_RESUMPTION_HANDSHAKE_OBSERVABILITY.md` | current/canonical | 2026-09-30 TLS session-resumption and handshake-observability design, configuration and qualification truth. |
+| `TLS_SESSION_RESUMPTION_HANDSHAKE_OBSERVABILITY_SOURCE_GATE_RESULT.md` | current/canonical | 2026-09-30 dependency-free source-gate evidence; not Go build/test evidence. |
+
 ## Review outcome
 
 - Confirmed current/canonical docs no longer require the removed source layers
@@ -115,3 +118,14 @@ historical evidence.
 - Canonical Go 1.25 qualification remains `BLOCKED_ENVIRONMENT / NOT_RUN`.
 
 <!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->
+
+### 2026-09-30 R3 connector additions
+
+- `DASHBOARD_CONNECTOR_R3.md` — added after the 2026-09-28 review; carries the review marker and current R3 connector truth.
+- `DASHBOARD_CONNECTOR_R3_SOURCE_GATE_RESULT.md` — added after the 2026-09-28 review; carries the review marker and current R3 connector truth.
+- `return/waf-proxy/HANDOFF.md` — added after the 2026-09-28 review; carries the review marker and current R3 connector truth.
+- `return/waf-proxy/deployment-inputs.md` — added after the 2026-09-28 review; carries the review marker and current R3 connector truth.
+- `return/waf-proxy/deployment.md` — added after the 2026-09-28 review; carries the review marker and current R3 connector truth.
+- `return/waf-proxy/mapping.md` — added after the 2026-09-28 review; carries the review marker and current R3 connector truth.
+- `return/waf-proxy/open-gaps.md` — added after the 2026-09-28 review; carries the review marker and current R3 connector truth.
+- `return/waf-proxy/test-results.md` — added after the 2026-09-28 review; carries the review marker and current R3 connector truth.

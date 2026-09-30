@@ -191,7 +191,7 @@
         }
       ],
       "type": "application",
-      "version": "build-admin-startup-blocker-fix-2026-09-30"
+      "version": "OWI-R3-CONNECTOR-2026-09-30"
     },
     "tools": {
       "components": [
@@ -203,7 +203,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:2ab1935e-6102-5b3f-aa62-18e1f7280d4e",
+  "serialNumber": "urn:uuid:12639d61-5f21-5dc0-a918-454a2061fbc6",
   "specVersion": "1.5",
   "version": 1
 }

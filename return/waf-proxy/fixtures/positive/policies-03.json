@@ -1,0 +1,17 @@
+{
+  "contract": "operator-workspace.integration.v1",
+  "schema_version": "1.0",
+  "source_product": "WAF",
+  "source_instance_id": "waf-proxy-fixture-01",
+  "resource_kind": "POLICY",
+  "sync_mode": "INCREMENTAL",
+  "source_snapshot_id": null,
+  "coverage": {
+    "state": "COMPLETE",
+    "reason_codes": []
+  },
+  "generated_at": "2026-09-30T03:54:11Z",
+  "records": [],
+  "next_cursor": "eyJ2IjoxLCJ0IjoidGVuYW50LTEiLCJwIjoiZGFzaGJvYXJkLXJlYWRlci0xIiwicyI6ImQ3YTM1NzEwMzhlYzM3Njc1OGZiNGI3ZDc3ZThmYjI3OWUwZTlkNjUzMWRlOWFmOTNhMTU5NWYyYTA3OTQwOTkiLCJpIjoid2FmLXByb3h5LWZpeHR1cmUtMDEiLCJrIjoiUE9MSUNZIiwibSI6IklOQ1JFTUVOVEFMIiwidyI6MiwibCI6MSwiYSI6MTc5MDc0MDQ1MSwiZSI6MTc5MDgyNjg1MX1gaqmnRSnzrkocfdmw0xISUmd_RHe9ivPQlnefYGHsDg",
+  "has_more": false
+}

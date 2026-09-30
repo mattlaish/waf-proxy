@@ -1,52 +1,108 @@
-Version: build-admin-startup-blocker-fix-2026-09-30
-Build Timestamp: 2026-09-30T00:00:00Z
+Version: OWI-R3-CONNECTOR-2026-09-30
+Build Timestamp: 2026-09-30T04:00:00Z
 Build Variant: source
 Reproducible Metadata: true
 Signing: NOT_CONFIGURED
-Packaged File Count Before Manifest: 364
+Packaged File Count Before Manifest: 445
 
 Tests:
-  Build and Admin Startup Blocker Fix — 2026-09-30
-  Status: IMPLEMENTED_TESTING_DEFERRED
+  ===== tools/tests/test-api12-source.py =====
+  API12_SOURCE_GATE_PASS checks= 69
+  ===== tools/tests/test-api3-source.py =====
+  API3_SOURCE_GATE_PASS checks= 47
+  ===== tools/tests/test-api4-source.py =====
+  API4_SOURCE_GATE_PASS checks=46
+  ===== tools/tests/test-api5-source.py =====
+  API5_SOURCE_GATE_PASS checks=72
+  ===== tools/tests/test-api61-source.py =====
+  API61_SOURCE_GATE_PASS checks=33
+  ===== tools/tests/test-api62-source.py =====
+  API62_SOURCE_GATE_PASS checks=56
+  ===== tools/tests/test-api63-source.py =====
+  API63_SOURCE_GATE_PASS checks=45
+  ===== tools/tests/test-api64-source.py =====
+  API64_SOURCE_GATE_PASS checks=58
+  ===== tools/tests/test-api71-source.py =====
+  API71_SOURCE_GATE_PASS checks=83
+  ===== tools/tests/test-api72-source.py =====
+  API72_SOURCE_GATE_PASS checks=100
+  ===== tools/tests/test-api73-source.py =====
+  API73_SOURCE_GATE_PASS checks=110
+  ===== tools/tests/test-api74-source.py =====
+  API74_SOURCE_GATE_PASS checks=156
+  ===== tools/tests/test-api8-source.py =====
+  API8_SOURCE_GATE_PASS checks=259
+  ===== tools/tests/test-api8-post-audit-hardening-source.py =====
+  API8_POST_AUDIT_HARDENING_SOURCE_GATE_PASS checks=134
+  ===== tools/tests/test-production-control-plane-hardening-source.py =====
+  PRODUCTION_CONTROL_PLANE_HARDENING_SOURCE_GATE_PASS checks=190
+  ===== tools/tests/test-code-duplication-review-source.py =====
+  CODE_DUPLICATION_REVIEW_SOURCE_GATE_PASS checks=80 routes=139
+  ===== tools/tests/test-build-startup-blocker-fix-source.py =====
+  BUILD_STARTUP_BLOCKER_FIX_SOURCE_GATE_PASS checks=13 routes=139
+  ===== tools/tests/test-tls-session-resumption-observability-source.py =====
+  TLS_SESSION_RESUMPTION_OBSERVABILITY_SOURCE_GATE_PASS checks=33
+  ===== tools/dashboard_connector_r3_source_gate.py =====
+  PASS fixed-prefix
+  PASS route-health
+  PASS route-capabilities
+  PASS route-assets
+  PASS route-detections
+  PASS route-policies
+  PASS route-health-observations
+  PASS route-events
+  PASS route-action-status
+  PASS opaque-bearer
+  PASS no-admin-auth-reuse
+  PASS digest-domain-separation
+  PASS token-expiry-revoke
+  PASS rotation-overlap
+  PASS per-identity-limit
+  PASS global-concurrency
+  PASS server-deadline
+  PASS snapshot-count-cap
+  PASS snapshot-record-cap
+  PASS snapshot-byte-cap
+  PASS export-row-cap
+  PASS export-byte-cap
+  PASS durable-state
+  PASS gap-on-drop
+  PASS nonblocking-hot-path
+  PASS query-sanitization
+  PASS phase-a-actions-empty
+  PASS optional-disabled
+  PASS strict-get-only
+  PASS disabled-scopes-unprovisioned
+  PASS secret-files-owner-only-nonsymlink
+  PASS management-tls-min12
+  PASS drain-persistence-gap
+  PASS context-aware-store-lock
+  PASS durability-write-fail-closed
+  PASS main-wiring
+  PASS return-package
+  PASS no-api9
+  TOTAL=38 PASS=38 FAIL=0
+  ===== tools/tests/test_waf_package_builder.py =====
+  test_build_report_has_package_hash (__main__.BuilderTests.test_build_report_has_package_hash) ... ok
+  test_default_version_contains_source_identity (__main__.BuilderTests.test_default_version_contains_source_identity) ... ok
+  test_epoch_explicit (__main__.BuilderTests.test_epoch_explicit) ... ok
+  test_fingerprint_is_stable_and_ignores_dist (__main__.BuilderTests.test_fingerprint_is_stable_and_ignores_dist) ... ok
+  test_package_command_all_uses_format_specific_arches (__main__.BuilderTests.test_package_command_all_uses_format_specific_arches) ... ok
+  test_package_command_deb (__main__.BuilderTests.test_package_command_deb) ... ok
+  test_parse_version (__main__.BuilderTests.test_parse_version) ... ok
+  test_project_pins (__main__.BuilderTests.test_project_pins) ... ok
+  test_validate_version_is_cross_package_safe (__main__.BuilderTests.test_validate_version_is_cross_package_safe) ... ok
   
-  Parent source:
-    waf-proxy-code-duplication-consolidation-2026-09-28.zip
-    SHA-256 0756e864dd6ef8cc474477665666b2e3000a75cff18c49e627b0553dfd7400c5
+  ----------------------------------------------------------------------
+  Ran 9 tests in 0.003s
   
-  Implemented fixes:
-    - admin.go imports standard-library errors for existing errors.New paths.
-    - Positive-Schema exception toggle route is now:
-        POST /api/security/schema/enforcement/exceptions/{exception_id}/toggle
-    - Shipping Console calls the same explicit toggle route.
-    - admin_route_registration_test.go fails on any Admin handler registration panic.
-    - dependency-free blocker source gate is wired into build.sh and CI and
-      registers the complete route inventory with stdlib http.ServeMux.
-  
-  Executed exact-source evidence:
-    BUILD_STARTUP_BLOCKER_FIX_SOURCE_GATE_PASS checks=13 routes=139
-    Standalone stdlib ServeMux registration: PASS, routes=139
-    API/source gates: 69/47/46/72/33/56/45/58/83/100/110/156/259/134/190/80 PASS
-    Markdown review gate: 86 files PASS
-    Root Go source shape: 96 files PASS
-    OpenAI source contract: 16/16 PASS; isolated tests PASS
-    WAF package-source: PASS
-    Package-builder tests: 9/9 PASS
-    Admin embedded JavaScript syntax: PASS
-    Changed Go gofmt: PASS
-  
-  Canonical Go qualification on this host:
-    GOTOOLCHAIN=local go mod tidy -diff: BLOCKED_ENVIRONMENT / NOT_RUN
-    GOTOOLCHAIN=local CGO_ENABLED=0 go build ./...: BLOCKED_ENVIRONMENT / NOT_RUN
-    GOTOOLCHAIN=local CGO_ENABLED=0 go vet ./...: BLOCKED_ENVIRONMENT / NOT_RUN
-    Targeted route/API64 Go tests: BLOCKED_ENVIRONMENT / NOT_RUN
-    Reason: host Go 1.23.2; go.mod requires Go 1.25.0; external toolchain/module retrieval unavailable.
-  
-  No TESTED/RELEASED/buildable claim is made from source or packaging gates.
+  OK
+  ALL_SELECTED_SOURCE_GATES=PASS
 
 Files:
 7c3600f61f25e1754ab2fdf7d43632ed1b1f65aee2d025af351e8e15b788b7e4  .github/workflows/ci.yml
 9cd82c61e93c972faae7f7e0a3794097ff65ebc0f31d64b12e71df2e8abf2476  AGENTS.md
-dad34e552a6572e58157708977e36962f9d29473d9df30da6d1dae88bd580383  AI_HANDOFF.md
+8b5a60146d08428987483b34b00830154c8f6520abc1a32fd5ea6aa07b2769e5  AI_HANDOFF.md
 658a5ea159a32a9853945c9086e8f91e228054cc317b0c1414074dce1ad4f3b5  API1_FINAL_QUALIFICATION_REPORT.md
 b95dd176bdf430ecbb017369a38365fa758c461f3d5cf4885a8967c742a38821  API1_HARDENING_RESULT.md
 a8a30715e699b9cfb15561d1bc162042ca06e10ac05d49458fdfea558095adb1  API2_CHANGE_SUMMARY.md
@@ -86,27 +142,30 @@ ead546521072197fd3d63cfead4f81eb5fb7d678fdfdddcea1506c9e7456aada  API8_POST_AUDI
 f256cb27247ceceb59092cc792d0141a369b54d3d72f4190cc0dbc685321041a  API8_POST_AUDIT_HARDENING_TEST_SUMMARY.txt
 b48f6065d832f1284d773be70a5936e643875f3702990ab46ef2b1b73249ef10  API8_SOURCE_GATE_RESULT.md
 0ae7fce36ffa516cdbfc3a44f1a28850f3165d656d861272d0292cf90e187431  API8_TEST_SUMMARY.txt
-5f18d0f8ac98ed19eb0251025705bcdd45e8679615f66f9b7afb691250b03100  API_SECURITY_CLOSURE_RESULT.md
-06922d63f483c388d3d6b856619d01d47eb19fb3d3063e31b69f6eb6eb5ec2a3  API_SECURITY_ROADMAP.md
+76eeb1a16710e060e9e12304625afeb35ce2e09c6cec411ddafc54752020bca8  API_SECURITY_CLOSURE_RESULT.md
+5d9213e3b874c0fc5dd0e93c62573d478b71b7b18d2fd2e5c285facc4fcfd0be  API_SECURITY_ROADMAP.md
 18affaa8dab512bf6172a62c880842928447f8bd73e0418d02221e25d30acef7  API_SECURITY_ROADMAP_CHANGE.md
-28f32215c20f16dc2b3468db676fde33b209fd68616efc9c859a1fed7167e953  API_SECURITY_SLICE_IMPLEMENTATION_ROADMAP.md
+491ab4338f38e5eac0e8c22c4a4bd429dd177e45f3dbfe1d31014011ac62c30d  API_SECURITY_SLICE_IMPLEMENTATION_ROADMAP.md
 dd8b6b36c3da02942710d6ce403a5c5706ba58b3be12e46346d3f9914c2c5b2c  BUILD_STARTUP_BLOCKER_FIX_TEST_SUMMARY.txt
 c356d70d9119600aef5d593b81a2efa6fa75afc54bf8f9a04797de746cec73e5  CLAUDE.md
 f337c465e7344ecfa9fe75f63142ee11b7fbc3f5f902f383108bf97b14468ca7  CLEAN_HOST_DISTRIBUTION_GATE_RESULT.md
-df3c25c9c53686fb6fb5e0206cd76bf1a5c51dab2000015cca8d2c0ee562a4f1  CODE_DUPLICATION_REVIEW.md
+19f605921c71eccafeef43a5afd8f1965541a9b3374132c4c436ae1853cbbfe9  CODE_DUPLICATION_REVIEW.md
 5a0e12e3554bbaed3c6a1d755d95dfb478a6da4051d421b592474a2b862a66e0  CODE_DUPLICATION_REVIEW_SOURCE_GATE_RESULT.md
 a081ecb8427beb61e6ee8c6a2fd3f710dbef020095b68a0b93c18e2729e8deff  CODE_DUPLICATION_REVIEW_TEST_SUMMARY.txt
+e79d9ace072e6e451f2b8650a072813d3924ef927d5ea7811bbe335a75d2e02b  DASHBOARD_CONNECTOR_R3.md
+6ddbf42227d9a9379d1dd1ef8301372e0640c588de2179385661233dfee75087  DASHBOARD_CONNECTOR_R3_SOURCE_GATE_RESULT.md
+9ebc7a151b947dc8b215448effe0c2eb50666da694bc31f9af8d98672c97ae2b  DASHBOARD_CONNECTOR_R3_TEST_SUMMARY.txt
 3b92a14d4033d577cee7012ee2f0c6d5f4f589ad68514828510d1c7801e4bdad  DEB_PACKAGE_GATE_RESULT.md
-b59556f55cb1b9abd45fa242937b1fa8d9f42d120b069f7e30fc5e85f22f01d4  DELIVERY_MANIFEST.json
-15866cd5f5358e94a7f1227f5cea709dffb0e3a0cea8d9ceacb740cd8c5f1e90  DEVELOPMENT.md
-437f46534c65beb7b0bee54233198fbbb88dfe08d85dc6c5f5f1b56a772cd94f  DEVELOPMENT_ROADMAP.md
-7ff9d97a97d80d5379c3ba4e5b4bfafef101e2dca6f4368e590e886144808074  DOCUMENTATION_INDEX.md
-83c2603bcd6cee1d2f47097b366b731b3208209e744db6369a314f92ed6b9eff  HANDOVER_PROMPT.md
-1838724878353ea5b119ee9d02585808550b4ac04cedf0e04a100753c1f36d36  HANDOVER_STATUS.md
+6363f3a0fac373915ae39604080a790fb5a1f90eec41bdac3b63e17bc8cce325  DELIVERY_MANIFEST.json
+697a9a22bd243bf8a025f4e0f603daa1538c7053e3e4be3d039a3d8309355a44  DEVELOPMENT.md
+cc4e6aaf98089f8b8fc467dbc1b15bf9760c6c09ffc68f2173e2d05ef5abbd4d  DEVELOPMENT_ROADMAP.md
+07e36ffc54b071a033e7b49de911d24099a1cad088a01aed6ba1c0793e3fbe15  DOCUMENTATION_INDEX.md
+e90be4e86889dc0f60c809a1db2080f101e2f933b0f2377e61ccb4cc72c73e82  HANDOVER_PROMPT.md
+774d8833717edce8a8b4e4245797da93cbac64d82c402ee5b46fc715431fc53d  HANDOVER_STATUS.md
 cc364e8b5f190a6578b3d8ceb0ba7c8cfac19c49940e50a8c1ecd754ad30fc98  INSTALL.md
-99bc857b07574866a69eb72c04ec7b737036bae8e641f6e3d524563d20acb8f5  MANIFEST.md
-d2e19930044caeecad4504c6086d8d503c281bef1e9e23ff61d828455fa0e936  MARKDOWN_REVIEW_2026-09-28.md
-fd99459d557a350ed4c89c978238bc947f8114b87d33cfc7118d3224f3096e54  NEXT_CHAT_HANDOVER.md
+1785bc2d460109d4d4137909b1a23c8dfb0e1d7235eb09a28e611c2f989e031d  MANIFEST.md
+16fe6956eec9af1e8245c652b97079771f5797d70dedbf06943ab4352bba3153  MARKDOWN_REVIEW_2026-09-28.md
+52f29a1790cef251d07f5edc20a33c0da1a6163b08755a6b5c5e9c40e72c04c2  NEXT_CHAT_HANDOVER.md
 d82e9bf8106ccd1b94f177f5d8264ea33d26f77debdb898a4abe392bfc6bf1f9  OPENAI_INTEGRATION_GATE_RESULT.md
 e7be1fdb18042a1bba0faa561ca319579eb7181e529077583294dcd87aec048b  PACKAGE_LIFECYCLE_GATE_RESULT.md
 cc72df9b4ce8d4c9d15a6d41057f2e480ca5f77a7eb75947069d060e76f543af  PACKAGE_TOOL_GATE_RESULT.md
@@ -114,13 +173,16 @@ cc72df9b4ce8d4c9d15a6d41057f2e480ca5f77a7eb75947069d060e76f543af  PACKAGE_TOOL_G
 c852416d8265da69c9c0d49ce85be65c2bff3ba2ee2680d0a2faa2ba9595276c  PRODUCTION_CONTROL_PLANE_HARDENING.md
 744375cb4d3a599d373b1883154b30fb51e254c3dea939674064a579e48ea337  PRODUCTION_CONTROL_PLANE_HARDENING_SOURCE_GATE_RESULT.md
 fa51cf74e98ac3abc49f8beef7031fd349d44e9a1f1114e8f1bf3765924296a0  PRODUCTION_CONTROL_PLANE_HARDENING_TEST_SUMMARY.txt
-9028a3d2f449d0d968bb108812a8a643af5a74e9d649fb903297e0467a96d03d  README.md
-d141239b0bfc1f5c4a9d930c8ae9c887813ab009055a0e574d50cbe7cfe380e5  RELEASE_PROCESS.md
+9399f2dff69ff974f54253b1ecd7afa75a105861ec0c784987b5d60f864cc20e  README.md
+06dfd52bd1195169e01699698e28ad8bde7ae27b09e9056ae73d08d969442812  RELEASE_PROCESS.md
 aaf6e1ef7251ad6c146e9c40bf1b31f6844abf86a14e3993c6b7cbe3b3b67f59  RPM_PACKAGE_GATE_RESULT.md
 a364015aac13416805aa1c95a67a1b14cdd76a13d13b04f5d1510c3504954917  SOURCE_BASELINE_GATE_RESULT.md
-489c65f56d116fe150669a098b7afec9402c1d61454f63b996439e7f80e56a40  TESTING.md
-bdfead3e52014b7606b1304869c4190a39545cff436d1e80627e84419d6cb9ea  TESTING_RESULTS.md
-8b665cd305414911651260126a2250abf6e5614edebbd6773d7ab18501a10237  admin.go
+c383fbad8fa0630c8c5045a077c9f0f0ca45d31e1728535bc4703f3bf58181a5  TESTING.md
+b08054ecae1263fbafdcebffb08509d8a6199163de84fad6a5907e3dae0e70f6  TESTING_RESULTS.md
+1fb57f4c43079f7e5a5d65445c0fb07fa81e3c65fa750ca89fb0ecfc8dad079f  TLS_SESSION_RESUMPTION_HANDSHAKE_OBSERVABILITY.md
+736fed31f50b87c0bc8eac3577424223185b0840828f3ddcbd0f20cb3b36bf13  TLS_SESSION_RESUMPTION_HANDSHAKE_OBSERVABILITY_SOURCE_GATE_RESULT.md
+60d2919429c02e6750c13093b74f3081cf8c2de386e2d82093ad979617756d4b  TLS_SESSION_RESUMPTION_HANDSHAKE_OBSERVABILITY_TEST_SUMMARY.txt
+ac373c3688bb5c02627b55e0d3d1165880ba75adc303d9ae0d67efd4799d3290  admin.go
 61879908785038fe2f187077fcac0427cf3bea3a47699f4ada1a5773939aebf9  admin_login_hardening.go
 d7fa49ac8347adf1cfd389317218824fb964fb10caaf10b35c534e25053d74a9  admin_route_registration_test.go
 f57729a83d554f91a2b0664b52a40e347bee80ccb40f9333ab3723dca979d49b  ai.go
@@ -144,7 +206,7 @@ cd83056e83db380a8b20973d09312d0a28b928d28881059b95dbeeeecd02e234  bola_detection
 4038e252f0bae384813a707bd2b5667453d95479e305cfce3f39a56aeae7ef12  bola_policy_api74.go
 e1d1f7370bc1f1d167477b4e0c6445f5dde49753871d74cfd5b4287fc3e395b4  bola_policy_api74_test.go
 cd7639842049811abb2f42d656ea61bfb42882049eaacd5a9ae97faff397a6c4  build-release-artifact.sh
-01241847a5a8842cc99150e33623f142dcef5884e6e333be9974baaff2e9cafd  build.sh
+c0090389e9fa114fb459bdcfb34d5e69d5bd163c656079b41f4227de605b8003  build.sh
 4902b12ba6caf215bd0684ee57ae12baeeeeb082ae7320556a2f446378ad1541  cidr_policy.go
 daa5b93bd357613e4f94460d725835ff3c1ad9f99a42c2e75354e9ac07c354bc  cidr_policy_test.go
 d2109e12c8e3b2c490c292d556f7bd192cc1b1c5c8a833086851931ca1ade4e4  clientip.go
@@ -175,6 +237,12 @@ c38880848c57e91179030b0c84b889b5d86c8adcf023f8e7a1bae8b29b7df71b  coraza.conf
 a85864f6fd07e0c0e4654038dd0f7bd93c548502a0604173fd4737ddc5f90eef  coraza_observer.go
 3dc913cd9d832abb076199b1130f175966ab34719acb625b7ba7bfb65e4bb77b  coraza_real_gate_test.go
 187ce2106e6b558eccbe33a6f9ccc627050ee0bdf12582ef19e7911805489987  correlation.go
+b86264bf9aa0e762a0ef9bf08b2892e2bb2de2fdb31ffc7ed7a9cd1e9bf58c11  dashboard_connector_export.go
+9586ef9a75c14f417f39a68a105102bc835eeb3de17e463aa9d0e4c0377daf30  dashboard_connector_fixture_test.go
+711a613a7dc99e42ad01aba51eeb961deb3bd8cd3d1adc9e98d9c021a6696b0b  dashboard_connector_http.go
+225266e0e96631a34cf9aeb35cbb21755d05d719dcddab6b632bf7cfc4bb82ef  dashboard_connector_store.go
+a8d9515af0915c43d8d04624489b1de50188e125ae51c31bf4a8f71e326078dd  dashboard_connector_test.go
+7f23023f7740bfd16a276a1d5394dec999ab00de75df7802ca93587c8ad7bd9e  dashboard_connector_types.go
 b8d6f86cecd53c7f34a6ee625f370afd950ff372ca60b091ca707900c6294b41  debug_bundle.go
 c20103c800c929b2c093d9c4509ccc4f7b4d47e6efa2165fe7610e556a668b79  debug_bundle_test.go
 4d6d49902ef41514cd90fc358ac80a5f5a0b9a3925eef720ec2a8f6d73005dd6  debug_sanitize.go
@@ -249,11 +317,11 @@ d0739c16be1eecf747d407fe90130a37fe69b90b22681ce386969c391158530a  internal/vecto
 ba9c29dda82c0a969554f559dabe4215d9fd81e1a3dab2d5c83d231bf5c2e6ae  l7_abuse.go
 8697751782d613dbc7a55544bd532c5d7d3804fd10f83d1a864ffae128769418  l7_abuse_test.go
 e889cae3bdeac1b4f1fec5820a4c658cb39fc5592b74c68b6de9f2ed46fb536e  learn.go
-bbdb547dd07107c4129947378136d5bf5705a37f96591041a157fa452af91dcd  listeners.go
-b310dd8cf3a91cee37c3283211ba82eea80dbad2686757e700e2835b8bbb8797  main.go
+7dd10921c4a162ff0f833c495f5fb44a39e936bb197863dd3071aace8ca11292  listeners.go
+4b6091c5cdba3c7d381acc8e30847ad5c7ca04b1c694f7bb3ae858ee53161d36  main.go
 c5b49ae1c9272eb670e95b620d717cf897681940c9917f23c3dce0cef5923f80  matchlog.go
 70bbcf28c4bba3be500874cb2606b5313c2a9e00b0351ba470be26c4414a01e4  matchlog_test.go
-b6f1fb83ebb589e19afe23deaf11e2e23ea57b57eca23a8e667adc2288a9ddb6  metrics.go
+52181b105928d693ae85c4eb099ccd66b37d5bd81f9415c9bd81a6904f6120a7  metrics.go
 d9d607f38a488cf2eefc90ebf3895513f64d612af204da7aef1a0b455e0bcdc6  notify.go
 7169bd7d621832af9dfb6ebcbcd50646136f41fc41aa3f3686b8931a9fe58a71  object_locator_api71.go
 c6d9d3bfa1d0e0f0bd0515ddb5ebd632ac24a75821d8a60d03863db35b7a402f  object_locator_api71_test.go
@@ -341,13 +409,74 @@ a4cf7e2fbd342c56399151d8652f026a45ca8039eaa6fd10fb771d26b45cbe66  qualification/
 c40991515e383c7a7b85a057210e7fcf57d83bed6d52c80ae4ec10d524967535  qualification_diff.go
 9f783bae55922b0075919c363cb90d426e57e3c3f819413016646f11fc574750  qualify-release-host.sh
 a41b872af4c87a11de82e8178f3589905d12307e0c2c2b881b3933ee18712ae9  release-artifact-negative-tests.sh
-9fa374f633266098e0a6920497b6e95eae23186482809388f1f0c66911bbc4d8  release-evidence/PROVENANCE.json
-5ac64d3c7347014b097d19997c3c1228d6b2dc23d3ccf9f0b8d9d0f274fe7834  release-evidence/RELEASE_EVIDENCE.json
-5148a96488d29d42fc6540b1cbab53987b4c34610c876f28e67915eb65dcf2a8  release-evidence/SOURCE_MANIFEST.sha256
-0055f3d7e463ae440c6ec0d8a2a29274382b488042740d4f15b166a99c63e254  release-evidence/sbom.cyclonedx.json
-f660a202115e4d5d03f8e6bbe003d776fddc61881a6ca9a296634f6b0b39aed7  release-evidence/sbom.spdx.json
+207e01f7cc8c36d694d17e87ab55718adad17d595632d92f040bc04966b96abd  release-evidence/PROVENANCE.json
+09f7981cb5834efc9a9931fb82a0b7e51d4db8b16a03d18b1734542590747806  release-evidence/RELEASE_EVIDENCE.json
+be085da6cebf3d9a15a8a1205d8c50f759d3f521e43acd0b7cee129d9b42d8c8  release-evidence/SOURCE_MANIFEST.sha256
+007c42d712e111ab2a05a61a6b95ca5202c7c3f764e1651da9bd5ea466f91119  release-evidence/sbom.cyclonedx.json
+a9ca9b0d786b17c732f550bbea73e56af290ef307c9093f993c4a1d4087483e6  release-evidence/sbom.spdx.json
 b6ca9b7d9e820357eac47a4db77ff32f3109ff75f46d7c09f9ee1116251f5dbe  release-security-scan.sh
 43ccd38c43b082b58e69399185e516fb303e020d980a3a8bdd1416c67e98c7fc  release_scripts_test.go
+26545942455e4630067bb8e45c3a2b7b2c121335036f023567ad0d9e235a8524  return/waf-proxy/HANDOFF.md
+abda471d28d1c09a8690d5ba0f6dc8cc10c22f1bdd82ce6f48fed00e95697230  return/waf-proxy/SHA256SUMS
+02805e411035ef59555a9e03f717cd3f76fdf82c2db4389caf612ad7711ecf01  return/waf-proxy/adapter-manifest.fixture.json
+3ea7ecb4169878e145637104b01245aefbd8ac43a6753033310a51a54c287f48  return/waf-proxy/binding.deployment.template.json
+34086bfbbf0bce36b9bdcd36967cd4d930722e4738117f07a62806e79095499d  return/waf-proxy/binding.fixture.json
+f5b5d8b404538b0da00d9c367eeb150c63fdbb9b313aa17c6e54f9f73698ba38  return/waf-proxy/deployment-inputs.md
+7cc579d7dad2b9bdc91994b42c14183b071b5a60189ab19f46cc5794198f9ec3  return/waf-proxy/deployment.md
+72e6dd856ed03083e9739093987db3311f9af23928e88244677f50fc0d7adba9  return/waf-proxy/fixture-bundle.json
+c6bbaddaae626547a29375d5f037b1fa9963448facd4b4e7a2aeda997bf425d9  return/waf-proxy/fixture-provenance.json
+643d5ebe82688fef552784c14f1cc2ab60975d024300c7a39dd266f2e690a59f  return/waf-proxy/fixtures/attention-examples.json
+aa0f64bf4d4cbbf610faaa12c72dc8e64cb3aba73a3219c980704a82a381d4ae  return/waf-proxy/fixtures/negative/cross-tenant.json
+c7ca546be0388a2f4f618f3626826a4a1ccac5ff9cb36d3b757aed1c5bfc0ed9  return/waf-proxy/fixtures/negative/cursor-no-progress.json
+fea6607d316b4a63f2e2f176a910ec937036f2e28ba4ad2c0b3b162dc60746ea  return/waf-proxy/fixtures/negative/decode-missing-contract.json
+deb488f16d3482e2e2d6b596ea1ff1b65a9c0142c796bae19ff74210bcc4ffae  return/waf-proxy/fixtures/negative/delete-nonempty-payload.json
+7df3c658022e13fe5d170578b838cc5e7ac148ccb3e41dffea2df9bb37f53412  return/waf-proxy/fixtures/negative/empty-more.json
+095c0d2e570e5ce075632cd1fa713aeffe771fb6cff6e054ae36ac8091d2b667  return/waf-proxy/fixtures/negative/equal-revision-drift.json
+9698261d4f9e0cdbea9b39aa4d6a4d27c866c619cb8297545079a158792b7e32  return/waf-proxy/fixtures/negative/invalid-revision.json
+f71dac91e27e51d912f5b90711b59ff903d2cde92ffafcc82f1a7c9b23507684  return/waf-proxy/fixtures/negative/invalid-utc.json
+f71331c271c69af6a4305fa5b7d5aebea85fc145d295e7848fb4cee31109d41a  return/waf-proxy/fixtures/negative/limit-bound-cursor-change.json
+23707d3882bf9daedae864e43aeb1ce0f4537e856eff3609a0a3d058b056ff7c  return/waf-proxy/fixtures/negative/old-revision.json
+3a7294dfac26db576b139d7ae01dbf12e48d6fd831df2026aebf152198a958cc  return/waf-proxy/fixtures/negative/page-extra-field.json
+020c507f71faa9cc50c0ade6b5dbf9797517acce87a28c4033d58b225ce5c395  return/waf-proxy/fixtures/negative/snapshot-drift.json
+528868108005b535bb9c654884530f0a57dab499dfb8436ac84470be03b52945  return/waf-proxy/fixtures/negative/wrong-kind.json
+4cf600668b1871d557fab31408dec02446409460eff051d102e7b23e2f91e799  return/waf-proxy/fixtures/negative/wrong-product.json
+a1521a5b02ed415bc550fb09c162bbd695aa8ba515192e86e6eb1e4b3378f238  return/waf-proxy/fixtures/negative/wrong-source.json
+c3f014b7efc41d6b099570840e41427a533d701b59751df9fef577918cde5af6  return/waf-proxy/fixtures/positive/assets-01.json
+814688657dd8ee3a30d3fbcc28744641f57fd41445e0117156c22227f22af9af  return/waf-proxy/fixtures/positive/assets-02.json
+ff28e6a3e5afcc0f4b9219392655c1c00e1547518358a4c99a728a7cc3930dbc  return/waf-proxy/fixtures/positive/assets-03.json
+46a552ff2a8de4d667b070368d75082f8a125de3c1531c0d96a8094d35616ff5  return/waf-proxy/fixtures/positive/assets-04.json
+65004c7e42424dbe5090ed2c80487e877ff36995149ae3a2ae2d88b7a0ca036d  return/waf-proxy/fixtures/positive/assets-05.json
+fd3371b52e4604358093ac7f8b0f363d7a3f2b94f614b480cc7873026733e4ee  return/waf-proxy/fixtures/positive/capabilities-01.json
+f17478feb1a43163f6490fe7a8d2c6f04f015cf5bd082430f2ce2ffcb18e8c61  return/waf-proxy/fixtures/positive/detections-01.json
+a821a176b060d41eeff85e318e868653c63cc77abbbca523ecbccebf45cf2292  return/waf-proxy/fixtures/positive/detections-02.json
+ca0b5a5a691e703c3c08084b7828e8db0b1baa08b4e2aa4ec9d1ea6beb241feb  return/waf-proxy/fixtures/positive/detections-03.json
+ef302be5bc7ce87a96bbcb12a799c87a8586ca249995bd745f66dd40bf37c7d4  return/waf-proxy/fixtures/positive/detections-04.json
+75a8747a552f044284a73c3dec7b89ff2c411aa94f24a53fc2a436c171391fc5  return/waf-proxy/fixtures/positive/detections-05.json
+3517834987cc4f854173ccbd585b03934a7e4f6327520cfd11da1eeba87259ea  return/waf-proxy/fixtures/positive/health-01.json
+5672e96e1762b2937886be37fb89c98b6a10dfd556321a367156f4c04c18d33d  return/waf-proxy/fixtures/positive/health-observations-01.json
+0cf0422073d981d27297f76a88f0e9ea8667283e7e9fbbb73ea9a1512a6132c2  return/waf-proxy/fixtures/positive/health-observations-02.json
+dab20a27cc43134bf126d44f9049bbdba72e809ef19677d7a141d3dafec376a4  return/waf-proxy/fixtures/positive/health-observations-03.json
+5cc674b6cde1527e09b0a04ab276b6f1881ebeef094d8f1f493967b119c081db  return/waf-proxy/fixtures/positive/policies-01.json
+d23b48a12d156ea8b7d8117908e7f3f98200e2c2b5acd804093817a94d46e88b  return/waf-proxy/fixtures/positive/policies-02.json
+26a25ddb402f7ad116b528dabb8ee174f665cd0c5f9629a0bd78cf6db489dffa  return/waf-proxy/fixtures/positive/policies-03.json
+d131551565cf294fc6a5258436941cde933d35c6397f444e7c9214c63377953c  return/waf-proxy/identity-inputs.json
+77fdba1b980e01aeca1235729f33873dc3354d258142be31fd207cb1c111a6d9  return/waf-proxy/mapping.md
+8de6d8891da9220f9699d1f3b65ba3860d57a1652d146785fae6889ff36cf28a  return/waf-proxy/negative-cases.json
+eb2f6f7cf4171836dc825df11159e868da0204b71acda35d6bf410582365cbe9  return/waf-proxy/open-gaps.md
+d268b6cec3327f45aefc701ff007baa2f673e5356b68e0e287b8620a319cd371  return/waf-proxy/schemas/control.schema.json
+86604d617c2b171ac52fee46f9b10aaa547a05a1cc2d8c6a7d55bb258d3a5709  return/waf-proxy/schemas/page.schema.json
+83f9850f9d4da75008b9a462087c519a2ef36703d7e546a8770db132bb3d75c3  return/waf-proxy/schemas/resource-manifest.json
+3bde3a8b944f37f7dfd8783efd08c3ffe9a049cc984e140628c14f4ae139b50f  return/waf-proxy/test-logs/core-probe-race.txt
+01d897d05fac5661d9162f23db5d1992ec46144c6ec3b366018232c23ef7c887  return/waf-proxy/test-logs/core-probe.txt
+d3d2ca8246ce200860222cfec963d7f0e14e71a11fe2e17b90e7ea1c54238d63  return/waf-proxy/test-logs/fixture-generation.txt
+5c2f058ddf4c5b24df39b3210f0480cf3de9945778e72eb710f9e3c602580e4a  return/waf-proxy/test-logs/source-gate.txt
+3427c8049264a8776b63c489aaac78f2739a4c0927218f5a992fa24395072f5f  return/waf-proxy/test-logs/token-tool.txt
+e632e08dcb67958d3001987a5439adbbed76d133f906751b279cae1715c3e304  return/waf-proxy/test-results.md
+9586ef9a75c14f417f39a68a105102bc835eeb3de17e463aa9d0e4c0377daf30  return/waf-proxy/tools/dashboard_connector_fixture_test.go
+f336b5a66b2be03eb9c4ca833c96e44e9b50c117e62c07a10f220f38699d5754  return/waf-proxy/tools/schema_subset.py
+7be5e0c0f55e4750c4016476d2ae7da3a813273a4f46d9ee8b3d5dfb9275610f  return/waf-proxy/tools/validate_waf_dashboard_return.py
+407ec7de02a47444892fc6e100688cb06d8eb920b50e049593272beb35dd758c  return/waf-proxy/tools/waf_dashboard_token.py
+e7fb8959ea28c99ab0c61da05148f1ed20b726a7054890924146a34ac6fbc2a9  return/waf-proxy/transport-cases.json
 af1743801ce8d18c6f837081bba4a3eeeeee60d697de9e6f5bee09f263e5a917  run-phase1-qualification.sh
 98fa5ab0314590989c5de9585368c019d312c6b01ef578941d7de42c4fbfc770  runtime_smoke_test.go
 9bb7970257d56352b032343295270cb283294ca6c40af06228597009eb20acdf  schema_api2.go
@@ -363,13 +492,18 @@ f172bd39380022fd2bae25efe408b3baf55935b24e6caa8ae5689f785d915ecb  sequence_api64
 9a744231904128ef5fe1ae837c1878102069b8aa4133bdec8fa5c7d9284cc2f7  setup-interfaces.sh
 163894d72042b0b09da7e5c6ce12e5ac717b088abfbd25c99083d4f105b1ff57  sitemap.go
 0563b2ac921bdb02f4faf6d09902a9c20a123841d1e10d6a251568c0d01274dc  sitemap_persist.go
-42b931890bda3de47b9bb24c878e5de4eb18442cec2d722af1f7039c20601df1  static/admin.html
+e40a6d60c4ae37bad534aff11cc6092084d8a33003eb2387563bac782cdd6a28  static/admin.html
 83aae56abd54b9837adffcb93138becd01d1bd2941664f1948a13f56a418f753  static/theme.css
 eeed825f2157da6e0b909d5673725e6198fafc92db87fd8a449585c3545a52d0  support_api.go
 5a067449bc3ee7f9fcae2120add6308baca58210d77b93eb72129ee76f802ef7  syslog.go
 dc93c0f6736f453bac76b76ec17764bbb357a4adb01ef87d7b1f690584561c19  theme_test.go
 f5d1ce056074d7d7330bd8ae8dcc026423a82c5d6c7992e1736339a2701a498c  tls_acceleration_test.go
 4293c7af9587c68ed01aa17e7a04e71e18ea1d690b60c8e5db19f11082f68fe4  tls_frontend_control.go
+776d04bfa28117234bdea16a0d1f1279e222a5efdb4645fafee66be5ee7919b4  tls_observability.go
+3f0720c8c3c506188569d2de3ea370af5135ca80a13360d018fc32a1bf441441  tls_session.go
+cc919fd2650d26583bf37a7ed13b70dfc72916eb9523a8a651673ae6fc937389  tls_session_test.go
+e25960bb2dd092273d2c1327fe414a504b49372ce472565fbc9c035bdff89694  tools/assemble_waf_dashboard_return.py
+84fb8a9d57331a45265e8f7b3b959f5fcb871580650033a784c8c6c1721f52b8  tools/dashboard_connector_r3_source_gate.py
 5fa65465efe8485ae58f251a0b0861da67e455864c3eb05bc4617b61c828eac9  tools/release_evidence.py
 7d295b6d50808da84b0a3b7d5254105f91e3d68e2bf03ae0f85b50292e7c1de2  tools/source_manifest.py
 9d0b65cb57700a4f27d1f58fb9d97dbd4d1cf3dc783d8e4d45aa3ad8d3797673  tools/tests/go-root-shape.go
@@ -393,8 +527,11 @@ e8f28a61302a1ed7ed06735f3a0b24532c4a795a62175e73127d488039178a22  tools/tests/te
 bd0a706b6f18e2731ba4ef09923657e581f8f6cb7cdcc42fd9a199d0054ebc3b  tools/tests/test-markdown-review-source.py
 b3fe5d05d08e3c012e0b4398a315e3b7ff311edac100a150af2ab72f8c003d76  tools/tests/test-openai-integration-source.sh
 e6687409e357e8cc56ba5e03ffcff768af2ffbe6be43a2875e98a58ebc908089  tools/tests/test-production-control-plane-hardening-source.py
+1570c307034105d4029fe53a86589898bd04116afb1d129558127c71b2b6ef21  tools/tests/test-tls-session-resumption-observability-source.py
 1a5a48a3a76e66b34dd903962f0003632a9c36ee66f297d80f85c2efaa849190  tools/tests/test-waf-package-source.sh
 1f08c2fbf3debe14509d5ccd578be3d242c42fe1a1197953f59867a924bdd3bf  tools/tests/test_waf_package_builder.py
+7be5e0c0f55e4750c4016476d2ae7da3a813273a4f46d9ee8b3d5dfb9275610f  tools/validate_waf_dashboard_return.py
+407ec7de02a47444892fc6e100688cb06d8eb920b50e049593272beb35dd758c  tools/waf_dashboard_token.py
 af70eff8dea578d71fcdf3f4b1383af09e2c3c4433ad6cf4cdee1026821c25d7  tools/waf_package_builder.py
 2328749e01336161f4cb719b15821c95e85399b443865ed55ce0d2c1dc72d535  uninstall.sh
 7451069c26a3cb8d5c162323d14ffe6a0d1902a0a72bff7a9f9256155ee03334  update.go
