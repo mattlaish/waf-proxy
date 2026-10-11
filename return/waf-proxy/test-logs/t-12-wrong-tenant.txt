@@ -1,0 +1,5 @@
+Go 1.25.0 windows/amd64
+command: GOTOOLCHAIN=local go test -run '^TestOWIWrongTenantForbidden$' -count=1 .
+result: PASS
+output: ok waf-proxy 0.614s
+assertions: a bearer-authenticated tenant-2 principal with assets:read scope called /api/integrations/dashboard/v1/assets; the connector returned HTTP 403 and error.code FORBIDDEN before reading product data.

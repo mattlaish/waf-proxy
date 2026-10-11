@@ -1,0 +1,11 @@
+{
+  "method": "GET",
+  "path": "/api/integrations/dashboard/v1/assets",
+  "headers": {
+    "Accept": "application/json",
+    "Authorization": "Bearer ${fixture:health-only-token}"
+  },
+  "query": {},
+  "body": null,
+  "repeat": 1
+}

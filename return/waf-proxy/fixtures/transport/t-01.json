@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/api/integrations/dashboard/v1/health",
+  "headers": {
+    "Accept": "application/json"
+  },
+  "query": {},
+  "body": null,
+  "repeat": 1
+}

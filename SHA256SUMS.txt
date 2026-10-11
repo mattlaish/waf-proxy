@@ -1,0 +1,2 @@
+6e008e6b01655cbe88f0b8b9f37edb5b1662b34e2e9595f034dc30e024bc22c9  waf-proxy-owi-r3-dashboard-return-2026-10-06.zip
+c24f74eb9265c9d8a54b37811e34438e35cc2c8927af91f495153fef1b7ed6cd  waf-proxy-owi-r3-complete-source-2026-10-06.zip

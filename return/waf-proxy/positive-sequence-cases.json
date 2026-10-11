@@ -1,0 +1,10 @@
+[
+  {
+    "case_id": "P-01-OLD-REVISION-HISTORY",
+    "stage": "sync",
+    "input_fixture": "fixtures/positive/old-revision-history.json",
+    "expected_current_revision": "2",
+    "expected_history_contains_revision": "1",
+    "reason": "An older revision remains historical evidence and must not replace the current revision."
+  }
+]

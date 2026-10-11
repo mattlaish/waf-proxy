@@ -1,0 +1,1 @@
+T-10 NOT_RUN: live HTTPS worker-to-product execution requires deployment-owned certificate, DNS, ACL, and reachable WAF instance. The concrete request fixture is fixtures/transport/t-10.json.
