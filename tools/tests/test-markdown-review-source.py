@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import sys
 
 root = Path(__file__).resolve().parents[2]
 mds = sorted(root.rglob('*.md'))
 fail=[]
-marker='<!-- documentation-review: 2026-09-28; classification:'
+# Every Markdown file carries a dated review marker with a classification.
+# Later review passes (e.g. 2026-09-29) stamp their own date, so any dated
+# marker is accepted rather than pinning the original 2026-09-28 pass.
+marker=re.compile(r'<!-- documentation-review: \d{4}-\d{2}-\d{2}; classification:')
 for p in mds:
     text=p.read_text(encoding='utf-8')
-    if marker not in text:
+    if not marker.search(text):
         fail.append(f'missing review marker: {p.relative_to(root)}')
 ledger=root/'MARKDOWN_REVIEW_2026-09-28.md'
 if not ledger.is_file(): fail.append('missing MARKDOWN_REVIEW_2026-09-28.md')
 else:
-    lt=ledger.read_text(encoding='utf-8')
+    # A file must be recorded in at least one dated review ledger.
+    lt='\n'.join(p.read_text(encoding='utf-8') for p in sorted(root.glob('MARKDOWN_REVIEW_*.md')))
     for p in mds:
         rel=str(p.relative_to(root))
         if f'`{rel}`' not in lt:

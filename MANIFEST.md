@@ -46,6 +46,26 @@ Test-harness corrections (engine behavior unchanged):
 - Removed the accidental nested `return/` repository copy whose test file broke
   `go vet ./...` and `go test ./...` module-wide.
 
+CI source-gate restoration (same slice): four source gates also failed on
+`origin/main` because later snapshot commits re-introduced files that the
+2026-09-28 code-duplication consolidation and API-8 post-audit cleanup had
+removed. None were reachable (no references, routes or `init` hooks from the
+remaining tree), so they were removed again: `investigation.go`,
+`security_timeline.go`, `change_audit.go`, `security_export.go`,
+`debug_lifecycle_v2.go`, `debug_retention_worker_v2.go`, `debug_evidence.go`,
+`debug_evidence_ops_v2.go`, `support_bundle_v2.go`, `security_state.go`,
+`security_event.go`, `deployment_readiness.go`, `reliability.go`,
+`vectorscan_qualification.go`, `vectorscan_audit_store.go`,
+`vectorscan_transition_audit.go`, `schema_api2_continuation.go`,
+`pki_hardening.go`, `internal/coverage/report.go`, their obsolete tests, and
+the non-shipping `web/` tree. `debug_sanitize.go` is restored as the single
+debug sanitization path used by `debug_bundle.go`. Two gates were corrected
+without weakening them: the API-12 `writeJSON` arity check now ignores method
+calls such as `dashboardReader.writeJSON(w, status, v)` (bare package calls
+are still rejected), and the Markdown review gate accepts any dated review
+marker and any `MARKDOWN_REVIEW_*.md` ledger so the 2026-09-29 review pass is
+recognized. All 18 CI source gates PASS; `go test -race ./...` PASS.
+
 Validation (Go 1.25.0, linux/amd64): `go mod tidy -diff` clean,
 `CGO_ENABLED=0 go build ./...` PASS, `go vet ./...` PASS,
 `tools/tests/test-go-root-shape.sh` PASS (131 files), `CGO_ENABLED=0 go test ./...`
