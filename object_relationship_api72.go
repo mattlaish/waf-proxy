@@ -303,6 +303,12 @@ func (s *objectRelationshipStore) process(ev objectRelationshipObservation) {
 	}
 	meta := apiObservationMeta{BodyPrefix: ev.BodyPrefix, BodyTruncated: ev.BodyTruncated}
 	samples := collectSchemaSamplesFromObservation(ev.Path, ev.RawQuery, ev.ContentType, meta)
+	pathSegments := 0
+	for _, sample := range samples {
+		if sample.Location == "path" {
+			pathSegments++
+		}
+	}
 	for _, sample := range samples {
 		if sample.Location != "path" && sample.Location != "query" && sample.Location != "body" {
 			continue
@@ -313,11 +319,17 @@ func (s *objectRelationshipStore) process(ev objectRelationshipObservation) {
 		if sample.objectValue == "" {
 			continue
 		}
-		locator, ok := s.locators.activeLocator(ev.OperationID, sample.Location, sample.Path)
+		var locator ObjectLocator
+		var ok bool
+		if sample.Location == "path" {
+			locator, ok = s.locators.activePathLocator(ev.OperationID, sample.Path, pathSegments)
+		} else {
+			locator, ok = s.locators.activeLocator(ev.OperationID, sample.Location, sample.Path)
+		}
 		if !ok {
 			continue
 		}
-		objectFingerprint := s.locators.digestValue(ev.OperationID, sample.Location, sample.Path, sample.objectValue)
+		objectFingerprint := s.locators.digestValue(ev.OperationID, locator.Location, locator.Field, sample.objectValue)
 		if objectFingerprint == "" {
 			continue
 		}

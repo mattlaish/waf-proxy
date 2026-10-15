@@ -1,6 +1,58 @@
 # Development Roadmap — WAF Proxy
 
 
+## Current canonical addendum — 2026-10-15 — Root test-suite correctness fixes (L7, API-3/6/7/8)
+
+This slice restores a fully green root test suite on top of the 2026-09-30 TLS
+Session Resumption baseline. Project state remains
+**IMPLEMENTED_TESTING_DEFERRED**; no new features or API-9 scope. API-6/7/8
+scope is retained. Engine (production code) fixes:
+
+- **L7 abuse limiter fail-open (security).** `evictOldestIdleLocked` evicted the
+  oldest idle entry regardless of age, so at shard saturation every new identity
+  could reclaim a slot and receive a fresh full-capacity bucket. Eviction now
+  only reclaims entries idle *and* past the idle TTL; recent identities fall to
+  the bounded shared overflow bucket (fail-closed), matching the documented
+  intent in `l7_abuse.go`.
+- **API-8 GraphQL schema contracts lost all types.** `cloneGraphQLContract`
+  replaced `Types`/`FieldTypes` with empty maps before ranging over them, so
+  every clone (runtime enforcement snapshot, Admin responses, persistence and
+  load) dropped all declared types and field types. Fixed to copy from the
+  source maps.
+- **API-8 operation fingerprint cardinality.** The document fingerprint folded
+  in declared variable names/types, so unused `$var` declarations minted new
+  operation identities (escaping learned per-operation baselines) and an
+  inlined literal and its parameterized form diverged. The fingerprint is now
+  structural only; variable types remain in `VariableTypes`.
+- **API-7.2 named path locators never linked relationships.** Runtime path
+  samples are positional (`param_N`) while contract- and operator-declared path
+  locators carry declared names (`orderId`, `id`). New
+  `objectLocatorStore.activePathLocator` binds a named path locator only when
+  the operation has exactly one dynamic segment (ambiguous multi-segment names
+  are not guessed); the object fingerprint is keyed by the resolved locator.
+
+Test-harness corrections (engine behavior unchanged):
+
+- API-6.2/6.3/6.4 sequence tests now couple the store clock (`s.now`) to the
+  simulated clock **before** training loops; previously periodic
+  `publishSnapshot()` prune passes ran against wall-clock and evicted the
+  historical simulated edges mid-training.
+- `TestL7AbuseStateIsBoundedPerShard` asserted the pre-hardening fail-open
+  behavior (every one of cap+64 same-instant identities admitted); it now
+  asserts the real invariant (bounded state, shard fills to cap) consistent
+  with `TestProductionL7SaturationUsesBoundedOverflowBucket`.
+- `TestDriftAgainstLiveLearnedSchemaTaxonomy` fixture now sets `Site` so the
+  intentional site/host scoping of `UNDECLARED_ENDPOINT` applies.
+- Removed the accidental nested `return/` repository copy whose test file broke
+  `go vet ./...` and `go test ./...` module-wide.
+
+Validation (Go 1.25.0, linux/amd64): `go mod tidy -diff` clean,
+`CGO_ENABLED=0 go build ./...` PASS, `go vet ./...` PASS,
+`tools/tests/test-go-root-shape.sh` PASS (131 files), `CGO_ENABLED=0 go test ./...`
+PASS (all packages), `CGO_ENABLED=1 go test -race ./` PASS. Native VectorScan,
+realcoraza and hardware qualification gates were not run in this environment
+and are not claimed.
+
 ## Current canonical addendum — 2026-09-30 — TLS Session Resumption + Handshake Observability
 
 This source now includes the **TLS Session Resumption + Handshake Observability**

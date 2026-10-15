@@ -277,6 +277,11 @@ func TestAPI62ConcurrentWorkflowLearningAndSnapshotsRemainBounded(t *testing.T) 
 	start := time.Date(2026, 9, 24, 7, 0, 0, 0, time.UTC)
 	a := apiOperationID("race62", http.MethodGet, "/items/{id}")
 	b := apiOperationID("race62", http.MethodPost, "/checkout")
+	// Pin the store clock to simulated time before launching workers: the
+	// concurrent snapshot() calls below each run a prune pass, and against
+	// wall-clock they would evict the historical simulated learning mid-flight.
+	// A single write before goroutine creation is safe for the concurrent reads.
+	s.now = func() time.Time { return start.Add(time.Second) }
 	const workers = 32
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
