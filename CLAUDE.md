@@ -9,7 +9,8 @@ At the beginning of work:
 
 Keep changes focused and run the relevant validation. Never infer PASS from a
 missing toolchain or environment. In particular, the root source is not
-buildable/PASS until the exact bytes pass the Go 1.25 tidy and root-build gate.
+buildable/PASS until the exact bytes pass the Go 1.26 tidy and root-build gate.
+(Go 1.25 is end-of-life; the project moved to Go 1.26 on 2026-10-15.)
 
 Update the canonical documentation set after meaningful work:
 `AI_HANDOFF.md`, `DEVELOPMENT.md`, `DEVELOPMENT_ROADMAP.md`, `TESTING.md`,

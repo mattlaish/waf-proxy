@@ -91,19 +91,32 @@ func TestL7AbuseStateIsBoundedPerShard(t *testing.T) {
 	c := newL7AbuseController(L7AbuseConfig{Enabled: true, RequestsPerWindow: 1, WindowSeconds: 60})
 	now := time.Unix(1_700_000_000, 0)
 	const targetShard = uint64(0)
-	inserted := 0
-	for n := 0; inserted < l7AbuseMaxEntriesPerShard+64; n++ {
+	// Drive more distinct identities at a single instant than one shard can
+	// hold. The invariant under test is that per-shard state stays bounded;
+	// admissions past saturation are expected to fall to the shared overflow
+	// bucket and may be refused (fail-closed), which is the hardened contract
+	// exercised by TestProductionL7SaturationUsesBoundedOverflowBucket. The
+	// shard must never evict a recently-seen idle entry to mint a fresh
+	// full-capacity bucket for each new identity, as that is the fail-open
+	// bypass the overflow bucket exists to prevent.
+	attempted := 0
+	admitted := 0
+	for n := 0; attempted < l7AbuseMaxEntriesPerShard+64; n++ {
 		identity := fmt.Sprintf("2001:db8::%x", n)
 		key := abuseClientKey{site: "site-a", identity: identity}
 		if l7AbuseShardIndex(key) != targetShard {
 			continue
 		}
+		attempted++
 		st, ok := c.allowAt(key.site, key.identity, now)
-		if !ok {
-			t.Fatalf("identity %q unexpectedly rejected", identity)
+		if ok {
+			admitted++
+			c.releaseState(st)
 		}
-		c.releaseState(st)
-		inserted++
+	}
+
+	if admitted < l7AbuseMaxEntriesPerShard {
+		t.Fatalf("shard admitted only %d distinct identities before saturation; want >= %d", admitted, l7AbuseMaxEntriesPerShard)
 	}
 
 	shard := &c.shards[targetShard]

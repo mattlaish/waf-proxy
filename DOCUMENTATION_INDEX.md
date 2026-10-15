@@ -1,6 +1,21 @@
 # Documentation Index and Current Project Truth
 
 
+## Current canonical addendum — 2026-10-15 — Root test-suite fixes + Go 1.26 toolchain
+
+Current truth: the repository root builds and passes `go mod tidy -diff`,
+`go build ./...`, `go vet ./...`, `go test ./...` and `go test -race ./...`
+under **Go 1.26.9**, and all CI source gates pass. `go.mod` now declares
+`go 1.26.0` (with `toolchain go1.26.9`) because Go 1.25 is end-of-life and its final release (go1.25.14)
+carries 11 reachable standard-library vulnerabilities fixed only in go1.26.9+.
+This slice also fixes an L7 abuse-limiter fail-open, a GraphQL schema-contract
+clone that dropped all types, GraphQL fingerprint cardinality, and API-7.2
+named path locators; and it removes re-introduced dead files that the
+2026-09-28 consolidation had deleted. Full detail is in `AI_HANDOFF.md`.
+Project state remains **IMPLEMENTED_TESTING_DEFERRED**: native VectorScan,
+real-Coraza and hardware qualification gates have not run. Dated sections
+below that cite "Go 1.25" are historical evidence.
+
 ## Current canonical addendum — 2026-09-30 — TLS Session Resumption + Handshake Observability
 
 This source now includes the **TLS Session Resumption + Handshake Observability**

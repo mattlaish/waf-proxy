@@ -607,3 +607,608 @@ index 0000000..4d03989
 +print(f"BUILD_STARTUP_BLOCKER_FIX_SOURCE_GATE_PASS checks={len(checks)} routes={len(routes)}")
 
 <!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->
+
+
+# Root Test-Suite Correctness Fix Patch — 2026-10-15
+
+Slice-local diff against `origin/main` (8fbe951) for the L7 fail-open, API-8 GraphQL clone/fingerprint, API-7.2 named path locator, and test-harness fixes. The removed accidental `return/` tree and this patch file itself are excluded from the diff.
+
+diff --git a/api3_contract_test.go b/api3_contract_test.go
+index 12d7156..2c0cb51 100644
+--- a/api3_contract_test.go
++++ b/api3_contract_test.go
+@@ -293,8 +293,11 @@ func TestDriftAgainstLiveLearnedSchemaTaxonomy(t *testing.T) {
+ 	op.VersionID = "v1"
+ 	bindings := []OperationBinding{{ID: "binding", ContractVersionID: "v1", ContractOperationID: "cop", APIOperationID: "op-payments", Status: "MATCHED", Confidence: 1}}
+ 	observed := []apiOperation{
+-		{ID: "op-payments", Method: "POST", Path: "/api/payments/{id}", Samples: 100, ContentTypes: map[string]int64{"application/xml": 100}, AuthObserved: map[string]int64{"none": 100}},
+-		{ID: "op-shadow", Method: "GET", Path: "/api/internal/debug", Samples: 5},
++		{ID: "op-payments", Site: "payments", Method: "POST", Path: "/api/payments/{id}", Samples: 100, ContentTypes: map[string]int64{"application/xml": 100}, AuthObserved: map[string]int64{"none": 100}},
++		// Shadow endpoints are only reported within the site/host scope of a bound
++		// operation (TestDriftUndeclaredEndpointIsScopedToMatchedApplicationTraffic),
++		// so the fixture places both operations on one site.
++		{ID: "op-shadow", Site: "payments", Method: "GET", Path: "/api/internal/debug", Samples: 5},
+ 	}
+ 	events := driftAgainstLearnedSchema("contract", version, []ContractOperation{op}, bindings, learned, observed)
+ 	seen := map[string]bool{}
+diff --git a/graphql_api8.go b/graphql_api8.go
+index 6645c24..95c8238 100644
+--- a/graphql_api8.go
++++ b/graphql_api8.go
+@@ -357,18 +357,20 @@ func cloneGraphQLPersisted(v GraphQLPersistedProfile) GraphQLPersistedProfile {
+ 	return v
+ }
+ func cloneGraphQLContract(v GraphQLSchemaContract) GraphQLSchemaContract {
+-	v.Types = make(map[string][]string, len(v.Types))
++	types := make(map[string][]string, len(v.Types))
+ 	for name, fields := range v.Types {
+-		v.Types[name] = append([]string(nil), fields...)
++		types[name] = append([]string(nil), fields...)
+ 	}
+-	v.FieldTypes = make(map[string]map[string]string, len(v.FieldTypes))
++	v.Types = types
++	fieldTypes := make(map[string]map[string]string, len(v.FieldTypes))
+ 	for typ, fields := range v.FieldTypes {
+ 		cp := make(map[string]string, len(fields))
+ 		for name, target := range fields {
+ 			cp[name] = target
+ 		}
+-		v.FieldTypes[typ] = cp
++		fieldTypes[typ] = cp
+ 	}
++	v.FieldTypes = fieldTypes
+ 	return v
+ }
+ 
+@@ -1723,17 +1725,14 @@ func analyzeGraphQLDocument(src, operationName string) (graphqlAnalysis, error)
+ 	for k, v := range op.variables {
+ 		vars[k] = v
+ 	}
+-	// The fingerprint is derived from normalized structural metadata only; raw
+-	// literals and the original query text are not durable evidence.
+-	varNames := make([]string, 0, len(vars))
+-	for k := range vars {
+-		varNames = append(varNames, k)
+-	}
+-	sort.Strings(varNames)
++	// The fingerprint is derived from the normalized selection structure only;
++	// raw literals and the original query text are not durable evidence.
++	// Variable declarations are excluded so an inlined literal and its
++	// parameterized form share one operation identity, and so callers cannot
++	// mint unbounded operation IDs (escaping learned per-operation baselines)
++	// by adding unused variable definitions. Declared variable types remain
++	// available separately via VariableTypes.
+ 	parts := []string{op.typ, op.name, strconv.Itoa(maxDepth), strconv.Itoa(complexity), strings.Join(fields, "\x1f")}
+-	for _, n := range varNames {
+-		parts = append(parts, n+":"+vars[n])
+-	}
+ 	h := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+ 	return graphqlAnalysis{OperationType: op.typ, OperationName: op.name, DocumentFingerprint: hex.EncodeToString(h[:]), Depth: maxDepth, Complexity: complexity, Fields: fields, VariableTypes: vars, Introspection: introspection}, nil
+ }
+diff --git a/l7_abuse.go b/l7_abuse.go
+index f5d80b2..c497a07 100644
+--- a/l7_abuse.go
++++ b/l7_abuse.go
+@@ -108,7 +108,7 @@ func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time
+ 			c.pruneShardLocked(shard, now)
+ 		}
+ 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
+-			c.evictOldestIdleLocked(shard)
++			c.evictOldestIdleLocked(shard, now)
+ 		}
+ 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
+ 			// Saturation must not turn the limiter off. Unknown identities share a
+@@ -184,7 +184,7 @@ func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (*abus
+ 			c.pruneShardLocked(shard, now)
+ 		}
+ 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
+-			c.evictOldestIdleLocked(shard)
++			c.evictOldestIdleLocked(shard, now)
+ 		}
+ 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
+ 			// Bound memory without creating an attacker-controlled fail-open bypass.
+@@ -257,7 +257,14 @@ func (c *l7AbuseController) pruneShardLocked(shard *l7AbuseShard, now time.Time)
+ 	}
+ }
+ 
+-func (c *l7AbuseController) evictOldestIdleLocked(shard *l7AbuseShard) {
++// evictOldestIdleLocked reclaims at most one entry to make room, but only a
++// genuinely stale one: idle (no in-flight request) AND not seen within the idle
++// TTL. Evicting a recently-seen idle entry would let an attacker cycling many
++// identities reclaim a fresh full-capacity bucket per identity, turning a
++// saturated shard into a fail-open bypass. When every entry is recent the shard
++// stays full and new identities fall to the bounded shared overflow bucket.
++func (c *l7AbuseController) evictOldestIdleLocked(shard *l7AbuseShard, now time.Time) {
++	cutoff := now.Add(-c.idleTTL())
+ 	var oldestKey abuseClientKey
+ 	var oldest time.Time
+ 	found := false
+@@ -266,7 +273,7 @@ func (c *l7AbuseController) evictOldestIdleLocked(shard *l7AbuseShard) {
+ 		active := st.active
+ 		lastSeen := st.lastSeen
+ 		st.mu.Unlock()
+-		if active != 0 {
++		if active != 0 || !lastSeen.Before(cutoff) {
+ 			continue
+ 		}
+ 		if !found || lastSeen.Before(oldest) {
+diff --git a/l7_abuse_test.go b/l7_abuse_test.go
+index 156fae2..1925ae5 100644
+--- a/l7_abuse_test.go
++++ b/l7_abuse_test.go
+@@ -91,19 +91,32 @@ func TestL7AbuseStateIsBoundedPerShard(t *testing.T) {
+ 	c := newL7AbuseController(L7AbuseConfig{Enabled: true, RequestsPerWindow: 1, WindowSeconds: 60})
+ 	now := time.Unix(1_700_000_000, 0)
+ 	const targetShard = uint64(0)
+-	inserted := 0
+-	for n := 0; inserted < l7AbuseMaxEntriesPerShard+64; n++ {
++	// Drive more distinct identities at a single instant than one shard can
++	// hold. The invariant under test is that per-shard state stays bounded;
++	// admissions past saturation are expected to fall to the shared overflow
++	// bucket and may be refused (fail-closed), which is the hardened contract
++	// exercised by TestProductionL7SaturationUsesBoundedOverflowBucket. The
++	// shard must never evict a recently-seen idle entry to mint a fresh
++	// full-capacity bucket for each new identity, as that is the fail-open
++	// bypass the overflow bucket exists to prevent.
++	attempted := 0
++	admitted := 0
++	for n := 0; attempted < l7AbuseMaxEntriesPerShard+64; n++ {
+ 		identity := fmt.Sprintf("2001:db8::%x", n)
+ 		key := abuseClientKey{site: "site-a", identity: identity}
+ 		if l7AbuseShardIndex(key) != targetShard {
+ 			continue
+ 		}
++		attempted++
+ 		st, ok := c.allowAt(key.site, key.identity, now)
+-		if !ok {
+-			t.Fatalf("identity %q unexpectedly rejected", identity)
++		if ok {
++			admitted++
++			c.releaseState(st)
+ 		}
+-		c.releaseState(st)
+-		inserted++
++	}
++
++	if admitted < l7AbuseMaxEntriesPerShard {
++		t.Fatalf("shard admitted only %d distinct identities before saturation; want >= %d", admitted, l7AbuseMaxEntriesPerShard)
+ 	}
+ 
+ 	shard := &c.shards[targetShard]
+diff --git a/object_locator_api71.go b/object_locator_api71.go
+index b6fdb03..782d213 100644
+--- a/object_locator_api71.go
++++ b/object_locator_api71.go
+@@ -633,6 +633,45 @@ func (s *objectLocatorStore) activeLocator(operationID, location, field string)
+ 	return cp, true
+ }
+ 
++// activePathLocator resolves the locator for one dynamic segment of an
++// observed request path. Raw-path samples are positional (param_N), while
++// contract- and operator-declared path locators carry the declared parameter
++// name (orderId, id). A named path locator is bound to the segment only when
++// the operation has exactly one dynamic segment; with several segments the
++// name-to-position mapping is ambiguous and only the positional locator is
++// trusted.
++func (s *objectLocatorStore) activePathLocator(operationID, positional string, dynamicSegments int) (ObjectLocator, bool) {
++	if loc, ok := s.activeLocator(operationID, "path", positional); ok {
++		return loc, true
++	}
++	if s == nil || dynamicSegments != 1 {
++		return ObjectLocator{}, false
++	}
++	now := s.now()
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.pruneLocked(now)
++	var found *ObjectLocator
++	for _, v := range s.locators {
++		if v == nil || v.OperationID != operationID || v.Location != "path" || v.Field == positional {
++			continue
++		}
++		if ov, ok := s.overrides[objectLocatorOverrideID(operationID, "path", v.Field)]; ok && ov.Action == objectLocatorOverrideSuppress {
++			continue
++		}
++		if found != nil {
++			return ObjectLocator{}, false
++		}
++		found = v
++	}
++	if found == nil {
++		return ObjectLocator{}, false
++	}
++	cp := cloneObjectLocator(*found)
++	cp.Status = objectLocatorStatusActive
++	return cp, true
++}
++
+ func (s *objectLocatorStore) ensureFingerprintKey(configPath string) error {
+ 	path := apiSecurityStatePath(configPath, "api-object-locator.key")
+ 	info, err := os.Lstat(path)
+diff --git a/object_relationship_api72.go b/object_relationship_api72.go
+index eba9a88..841cd0c 100644
+--- a/object_relationship_api72.go
++++ b/object_relationship_api72.go
+@@ -303,6 +303,12 @@ func (s *objectRelationshipStore) process(ev objectRelationshipObservation) {
+ 	}
+ 	meta := apiObservationMeta{BodyPrefix: ev.BodyPrefix, BodyTruncated: ev.BodyTruncated}
+ 	samples := collectSchemaSamplesFromObservation(ev.Path, ev.RawQuery, ev.ContentType, meta)
++	pathSegments := 0
++	for _, sample := range samples {
++		if sample.Location == "path" {
++			pathSegments++
++		}
++	}
+ 	for _, sample := range samples {
+ 		if sample.Location != "path" && sample.Location != "query" && sample.Location != "body" {
+ 			continue
+@@ -313,11 +319,17 @@ func (s *objectRelationshipStore) process(ev objectRelationshipObservation) {
+ 		if sample.objectValue == "" {
+ 			continue
+ 		}
+-		locator, ok := s.locators.activeLocator(ev.OperationID, sample.Location, sample.Path)
++		var locator ObjectLocator
++		var ok bool
++		if sample.Location == "path" {
++			locator, ok = s.locators.activePathLocator(ev.OperationID, sample.Path, pathSegments)
++		} else {
++			locator, ok = s.locators.activeLocator(ev.OperationID, sample.Location, sample.Path)
++		}
+ 		if !ok {
+ 			continue
+ 		}
+-		objectFingerprint := s.locators.digestValue(ev.OperationID, sample.Location, sample.Path, sample.objectValue)
++		objectFingerprint := s.locators.digestValue(ev.OperationID, locator.Location, locator.Field, sample.objectValue)
+ 		if objectFingerprint == "" {
+ 			continue
+ 		}
+diff --git a/sequence_api62_test.go b/sequence_api62_test.go
+index 8c2f068..5d6555d 100644
+--- a/sequence_api62_test.go
++++ b/sequence_api62_test.go
+@@ -277,6 +277,11 @@ func TestAPI62ConcurrentWorkflowLearningAndSnapshotsRemainBounded(t *testing.T)
+ 	start := time.Date(2026, 9, 24, 7, 0, 0, 0, time.UTC)
+ 	a := apiOperationID("race62", http.MethodGet, "/items/{id}")
+ 	b := apiOperationID("race62", http.MethodPost, "/checkout")
++	// Pin the store clock to simulated time before launching workers: the
++	// concurrent snapshot() calls below each run a prune pass, and against
++	// wall-clock they would evict the historical simulated learning mid-flight.
++	// A single write before goroutine creation is safe for the concurrent reads.
++	s.now = func() time.Time { return start.Add(time.Second) }
+ 	const workers = 32
+ 	var wg sync.WaitGroup
+ 	for i := 0; i < workers; i++ {
+diff --git a/sequence_api63_test.go b/sequence_api63_test.go
+index 4c65f4c..fedd159 100644
+--- a/sequence_api63_test.go
++++ b/sequence_api63_test.go
+@@ -30,6 +30,13 @@ func api63TestSettings() sequenceSettings {
+ 
+ func api63TrainPath(s *sequenceStore, workflow, site string, ops []string, sessions int, start time.Time) time.Time {
+ 	at := start
++	// Couple the store clock to the simulated training clock BEFORE the loop:
++	// process() triggers periodic publishSnapshot()/prune passes mid-training,
++	// and against wall-clock those evict the historical simulated edges while
++	// they are still being learned. The closure tracks the advancing `at` so
++	// pruning uses simulated time throughout; it stays frozen at the final
++	// training time once the loop returns.
++	s.now = func() time.Time { return at }
+ 	for i := 0; i < sessions; i++ {
+ 		session := fmt.Sprintf("train-%s-%d", workflow, i)
+ 		for j, op := range ops {
+diff --git a/sequence_api64_test.go b/sequence_api64_test.go
+index ed3ba9f..358c121 100644
+--- a/sequence_api64_test.go
++++ b/sequence_api64_test.go
+@@ -15,6 +15,9 @@ import (
+ 
+ func api64TrainWithoutMode(s *sequenceStore, workflow, site string, ops []string, sessions int, start time.Time) time.Time {
+ 	at := start
++	// Track the simulated training clock so mid-training prune passes do not
++	// evict historical simulated edges against wall-clock (see api63TrainPath).
++	s.now = func() time.Time { return at }
+ 	for i := 0; i < sessions; i++ {
+ 		session := site + "-learn-" + itoa(i+1)
+ 		for j, op := range ops {
+@@ -152,6 +155,10 @@ func TestAPI64RecentSessionsAreBoundedTTLAndPrivacyPreserving(t *testing.T) {
+ 		s.pruneLocked(at.Add(1500 * time.Millisecond))
+ 		s.stateMu.Unlock()
+ 	}
++	// Pin the store clock just past the last simulated observation (well within
++	// RecentSessionTTL) so snapshot() keeps the bounded recent-session evidence
++	// instead of pruning it against wall-clock.
++	s.now = func() time.Time { return start.Add(7 * time.Second) }
+ 	model := s.snapshot()
+ 	if len(model.RecentSessions) != 2 || model.EvictedRecentSessions == 0 {
+ 		t.Fatalf("recent sessions not bounded: len=%d evicted=%d", len(model.RecentSessions), model.EvictedRecentSessions)
+
+
+## CI source-gate restoration — 2026-10-15
+
+Removed re-introduced dead files (listed in the ledgers), restored `debug_sanitize.go`, and corrected two source gates. Deleted file bodies are omitted; only additions/modifications are shown.
+
+diff --git a/debug_sanitize.go b/debug_sanitize.go
+new file mode 100644
+index 0000000..353e534
+--- /dev/null
++++ b/debug_sanitize.go
+@@ -0,0 +1,56 @@
++package main
++
++import "strings"
++
++func isSensitiveDebugKey(k string) bool {
++	k = strings.ToLower(strings.TrimSpace(k))
++	for _, part := range []string{"authorization", "proxy-authorization", "cookie", "set-cookie", "password", "passwd", "secret", "api_key", "apikey", "token", "private_key", "peer_token"} {
++		if strings.Contains(k, part) {
++			return true
++		}
++	}
++	return false
++}
++
++func sanitizeDebugValue(key string, v any) any {
++	if isSensitiveDebugKey(key) {
++		return "[masked]"
++	}
++	switch x := v.(type) {
++	case string:
++		return truncateDebugString(x, 4096)
++	case []string:
++		out := make([]string, len(x))
++		for i := range x {
++			out[i] = truncateDebugString(x[i], 4096)
++		}
++		return out
++	case map[string]any:
++		return sanitizeDebugMap(x)
++	case map[string]string:
++		out := make(map[string]any, len(x))
++		for k, v := range x {
++			out[k] = sanitizeDebugValue(k, v)
++		}
++		return out
++	case []any:
++		out := make([]any, len(x))
++		for i := range x {
++			out[i] = sanitizeDebugValue("", x[i])
++		}
++		return out
++	default:
++		return v
++	}
++}
++
++func sanitizeDebugMap(in map[string]any) map[string]any {
++	if in == nil {
++		return nil
++	}
++	out := make(map[string]any, len(in))
++	for k, v := range in {
++		out[k] = sanitizeDebugValue(k, v)
++	}
++	return out
++}
+diff --git a/tools/tests/test-api12-source.py b/tools/tests/test-api12-source.py
+index 0a0e0f3..fc2f040 100644
+--- a/tools/tests/test-api12-source.py
++++ b/tools/tests/test-api12-source.py
+@@ -98,7 +98,10 @@ require('data-view="api"' in ui, 'API Security console tab missing')
+ for dom_id in ['api_ops_body', 'api_schema_body', 'api_contract_body', 'api_contract_import']:
+     require(dom_id in ui, f'API Security UI control missing: {dom_id}')
+ 
+-require('writeJSON(w, http.' not in all_go, 'known writeJSON arity compile defect is still present')
++# The package-level writeJSON(w, v) takes no status code; a status argument
++# is the historical arity defect. Methods such as dashboardReader.writeJSON
++# (w, status, v) legitimately take one, so only bare calls are rejected.
++require(re.search(r'(?<![.\w])writeJSON\(w, http\.', all_go) is None, 'known writeJSON arity compile defect is still present')
+ 
+ require('os.CreateTemp' in persist and '.tmp-*' in persist, 'API security persistence still uses a fixed temporary filename')
+ require('len(agg.Fields) >= schemaMaxFields' in schema, 'API-2 aggregate field growth is not bounded across requests')
+diff --git a/tools/tests/test-markdown-review-source.py b/tools/tests/test-markdown-review-source.py
+index e86789a..88ee6c4 100644
+--- a/tools/tests/test-markdown-review-source.py
++++ b/tools/tests/test-markdown-review-source.py
+@@ -1,19 +1,24 @@
+ #!/usr/bin/env python3
+ from pathlib import Path
++import re
+ import sys
+ 
+ root = Path(__file__).resolve().parents[2]
+ mds = sorted(root.rglob('*.md'))
+ fail=[]
+-marker='<!-- documentation-review: 2026-09-28; classification:'
++# Every Markdown file carries a dated review marker with a classification.
++# Later review passes (e.g. 2026-09-29) stamp their own date, so any dated
++# marker is accepted rather than pinning the original 2026-09-28 pass.
++marker=re.compile(r'<!-- documentation-review: \d{4}-\d{2}-\d{2}; classification:')
+ for p in mds:
+     text=p.read_text(encoding='utf-8')
+-    if marker not in text:
++    if not marker.search(text):
+         fail.append(f'missing review marker: {p.relative_to(root)}')
+ ledger=root/'MARKDOWN_REVIEW_2026-09-28.md'
+ if not ledger.is_file(): fail.append('missing MARKDOWN_REVIEW_2026-09-28.md')
+ else:
+-    lt=ledger.read_text(encoding='utf-8')
++    # A file must be recorded in at least one dated review ledger.
++    lt='\n'.join(p.read_text(encoding='utf-8') for p in sorted(root.glob('MARKDOWN_REVIEW_*.md')))
+     for p in mds:
+         rel=str(p.relative_to(root))
+         if f'`{rel}`' not in lt:
+
+
+## Go 1.26 toolchain migration — 2026-10-15
+
+Moves the project from end-of-life Go 1.25 to Go 1.26 (go1.26.9) to remediate 11 reachable standard-library vulnerabilities reported by govulncheck; bumps golang.org/x/net to v0.60.0 and updates CI, release scripts and the package builder.
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index f2600a1..2d45d79 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -18,7 +18,7 @@ jobs:
+ 
+       - uses: actions/setup-go@v5
+         with:
+-          go-version: '1.25'
++          go-version: '1.26'
+           check-latest: true
+ 
+       - name: dependency-free root source-shape gate
+@@ -95,9 +95,9 @@ jobs:
+       - uses: actions/checkout@v4
+       - uses: actions/setup-go@v5
+         with:
+-          go-version: '1.25'
++          go-version: '1.26'
+           check-latest: true
+       - name: Install govulncheck
+-        run: GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
++        run: GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+       - name: Run govulncheck
+         run: GOTOOLCHAIN=local govulncheck ./...
+diff --git a/build.sh b/build.sh
+index 8884130..8ac5307 100755
+--- a/build.sh
++++ b/build.sh
+@@ -1,7 +1,8 @@
+ #!/usr/bin/env bash
+ # Build waf-proxy and companion binaries.
+ #
+-# Requires Go >= 1.25 because Coraza v3.7.0 declares go 1.25.0.
++# Requires Go >= 1.26: go.mod declares go 1.26.0 (Go 1.25 is end-of-life and
++# no longer receives standard-library security fixes).
+ # VectorScan build policy:
+ #   WAF_VECTORSCAN=auto      build native acceleration when libhs is available (default)
+ #   WAF_VECTORSCAN=required  require libhs/pkg-config and fail otherwise
+@@ -45,8 +46,8 @@ version_ge() {
+   [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]
+ }
+ GO_VERSION="$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)"
+-if [ -z "$GO_VERSION" ] || ! version_ge "$GO_VERSION" "1.25.0"; then
+-  echo "!! Go >= 1.25.0 is required for Coraza v3.7.0 (found ${GO_VERSION:-unavailable})" >&2
++if [ -z "$GO_VERSION" ] || ! version_ge "$GO_VERSION" "1.26.0"; then
++  echo "!! Go >= 1.26.0 is required by go.mod (found ${GO_VERSION:-unavailable})" >&2
+   exit 1
+ fi
+ 
+diff --git a/go.mod b/go.mod
+index 4d8f73b..b4c9ecb 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,6 +1,8 @@
+ module waf-proxy
+ 
+-go 1.25.0
++go 1.26.0
++
++toolchain go1.26.9
+ 
+ require (
+ 	github.com/corazawaf/coraza/v3 v3.7.0
+@@ -20,9 +22,9 @@ require (
+ 	github.com/tidwall/match v1.1.1 // indirect
+ 	github.com/tidwall/pretty v1.2.1 // indirect
+ 	github.com/valllabh/ocsf-schema-golang v1.0.3 // indirect
+-	golang.org/x/net v0.52.0 // indirect
+-	golang.org/x/sync v0.20.0 // indirect
+-	golang.org/x/text v0.35.0 // indirect
++	golang.org/x/net v0.60.0 // indirect
++	golang.org/x/sync v0.23.0 // indirect
++	golang.org/x/text v0.42.0 // indirect
+ 	google.golang.org/protobuf v1.36.11 // indirect
+ 	rsc.io/binaryregexp v0.2.0 // indirect
+ )
+diff --git a/qualify-release-host.sh b/qualify-release-host.sh
+index 4cec607..9d28e9e 100755
+--- a/qualify-release-host.sh
++++ b/qualify-release-host.sh
+@@ -2,7 +2,7 @@
+ # Phase 0 release-host qualification runner.
+ #
+ # This script intentionally distinguishes BLOCKED from FAIL. A host that lacks
+-# Go >=1.25 or verified real libvectorscan provenance has not failed WAF
++# Go >=1.26 or verified real libvectorscan provenance has not failed WAF
+ # correctness; it is simply not a valid host on which to claim the real gates.
+ #
+ # Usage:
+@@ -61,17 +61,17 @@ else
+   gov="$(local_go_version || true)"
+   if [ -z "$gov" ]; then
+     block "could not determine local Go version without toolchain auto-download"
+-  elif ! version_ge "$gov" "1.25.0"; then
+-    block "Go >=1.25.0 required; local toolchain is go${gov}"
++  elif ! version_ge "$gov" "1.26.0"; then
++    block "Go >=1.26.0 required; local toolchain is go${gov}"
+   else
+     pass "local Go toolchain go${gov}"
+   fi
+ fi
+ 
+-if grep -Eq '^go 1\.25\.0$' go.mod; then
+-  pass "go.mod pins Go 1.25.0"
++if grep -Eq '^go 1\.26\.0$' go.mod; then
++  pass "go.mod pins Go 1.26.0"
+ else
+-  fail "go.mod no longer pins Go 1.25.0"
++  fail "go.mod no longer pins Go 1.26.0"
+ fi
+ if grep -Eq '^require[[:space:]]+github\.com/corazawaf/coraza/v3[[:space:]]+v3\.7\.0[[:space:]]*$' go.mod; then
+   pass "go.mod pins Coraza v3.7.0"
+diff --git a/release-security-scan.sh b/release-security-scan.sh
+index 6a286ae..5a0f246 100755
+--- a/release-security-scan.sh
++++ b/release-security-scan.sh
+@@ -68,8 +68,8 @@ if ! command -v go >/dev/null 2>&1; then
+   [[ "$mode" == "required" ]] && exit 1 || exit 3
+ fi
+ gov=$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)
+-if [[ -z "$gov" ]] || [[ "$(printf '%s\n%s\n' 1.25.0 "$gov" | sort -V | head -n1)" != "1.25.0" ]]; then
+-  write_evidence BLOCKED "Go >=1.25.0 required by project; local toolchain is ${gov:-unknown}" "$govuln_version"
++if [[ -z "$gov" ]] || [[ "$(printf '%s\n%s\n' 1.26.0 "$gov" | sort -V | head -n1)" != "1.26.0" ]]; then
++  write_evidence BLOCKED "Go >=1.26.0 required by project; local toolchain is ${gov:-unknown}" "$govuln_version"
+   [[ "$mode" == "required" ]] && exit 1 || exit 3
+ fi
+ 
+diff --git a/run-phase1-qualification.sh b/run-phase1-qualification.sh
+index bb30228..30338cf 100755
+--- a/run-phase1-qualification.sh
++++ b/run-phase1-qualification.sh
+@@ -38,8 +38,8 @@ pkg-config --exists libhs || { echo "BLOCKED: real libhs/VectorScan is unavailab
+ 
+ ver=$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)
+ version_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; }
+-if [[ -z "$ver" ]] || ! version_ge "$ver" 1.25.0; then
+-  echo "BLOCKED: Go >=1.25.0 required (found ${ver:-unavailable})" >&2
++if [[ -z "$ver" ]] || ! version_ge "$ver" 1.26.0; then
++  echo "BLOCKED: Go >=1.26.0 required (found ${ver:-unavailable})" >&2
+   exit 3
+ fi
+ 
+diff --git a/tools/tests/test_waf_package_builder.py b/tools/tests/test_waf_package_builder.py
+index 989b963..ff64c45 100644
+--- a/tools/tests/test_waf_package_builder.py
++++ b/tools/tests/test_waf_package_builder.py
+@@ -26,7 +26,7 @@ class BuilderTests(unittest.TestCase):
+ 
+     def test_project_pins(self):
+         go, coraza = mod.read_project_requirements(ROOT)
+-        self.assertEqual(go, "1.25.0")
++        self.assertEqual(go, "1.26.0")
+         self.assertEqual(coraza, "v3.7.0")
+ 
+     def test_fingerprint_is_stable_and_ignores_dist(self):
+diff --git a/tools/waf_package_builder.py b/tools/waf_package_builder.py
+index fa575dd..43287ba 100644
+--- a/tools/waf_package_builder.py
++++ b/tools/waf_package_builder.py
+@@ -381,7 +381,7 @@ def add_common(p: argparse.ArgumentParser) -> None:
+     p.add_argument("--version", help="package version; default is YYYY.MM.DD.src<sourcehash>")
+     p.add_argument("--commit", help="build source identity; default git SHA or source fingerprint")
+     p.add_argument("--source-date-epoch", help="reproducible epoch; default env, git commit, then newest source mtime")
+-    p.add_argument("--go-bin", help="Go binary to use (must satisfy go.mod, currently >=1.25.0)")
++    p.add_argument("--go-bin", help="Go binary to use (must satisfy go.mod, currently >=1.26.0)")
+     p.add_argument("--vectorscan", choices=("off", "auto", "required"), default="off",
+                    help="native VectorScan build policy (default: off for portable Coraza package)")
+     p.add_argument("--hsm", choices=("off", "auto", "required"), default="off",

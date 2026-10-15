@@ -26,7 +26,7 @@ class BuilderTests(unittest.TestCase):
 
     def test_project_pins(self):
         go, coraza = mod.read_project_requirements(ROOT)
-        self.assertEqual(go, "1.25.0")
+        self.assertEqual(go, "1.26.0")
         self.assertEqual(coraza, "v3.7.0")
 
     def test_fingerprint_is_stable_and_ignores_dist(self):

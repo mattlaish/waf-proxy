@@ -38,8 +38,8 @@ pkg-config --exists libhs || { echo "BLOCKED: real libhs/VectorScan is unavailab
 
 ver=$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)
 version_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; }
-if [[ -z "$ver" ]] || ! version_ge "$ver" 1.25.0; then
-  echo "BLOCKED: Go >=1.25.0 required (found ${ver:-unavailable})" >&2
+if [[ -z "$ver" ]] || ! version_ge "$ver" 1.26.0; then
+  echo "BLOCKED: Go >=1.26.0 required (found ${ver:-unavailable})" >&2
   exit 3
 fi
 

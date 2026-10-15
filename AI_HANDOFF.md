@@ -1,6 +1,95 @@
 # AI Development Handoff
 
 
+## Current canonical addendum — 2026-10-15 — Root test-suite correctness fixes (L7, API-3/6/7/8)
+
+This slice restores a fully green root test suite on top of the 2026-09-30 TLS
+Session Resumption baseline. Project state remains
+**IMPLEMENTED_TESTING_DEFERRED**; no new features or API-9 scope. API-6/7/8
+scope is retained. Engine (production code) fixes:
+
+- **L7 abuse limiter fail-open (security).** `evictOldestIdleLocked` evicted the
+  oldest idle entry regardless of age, so at shard saturation every new identity
+  could reclaim a slot and receive a fresh full-capacity bucket. Eviction now
+  only reclaims entries idle *and* past the idle TTL; recent identities fall to
+  the bounded shared overflow bucket (fail-closed), matching the documented
+  intent in `l7_abuse.go`.
+- **API-8 GraphQL schema contracts lost all types.** `cloneGraphQLContract`
+  replaced `Types`/`FieldTypes` with empty maps before ranging over them, so
+  every clone (runtime enforcement snapshot, Admin responses, persistence and
+  load) dropped all declared types and field types. Fixed to copy from the
+  source maps.
+- **API-8 operation fingerprint cardinality.** The document fingerprint folded
+  in declared variable names/types, so unused `$var` declarations minted new
+  operation identities (escaping learned per-operation baselines) and an
+  inlined literal and its parameterized form diverged. The fingerprint is now
+  structural only; variable types remain in `VariableTypes`.
+- **API-7.2 named path locators never linked relationships.** Runtime path
+  samples are positional (`param_N`) while contract- and operator-declared path
+  locators carry declared names (`orderId`, `id`). New
+  `objectLocatorStore.activePathLocator` binds a named path locator only when
+  the operation has exactly one dynamic segment (ambiguous multi-segment names
+  are not guessed); the object fingerprint is keyed by the resolved locator.
+
+Test-harness corrections (engine behavior unchanged):
+
+- API-6.2/6.3/6.4 sequence tests now couple the store clock (`s.now`) to the
+  simulated clock **before** training loops; previously periodic
+  `publishSnapshot()` prune passes ran against wall-clock and evicted the
+  historical simulated edges mid-training.
+- `TestL7AbuseStateIsBoundedPerShard` asserted the pre-hardening fail-open
+  behavior (every one of cap+64 same-instant identities admitted); it now
+  asserts the real invariant (bounded state, shard fills to cap) consistent
+  with `TestProductionL7SaturationUsesBoundedOverflowBucket`.
+- `TestDriftAgainstLiveLearnedSchemaTaxonomy` fixture now sets `Site` so the
+  intentional site/host scoping of `UNDECLARED_ENDPOINT` applies.
+- Removed the accidental nested `return/` repository copy whose test file broke
+  `go vet ./...` and `go test ./...` module-wide.
+
+CI source-gate restoration (same slice): four source gates also failed on
+`origin/main` because later snapshot commits re-introduced files that the
+2026-09-28 code-duplication consolidation and API-8 post-audit cleanup had
+removed. None were reachable (no references, routes or `init` hooks from the
+remaining tree), so they were removed again: `investigation.go`,
+`security_timeline.go`, `change_audit.go`, `security_export.go`,
+`debug_lifecycle_v2.go`, `debug_retention_worker_v2.go`, `debug_evidence.go`,
+`debug_evidence_ops_v2.go`, `support_bundle_v2.go`, `security_state.go`,
+`security_event.go`, `deployment_readiness.go`, `reliability.go`,
+`vectorscan_qualification.go`, `vectorscan_audit_store.go`,
+`vectorscan_transition_audit.go`, `schema_api2_continuation.go`,
+`pki_hardening.go`, `internal/coverage/report.go`, their obsolete tests, and
+the non-shipping `web/` tree. `debug_sanitize.go` is restored as the single
+debug sanitization path used by `debug_bundle.go`. Two gates were corrected
+without weakening them: the API-12 `writeJSON` arity check now ignores method
+calls such as `dashboardReader.writeJSON(w, status, v)` (bare package calls
+are still rejected), and the Markdown review gate accepts any dated review
+marker and any `MARKDOWN_REVIEW_*.md` ledger so the 2026-09-29 review pass is
+recognized. All 18 CI source gates PASS; `go test -race ./...` PASS.
+
+Go toolchain migration (same slice): Go 1.25 is end-of-life (go1.27.2 is
+released; go1.25.14 is the final 1.25 patch). govulncheck reported 11 reachable
+standard-library vulnerabilities in go1.25.14 — including HTTP/2 server crash
+and memory exhaustion (GO-2026-6617, GO-2026-6603), HTTP/1 and HTTP/2
+connection desynchronization, a MIME header memory-limit bypass, a crypto/tls
+ECH parsing flaw and two html/template escaping flaws — all fixed only in
+go1.26.9+. The project therefore moves to **Go 1.26**: `go.mod` declares
+`go 1.26.0` with `toolchain go1.26.9` (so `GOTOOLCHAIN=auto` hosts select the
+patched release, not go1.26.0); `golang.org/x/net` v0.60.0, `golang.org/x/sync` v0.23.0 and
+`golang.org/x/text` v0.42.0; CI `go-version: '1.26'`; `build.sh`,
+`qualify-release-host.sh`, `run-phase1-qualification.sh`,
+`release-security-scan.sh` and the package builder require Go >= 1.26.0; and
+the CLAUDE.md root gate is now the Go 1.26 tidy and root-build gate. CI pins
+govulncheck to v1.9.0 (the newest release, which itself requires Go >= 1.26)
+rather than `@latest`, so a future tool release cannot silently break CI. Dated evidence that records "Go 1.25" results is
+historical and is intentionally not rewritten.
+
+Validation (Go 1.26.9, linux/amd64): `go mod tidy -diff` clean,
+`CGO_ENABLED=0 go build ./...` PASS, `go vet ./...` PASS,
+`tools/tests/test-go-root-shape.sh` PASS (131 files), `CGO_ENABLED=0 go test ./...`
+PASS (all packages), `CGO_ENABLED=1 go test -race ./` PASS. Native VectorScan,
+realcoraza and hardware qualification gates were not run in this environment
+and are not claimed.
+
 ## Current canonical addendum — 2026-09-30 — TLS Session Resumption + Handshake Observability
 
 This source now includes the **TLS Session Resumption + Handshake Observability**

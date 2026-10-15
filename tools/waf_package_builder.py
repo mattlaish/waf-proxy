@@ -381,7 +381,7 @@ def add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--version", help="package version; default is YYYY.MM.DD.src<sourcehash>")
     p.add_argument("--commit", help="build source identity; default git SHA or source fingerprint")
     p.add_argument("--source-date-epoch", help="reproducible epoch; default env, git commit, then newest source mtime")
-    p.add_argument("--go-bin", help="Go binary to use (must satisfy go.mod, currently >=1.25.0)")
+    p.add_argument("--go-bin", help="Go binary to use (must satisfy go.mod, currently >=1.26.0)")
     p.add_argument("--vectorscan", choices=("off", "auto", "required"), default="off",
                    help="native VectorScan build policy (default: off for portable Coraza package)")
     p.add_argument("--hsm", choices=("off", "auto", "required"), default="off",

@@ -98,7 +98,10 @@ require('data-view="api"' in ui, 'API Security console tab missing')
 for dom_id in ['api_ops_body', 'api_schema_body', 'api_contract_body', 'api_contract_import']:
     require(dom_id in ui, f'API Security UI control missing: {dom_id}')
 
-require('writeJSON(w, http.' not in all_go, 'known writeJSON arity compile defect is still present')
+# The package-level writeJSON(w, v) takes no status code; a status argument
+# is the historical arity defect. Methods such as dashboardReader.writeJSON
+# (w, status, v) legitimately take one, so only bare calls are rejected.
+require(re.search(r'(?<![.\w])writeJSON\(w, http\.', all_go) is None, 'known writeJSON arity compile defect is still present')
 
 require('os.CreateTemp' in persist and '.tmp-*' in persist, 'API security persistence still uses a fixed temporary filename')
 require('len(agg.Fields) >= schemaMaxFields' in schema, 'API-2 aggregate field growth is not bounded across requests')

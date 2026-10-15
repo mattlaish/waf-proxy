@@ -2,7 +2,7 @@
 # Phase 0 release-host qualification runner.
 #
 # This script intentionally distinguishes BLOCKED from FAIL. A host that lacks
-# Go >=1.25 or verified real libvectorscan provenance has not failed WAF
+# Go >=1.26 or verified real libvectorscan provenance has not failed WAF
 # correctness; it is simply not a valid host on which to claim the real gates.
 #
 # Usage:
@@ -61,17 +61,17 @@ else
   gov="$(local_go_version || true)"
   if [ -z "$gov" ]; then
     block "could not determine local Go version without toolchain auto-download"
-  elif ! version_ge "$gov" "1.25.0"; then
-    block "Go >=1.25.0 required; local toolchain is go${gov}"
+  elif ! version_ge "$gov" "1.26.0"; then
+    block "Go >=1.26.0 required; local toolchain is go${gov}"
   else
     pass "local Go toolchain go${gov}"
   fi
 fi
 
-if grep -Eq '^go 1\.25\.0$' go.mod; then
-  pass "go.mod pins Go 1.25.0"
+if grep -Eq '^go 1\.26\.0$' go.mod; then
+  pass "go.mod pins Go 1.26.0"
 else
-  fail "go.mod no longer pins Go 1.25.0"
+  fail "go.mod no longer pins Go 1.26.0"
 fi
 if grep -Eq '^require[[:space:]]+github\.com/corazawaf/coraza/v3[[:space:]]+v3\.7\.0[[:space:]]*$' go.mod; then
   pass "go.mod pins Coraza v3.7.0"

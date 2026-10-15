@@ -357,18 +357,20 @@ func cloneGraphQLPersisted(v GraphQLPersistedProfile) GraphQLPersistedProfile {
 	return v
 }
 func cloneGraphQLContract(v GraphQLSchemaContract) GraphQLSchemaContract {
-	v.Types = make(map[string][]string, len(v.Types))
+	types := make(map[string][]string, len(v.Types))
 	for name, fields := range v.Types {
-		v.Types[name] = append([]string(nil), fields...)
+		types[name] = append([]string(nil), fields...)
 	}
-	v.FieldTypes = make(map[string]map[string]string, len(v.FieldTypes))
+	v.Types = types
+	fieldTypes := make(map[string]map[string]string, len(v.FieldTypes))
 	for typ, fields := range v.FieldTypes {
 		cp := make(map[string]string, len(fields))
 		for name, target := range fields {
 			cp[name] = target
 		}
-		v.FieldTypes[typ] = cp
+		fieldTypes[typ] = cp
 	}
+	v.FieldTypes = fieldTypes
 	return v
 }
 
@@ -1723,17 +1725,14 @@ func analyzeGraphQLDocument(src, operationName string) (graphqlAnalysis, error) 
 	for k, v := range op.variables {
 		vars[k] = v
 	}
-	// The fingerprint is derived from normalized structural metadata only; raw
-	// literals and the original query text are not durable evidence.
-	varNames := make([]string, 0, len(vars))
-	for k := range vars {
-		varNames = append(varNames, k)
-	}
-	sort.Strings(varNames)
+	// The fingerprint is derived from the normalized selection structure only;
+	// raw literals and the original query text are not durable evidence.
+	// Variable declarations are excluded so an inlined literal and its
+	// parameterized form share one operation identity, and so callers cannot
+	// mint unbounded operation IDs (escaping learned per-operation baselines)
+	// by adding unused variable definitions. Declared variable types remain
+	// available separately via VariableTypes.
 	parts := []string{op.typ, op.name, strconv.Itoa(maxDepth), strconv.Itoa(complexity), strings.Join(fields, "\x1f")}
-	for _, n := range varNames {
-		parts = append(parts, n+":"+vars[n])
-	}
 	h := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return graphqlAnalysis{OperationType: op.typ, OperationName: op.name, DocumentFingerprint: hex.EncodeToString(h[:]), Depth: maxDepth, Complexity: complexity, Fields: fields, VariableTypes: vars, Introspection: introspection}, nil
 }

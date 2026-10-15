@@ -293,8 +293,11 @@ func TestDriftAgainstLiveLearnedSchemaTaxonomy(t *testing.T) {
 	op.VersionID = "v1"
 	bindings := []OperationBinding{{ID: "binding", ContractVersionID: "v1", ContractOperationID: "cop", APIOperationID: "op-payments", Status: "MATCHED", Confidence: 1}}
 	observed := []apiOperation{
-		{ID: "op-payments", Method: "POST", Path: "/api/payments/{id}", Samples: 100, ContentTypes: map[string]int64{"application/xml": 100}, AuthObserved: map[string]int64{"none": 100}},
-		{ID: "op-shadow", Method: "GET", Path: "/api/internal/debug", Samples: 5},
+		{ID: "op-payments", Site: "payments", Method: "POST", Path: "/api/payments/{id}", Samples: 100, ContentTypes: map[string]int64{"application/xml": 100}, AuthObserved: map[string]int64{"none": 100}},
+		// Shadow endpoints are only reported within the site/host scope of a bound
+		// operation (TestDriftUndeclaredEndpointIsScopedToMatchedApplicationTraffic),
+		// so the fixture places both operations on one site.
+		{ID: "op-shadow", Site: "payments", Method: "GET", Path: "/api/internal/debug", Samples: 5},
 	}
 	events := driftAgainstLearnedSchema("contract", version, []ContractOperation{op}, bindings, learned, observed)
 	seen := map[string]bool{}

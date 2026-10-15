@@ -30,6 +30,13 @@ func api63TestSettings() sequenceSettings {
 
 func api63TrainPath(s *sequenceStore, workflow, site string, ops []string, sessions int, start time.Time) time.Time {
 	at := start
+	// Couple the store clock to the simulated training clock BEFORE the loop:
+	// process() triggers periodic publishSnapshot()/prune passes mid-training,
+	// and against wall-clock those evict the historical simulated edges while
+	// they are still being learned. The closure tracks the advancing `at` so
+	// pruning uses simulated time throughout; it stays frozen at the final
+	// training time once the loop returns.
+	s.now = func() time.Time { return at }
 	for i := 0; i < sessions; i++ {
 		session := fmt.Sprintf("train-%s-%d", workflow, i)
 		for j, op := range ops {

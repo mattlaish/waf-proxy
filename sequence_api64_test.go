@@ -15,6 +15,9 @@ import (
 
 func api64TrainWithoutMode(s *sequenceStore, workflow, site string, ops []string, sessions int, start time.Time) time.Time {
 	at := start
+	// Track the simulated training clock so mid-training prune passes do not
+	// evict historical simulated edges against wall-clock (see api63TrainPath).
+	s.now = func() time.Time { return at }
 	for i := 0; i < sessions; i++ {
 		session := site + "-learn-" + itoa(i+1)
 		for j, op := range ops {
@@ -152,6 +155,10 @@ func TestAPI64RecentSessionsAreBoundedTTLAndPrivacyPreserving(t *testing.T) {
 		s.pruneLocked(at.Add(1500 * time.Millisecond))
 		s.stateMu.Unlock()
 	}
+	// Pin the store clock just past the last simulated observation (well within
+	// RecentSessionTTL) so snapshot() keeps the bounded recent-session evidence
+	// instead of pruning it against wall-clock.
+	s.now = func() time.Time { return start.Add(7 * time.Second) }
 	model := s.snapshot()
 	if len(model.RecentSessions) != 2 || model.EvictedRecentSessions == 0 {
 		t.Fatalf("recent sessions not bounded: len=%d evicted=%d", len(model.RecentSessions), model.EvictedRecentSessions)

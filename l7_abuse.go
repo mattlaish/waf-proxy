@@ -108,7 +108,7 @@ func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time
 			c.pruneShardLocked(shard, now)
 		}
 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
-			c.evictOldestIdleLocked(shard)
+			c.evictOldestIdleLocked(shard, now)
 		}
 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
 			// Saturation must not turn the limiter off. Unknown identities share a
@@ -184,7 +184,7 @@ func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (*abus
 			c.pruneShardLocked(shard, now)
 		}
 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
-			c.evictOldestIdleLocked(shard)
+			c.evictOldestIdleLocked(shard, now)
 		}
 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
 			// Bound memory without creating an attacker-controlled fail-open bypass.
@@ -257,7 +257,14 @@ func (c *l7AbuseController) pruneShardLocked(shard *l7AbuseShard, now time.Time)
 	}
 }
 
-func (c *l7AbuseController) evictOldestIdleLocked(shard *l7AbuseShard) {
+// evictOldestIdleLocked reclaims at most one entry to make room, but only a
+// genuinely stale one: idle (no in-flight request) AND not seen within the idle
+// TTL. Evicting a recently-seen idle entry would let an attacker cycling many
+// identities reclaim a fresh full-capacity bucket per identity, turning a
+// saturated shard into a fail-open bypass. When every entry is recent the shard
+// stays full and new identities fall to the bounded shared overflow bucket.
+func (c *l7AbuseController) evictOldestIdleLocked(shard *l7AbuseShard, now time.Time) {
+	cutoff := now.Add(-c.idleTTL())
 	var oldestKey abuseClientKey
 	var oldest time.Time
 	found := false
@@ -266,7 +273,7 @@ func (c *l7AbuseController) evictOldestIdleLocked(shard *l7AbuseShard) {
 		active := st.active
 		lastSeen := st.lastSeen
 		st.mu.Unlock()
-		if active != 0 {
+		if active != 0 || !lastSeen.Before(cutoff) {
 			continue
 		}
 		if !found || lastSeen.Before(oldest) {

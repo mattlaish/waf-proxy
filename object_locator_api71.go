@@ -633,6 +633,45 @@ func (s *objectLocatorStore) activeLocator(operationID, location, field string) 
 	return cp, true
 }
 
+// activePathLocator resolves the locator for one dynamic segment of an
+// observed request path. Raw-path samples are positional (param_N), while
+// contract- and operator-declared path locators carry the declared parameter
+// name (orderId, id). A named path locator is bound to the segment only when
+// the operation has exactly one dynamic segment; with several segments the
+// name-to-position mapping is ambiguous and only the positional locator is
+// trusted.
+func (s *objectLocatorStore) activePathLocator(operationID, positional string, dynamicSegments int) (ObjectLocator, bool) {
+	if loc, ok := s.activeLocator(operationID, "path", positional); ok {
+		return loc, true
+	}
+	if s == nil || dynamicSegments != 1 {
+		return ObjectLocator{}, false
+	}
+	now := s.now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneLocked(now)
+	var found *ObjectLocator
+	for _, v := range s.locators {
+		if v == nil || v.OperationID != operationID || v.Location != "path" || v.Field == positional {
+			continue
+		}
+		if ov, ok := s.overrides[objectLocatorOverrideID(operationID, "path", v.Field)]; ok && ov.Action == objectLocatorOverrideSuppress {
+			continue
+		}
+		if found != nil {
+			return ObjectLocator{}, false
+		}
+		found = v
+	}
+	if found == nil {
+		return ObjectLocator{}, false
+	}
+	cp := cloneObjectLocator(*found)
+	cp.Status = objectLocatorStatusActive
+	return cp, true
+}
+
 func (s *objectLocatorStore) ensureFingerprintKey(configPath string) error {
 	path := apiSecurityStatePath(configPath, "api-object-locator.key")
 	info, err := os.Lstat(path)
