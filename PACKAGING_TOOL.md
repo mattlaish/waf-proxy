@@ -102,7 +102,7 @@ libraries.
 Common requirements:
 
 - Python 3.10+
-- Go version satisfying `go.mod` (currently Go 1.25.0+)
+- Go version satisfying `go.mod` (currently Go 1.26.0+)
 - bash
 - gcc / working C toolchain (the canonical race/real-Coraza gates use CGO)
 - sha256sum

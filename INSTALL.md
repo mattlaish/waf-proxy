@@ -130,7 +130,7 @@ generic environments. It is not the primary enterprise distribution path.
 ## 1. Prerequisites
 
 - Debian 12 / Ubuntu 22.04+ or supported RHEL-family Linux (systemd), x86-64/x86_64 or arm64/aarch64 as appropriate to the package format
-- **Go ≥ 1.25.0** to build. Coraza v3.7.0 declares this minimum; distro Go may be too old, so install an upstream Go 1.25+ toolchain when necessary.
+- **Go ≥ 1.26.0** to build. `go.mod` declares this minimum (Go 1.25 is end-of-life and no longer receives standard-library security fixes); distro Go may be too old, so install an upstream Go 1.26+ toolchain when necessary.
 - Network/module-cache access for Coraza v3.7.0 dependencies and to fetch OWASP CRS
 - `openssl` (token generation) and `curl`/`tar` (CRS fetch)
 - Root for the install step

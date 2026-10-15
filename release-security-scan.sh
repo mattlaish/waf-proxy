@@ -68,8 +68,8 @@ if ! command -v go >/dev/null 2>&1; then
   [[ "$mode" == "required" ]] && exit 1 || exit 3
 fi
 gov=$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)
-if [[ -z "$gov" ]] || [[ "$(printf '%s\n%s\n' 1.25.0 "$gov" | sort -V | head -n1)" != "1.25.0" ]]; then
-  write_evidence BLOCKED "Go >=1.25.0 required by project; local toolchain is ${gov:-unknown}" "$govuln_version"
+if [[ -z "$gov" ]] || [[ "$(printf '%s\n%s\n' 1.26.0 "$gov" | sort -V | head -n1)" != "1.26.0" ]]; then
+  write_evidence BLOCKED "Go >=1.26.0 required by project; local toolchain is ${gov:-unknown}" "$govuln_version"
   [[ "$mode" == "required" ]] && exit 1 || exit 3
 fi
 

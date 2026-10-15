@@ -66,7 +66,24 @@ are still rejected), and the Markdown review gate accepts any dated review
 marker and any `MARKDOWN_REVIEW_*.md` ledger so the 2026-09-29 review pass is
 recognized. All 18 CI source gates PASS; `go test -race ./...` PASS.
 
-Validation (Go 1.25.0, linux/amd64): `go mod tidy -diff` clean,
+Go toolchain migration (same slice): Go 1.25 is end-of-life (go1.27.2 is
+released; go1.25.14 is the final 1.25 patch). govulncheck reported 11 reachable
+standard-library vulnerabilities in go1.25.14 — including HTTP/2 server crash
+and memory exhaustion (GO-2026-6617, GO-2026-6603), HTTP/1 and HTTP/2
+connection desynchronization, a MIME header memory-limit bypass, a crypto/tls
+ECH parsing flaw and two html/template escaping flaws — all fixed only in
+go1.26.9+. The project therefore moves to **Go 1.26**: `go.mod` declares
+`go 1.26.0` with `toolchain go1.26.9` (so `GOTOOLCHAIN=auto` hosts select the
+patched release, not go1.26.0); `golang.org/x/net` v0.60.0, `golang.org/x/sync` v0.23.0 and
+`golang.org/x/text` v0.42.0; CI `go-version: '1.26'`; `build.sh`,
+`qualify-release-host.sh`, `run-phase1-qualification.sh`,
+`release-security-scan.sh` and the package builder require Go >= 1.26.0; and
+the CLAUDE.md root gate is now the Go 1.26 tidy and root-build gate. CI pins
+govulncheck to v1.9.0 (the newest release, which itself requires Go >= 1.26)
+rather than `@latest`, so a future tool release cannot silently break CI. Dated evidence that records "Go 1.25" results is
+historical and is intentionally not rewritten.
+
+Validation (Go 1.26.9, linux/amd64): `go mod tidy -diff` clean,
 `CGO_ENABLED=0 go build ./...` PASS, `go vet ./...` PASS,
 `tools/tests/test-go-root-shape.sh` PASS (131 files), `CGO_ENABLED=0 go test ./...`
 PASS (all packages), `CGO_ENABLED=1 go test -race ./` PASS. Native VectorScan,

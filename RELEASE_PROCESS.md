@@ -271,7 +271,7 @@ SOURCE_DATE_EPOCH=<approved-epoch> \
 
 The artifact contains `release-evidence/RELEASE_EVIDENCE.json`, `SOURCE_MANIFEST.sha256`, `sbom.spdx.json`, and `sbom.cyclonedx.json`. The evidence records the local Go runtime/directive, Coraza pin, VectorScan/libhs discovery, NGINX/OpenSSL discovery and optional CRS tree digest. These are provenance records, not runtime qualification.
 
-`release-security-scan.sh` is the canonical govulncheck evidence runner. Use `--mode required` for a release gate. Missing Go >=1.25, missing govulncheck, unavailable network/module data, or other prerequisites must remain BLOCKED/NOT_RUN rather than PASS.
+`release-security-scan.sh` is the canonical govulncheck evidence runner. Use `--mode required` for a release gate. Missing Go >=1.26, missing govulncheck, unavailable network/module data, or other prerequisites must remain BLOCKED/NOT_RUN rather than PASS.
 
 `build-release-artifact.sh` is a **source-archive** builder and may only emit `SOURCE_ARCHIVE` identity. When binaries are produced, `build.sh` separately records whether the actual WAF binary is `PORTABLE_BINARY` / `portable-coraza` or `NATIVE_BINARY` / `native-vectorscan` and writes `BUILD_PROVENANCE.json` plus `BUILD_SHA256SUMS.txt`. Native VectorScan provenance explicitly records that compatible runtime libhs is required. Never relabel a source archive as a binary artifact or one binary variant as the other.
 

@@ -178,7 +178,7 @@ Listen addresses now live **on each site** — different sites can bind differen
 ## Build (Debian)
 
 ```bash
-# Coraza v3.7.0 requires Go >= 1.25.0. Install a Go 1.25+ toolchain first.
+# go.mod requires Go >= 1.26.0 (Go 1.25 is end-of-life). Install a Go 1.26+ toolchain first.
 go version
 
 # Portable Coraza-only build

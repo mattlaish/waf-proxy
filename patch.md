@@ -1037,3 +1037,178 @@ index e86789a..88ee6c4 100644
      for p in mds:
          rel=str(p.relative_to(root))
          if f'`{rel}`' not in lt:
+
+
+## Go 1.26 toolchain migration — 2026-10-15
+
+Moves the project from end-of-life Go 1.25 to Go 1.26 (go1.26.9) to remediate 11 reachable standard-library vulnerabilities reported by govulncheck; bumps golang.org/x/net to v0.60.0 and updates CI, release scripts and the package builder.
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index f2600a1..2d45d79 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -18,7 +18,7 @@ jobs:
+ 
+       - uses: actions/setup-go@v5
+         with:
+-          go-version: '1.25'
++          go-version: '1.26'
+           check-latest: true
+ 
+       - name: dependency-free root source-shape gate
+@@ -95,9 +95,9 @@ jobs:
+       - uses: actions/checkout@v4
+       - uses: actions/setup-go@v5
+         with:
+-          go-version: '1.25'
++          go-version: '1.26'
+           check-latest: true
+       - name: Install govulncheck
+-        run: GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
++        run: GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+       - name: Run govulncheck
+         run: GOTOOLCHAIN=local govulncheck ./...
+diff --git a/build.sh b/build.sh
+index 8884130..8ac5307 100755
+--- a/build.sh
++++ b/build.sh
+@@ -1,7 +1,8 @@
+ #!/usr/bin/env bash
+ # Build waf-proxy and companion binaries.
+ #
+-# Requires Go >= 1.25 because Coraza v3.7.0 declares go 1.25.0.
++# Requires Go >= 1.26: go.mod declares go 1.26.0 (Go 1.25 is end-of-life and
++# no longer receives standard-library security fixes).
+ # VectorScan build policy:
+ #   WAF_VECTORSCAN=auto      build native acceleration when libhs is available (default)
+ #   WAF_VECTORSCAN=required  require libhs/pkg-config and fail otherwise
+@@ -45,8 +46,8 @@ version_ge() {
+   [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]
+ }
+ GO_VERSION="$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)"
+-if [ -z "$GO_VERSION" ] || ! version_ge "$GO_VERSION" "1.25.0"; then
+-  echo "!! Go >= 1.25.0 is required for Coraza v3.7.0 (found ${GO_VERSION:-unavailable})" >&2
++if [ -z "$GO_VERSION" ] || ! version_ge "$GO_VERSION" "1.26.0"; then
++  echo "!! Go >= 1.26.0 is required by go.mod (found ${GO_VERSION:-unavailable})" >&2
+   exit 1
+ fi
+ 
+diff --git a/go.mod b/go.mod
+index 4d8f73b..b4c9ecb 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,6 +1,8 @@
+ module waf-proxy
+ 
+-go 1.25.0
++go 1.26.0
++
++toolchain go1.26.9
+ 
+ require (
+ 	github.com/corazawaf/coraza/v3 v3.7.0
+@@ -20,9 +22,9 @@ require (
+ 	github.com/tidwall/match v1.1.1 // indirect
+ 	github.com/tidwall/pretty v1.2.1 // indirect
+ 	github.com/valllabh/ocsf-schema-golang v1.0.3 // indirect
+-	golang.org/x/net v0.52.0 // indirect
+-	golang.org/x/sync v0.20.0 // indirect
+-	golang.org/x/text v0.35.0 // indirect
++	golang.org/x/net v0.60.0 // indirect
++	golang.org/x/sync v0.23.0 // indirect
++	golang.org/x/text v0.42.0 // indirect
+ 	google.golang.org/protobuf v1.36.11 // indirect
+ 	rsc.io/binaryregexp v0.2.0 // indirect
+ )
+diff --git a/qualify-release-host.sh b/qualify-release-host.sh
+index 4cec607..9d28e9e 100755
+--- a/qualify-release-host.sh
++++ b/qualify-release-host.sh
+@@ -2,7 +2,7 @@
+ # Phase 0 release-host qualification runner.
+ #
+ # This script intentionally distinguishes BLOCKED from FAIL. A host that lacks
+-# Go >=1.25 or verified real libvectorscan provenance has not failed WAF
++# Go >=1.26 or verified real libvectorscan provenance has not failed WAF
+ # correctness; it is simply not a valid host on which to claim the real gates.
+ #
+ # Usage:
+@@ -61,17 +61,17 @@ else
+   gov="$(local_go_version || true)"
+   if [ -z "$gov" ]; then
+     block "could not determine local Go version without toolchain auto-download"
+-  elif ! version_ge "$gov" "1.25.0"; then
+-    block "Go >=1.25.0 required; local toolchain is go${gov}"
++  elif ! version_ge "$gov" "1.26.0"; then
++    block "Go >=1.26.0 required; local toolchain is go${gov}"
+   else
+     pass "local Go toolchain go${gov}"
+   fi
+ fi
+ 
+-if grep -Eq '^go 1\.25\.0$' go.mod; then
+-  pass "go.mod pins Go 1.25.0"
++if grep -Eq '^go 1\.26\.0$' go.mod; then
++  pass "go.mod pins Go 1.26.0"
+ else
+-  fail "go.mod no longer pins Go 1.25.0"
++  fail "go.mod no longer pins Go 1.26.0"
+ fi
+ if grep -Eq '^require[[:space:]]+github\.com/corazawaf/coraza/v3[[:space:]]+v3\.7\.0[[:space:]]*$' go.mod; then
+   pass "go.mod pins Coraza v3.7.0"
+diff --git a/release-security-scan.sh b/release-security-scan.sh
+index 6a286ae..5a0f246 100755
+--- a/release-security-scan.sh
++++ b/release-security-scan.sh
+@@ -68,8 +68,8 @@ if ! command -v go >/dev/null 2>&1; then
+   [[ "$mode" == "required" ]] && exit 1 || exit 3
+ fi
+ gov=$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)
+-if [[ -z "$gov" ]] || [[ "$(printf '%s\n%s\n' 1.25.0 "$gov" | sort -V | head -n1)" != "1.25.0" ]]; then
+-  write_evidence BLOCKED "Go >=1.25.0 required by project; local toolchain is ${gov:-unknown}" "$govuln_version"
++if [[ -z "$gov" ]] || [[ "$(printf '%s\n%s\n' 1.26.0 "$gov" | sort -V | head -n1)" != "1.26.0" ]]; then
++  write_evidence BLOCKED "Go >=1.26.0 required by project; local toolchain is ${gov:-unknown}" "$govuln_version"
+   [[ "$mode" == "required" ]] && exit 1 || exit 3
+ fi
+ 
+diff --git a/run-phase1-qualification.sh b/run-phase1-qualification.sh
+index bb30228..30338cf 100755
+--- a/run-phase1-qualification.sh
++++ b/run-phase1-qualification.sh
+@@ -38,8 +38,8 @@ pkg-config --exists libhs || { echo "BLOCKED: real libhs/VectorScan is unavailab
+ 
+ ver=$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)
+ version_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; }
+-if [[ -z "$ver" ]] || ! version_ge "$ver" 1.25.0; then
+-  echo "BLOCKED: Go >=1.25.0 required (found ${ver:-unavailable})" >&2
++if [[ -z "$ver" ]] || ! version_ge "$ver" 1.26.0; then
++  echo "BLOCKED: Go >=1.26.0 required (found ${ver:-unavailable})" >&2
+   exit 3
+ fi
+ 
+diff --git a/tools/tests/test_waf_package_builder.py b/tools/tests/test_waf_package_builder.py
+index 989b963..ff64c45 100644
+--- a/tools/tests/test_waf_package_builder.py
++++ b/tools/tests/test_waf_package_builder.py
+@@ -26,7 +26,7 @@ class BuilderTests(unittest.TestCase):
+ 
+     def test_project_pins(self):
+         go, coraza = mod.read_project_requirements(ROOT)
+-        self.assertEqual(go, "1.25.0")
++        self.assertEqual(go, "1.26.0")
+         self.assertEqual(coraza, "v3.7.0")
+ 
+     def test_fingerprint_is_stable_and_ignores_dist(self):
+diff --git a/tools/waf_package_builder.py b/tools/waf_package_builder.py
+index fa575dd..43287ba 100644
+--- a/tools/waf_package_builder.py
++++ b/tools/waf_package_builder.py
+@@ -381,7 +381,7 @@ def add_common(p: argparse.ArgumentParser) -> None:
+     p.add_argument("--version", help="package version; default is YYYY.MM.DD.src<sourcehash>")
+     p.add_argument("--commit", help="build source identity; default git SHA or source fingerprint")
+     p.add_argument("--source-date-epoch", help="reproducible epoch; default env, git commit, then newest source mtime")
+-    p.add_argument("--go-bin", help="Go binary to use (must satisfy go.mod, currently >=1.25.0)")
++    p.add_argument("--go-bin", help="Go binary to use (must satisfy go.mod, currently >=1.26.0)")
+     p.add_argument("--vectorscan", choices=("off", "auto", "required"), default="off",
+                    help="native VectorScan build policy (default: off for portable Coraza package)")
+     p.add_argument("--hsm", choices=("off", "auto", "required"), default="off",

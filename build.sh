@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build waf-proxy and companion binaries.
 #
-# Requires Go >= 1.25 because Coraza v3.7.0 declares go 1.25.0.
+# Requires Go >= 1.26: go.mod declares go 1.26.0 (Go 1.25 is end-of-life and
+# no longer receives standard-library security fixes).
 # VectorScan build policy:
 #   WAF_VECTORSCAN=auto      build native acceleration when libhs is available (default)
 #   WAF_VECTORSCAN=required  require libhs/pkg-config and fail otherwise
@@ -45,8 +46,8 @@ version_ge() {
   [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]
 }
 GO_VERSION="$(GOTOOLCHAIN=local go version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true)"
-if [ -z "$GO_VERSION" ] || ! version_ge "$GO_VERSION" "1.25.0"; then
-  echo "!! Go >= 1.25.0 is required for Coraza v3.7.0 (found ${GO_VERSION:-unavailable})" >&2
+if [ -z "$GO_VERSION" ] || ! version_ge "$GO_VERSION" "1.26.0"; then
+  echo "!! Go >= 1.26.0 is required by go.mod (found ${GO_VERSION:-unavailable})" >&2
   exit 1
 fi
 
