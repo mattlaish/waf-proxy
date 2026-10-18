@@ -1327,3 +1327,168 @@ index fa575dd..43287ba 100644
      p.add_argument("--vectorscan", choices=("off", "auto", "required"), default="off",
                     help="native VectorScan build policy (default: off for portable Coraza package)")
      p.add_argument("--hsm", choices=("off", "auto", "required"), default="off",
+
+
+## Console UX qualification + review fixes — 2026-10-18
+
+Rate-limit visitor page for browsers, no mid-token wrapping in event/access tables, scrollable tab row on phones, and Playwright console workflow tests in CI.
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 6d96ee1..a4acb29 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -28,6 +28,16 @@ jobs:
+       - name: Console startup, product wording, and unchanged setting values
+         run: node --test tools/tests/test-console-copy.mjs
+ 
++      - name: Install pinned Playwright + Chromium for console workflow tests
++        run: |
++          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
++          npm init -y >/dev/null
++          npm install --no-audit --no-fund playwright@1.56.1
++          npx playwright install --with-deps chromium
++
++      - name: Console browser workflows (draft/apply, guided setup, permissions, keyboard)
++        run: WAF_PLAYWRIGHT_MODULE="$RUNNER_TEMP/pw/node_modules/playwright" node --test tools/tests/test-console-workflows.mjs
++
+       - name: dependency-free root source-shape gate
+         run: ./tools/tests/test-go-root-shape.sh
+ 
+diff --git a/block_response.go b/block_response.go
+index c52d78e..9460395 100644
+--- a/block_response.go
++++ b/block_response.go
+@@ -27,6 +27,13 @@ func blockPageReason(reason string) string {
+ 	return reason
+ }
+ 
++// acceptsHTML reports whether the client explicitly accepts an HTML page,
++// which browsers do on navigation. API clients that send no Accept header or
++// only application/json are not treated as browsers.
++func acceptsHTML(r *http.Request) bool {
++	return r != nil && strings.Contains(r.Header.Get("Accept"), "text/html")
++}
++
+ func writeBlockResponse(w http.ResponseWriter, r *http.Request, status int, reason string, jsonMode bool) {
+ 	id := requestCorrelationID(r)
+ 	if id != "" {
+diff --git a/block_response_copy_test.go b/block_response_copy_test.go
+index 4cd8be4..c10244d 100644
+--- a/block_response_copy_test.go
++++ b/block_response_copy_test.go
+@@ -35,3 +35,32 @@ func TestBlockPageProductLanguagePreservesAPIReason(t *testing.T) {
+ 		})
+ 	}
+ }
++
++func TestRateLimitPageForBrowsersJSONForAPIClients(t *testing.T) {
++	c := newL7AbuseController(L7AbuseConfig{Enabled: true, RequestsPerWindow: 1, WindowSeconds: 60})
++	h := c.wrap("site-a", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
++	for _, tc := range []struct {
++		name, accept, contentType, text string
++	}{
++		{"browser", "text/html,application/xhtml+xml,*/*;q=0.8", "text/html", "Please wait and try again"},
++		{"api-no-accept", "", "application/json", `"reason":"l7_abuse_limit"`},
++		{"api-json", "application/json", "application/json", `"reason":"l7_abuse_limit"`},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			req := httptest.NewRequest(http.MethodGet, "https://example.test/", nil)
++			req.RemoteAddr = "192.0.2.50:1234"
++			if tc.accept != "" {
++				req.Header.Set("Accept", tc.accept)
++			}
++			h.ServeHTTP(httptest.NewRecorder(), req) // consume the single token
++			rr := httptest.NewRecorder()
++			h.ServeHTTP(rr, req)
++			if rr.Code != http.StatusTooManyRequests {
++				t.Fatalf("status=%d want 429", rr.Code)
++			}
++			if !strings.HasPrefix(rr.Header().Get("Content-Type"), tc.contentType) || !strings.Contains(rr.Body.String(), tc.text) {
++				t.Fatalf("content-type=%q body=%s", rr.Header().Get("Content-Type"), rr.Body.String())
++			}
++		})
++	}
++}
+diff --git a/l7_abuse.go b/l7_abuse.go
+index c497a07..d269890 100644
+--- a/l7_abuse.go
++++ b/l7_abuse.go
+@@ -154,7 +154,9 @@ func (c *l7AbuseController) wrap(site string, next http.Handler) http.Handler {
+ 		}
+ 		state, allowed := c.allowAt(site, identity, time.Now())
+ 		if !allowed {
+-			writeBlockResponse(w, r, http.StatusTooManyRequests, "l7_abuse_limit", true)
++			// API clients keep the machine-readable JSON body; browsers get the
++			// visitor page explaining the limit.
++			writeBlockResponse(w, r, http.StatusTooManyRequests, "l7_abuse_limit", !acceptsHTML(r))
+ 			return
+ 		}
+ 		if state != nil {
+diff --git a/static/admin.html b/static/admin.html
+index 0c2d2d1..eb67143 100644
+--- a/static/admin.html
++++ b/static/admin.html
+@@ -153,6 +153,7 @@
+   table{width:100%;border-collapse:collapse;font:12px var(--mono)}
+   th{color:var(--mut);text-align:left;font-weight:500;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+   td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-all}
++  td.nw{white-space:nowrap;word-break:normal}
+   tr:hover td{background:var(--raised)}
+   .sev{border-radius:4px;padding:1px 6px;font-size:11px;white-space:nowrap}
+   .sev.critical,.sev.emergency,.sev.alert{background:color-mix(in srgb,var(--red) 20%,transparent);color:var(--red)}
+@@ -232,6 +233,7 @@
+     .metgrid{grid-template-columns:minmax(0,1fr)}.feedhead,.dashrow,.cardhead,.crawlbar{flex-wrap:wrap}
+     .grid2{grid-template-columns:minmax(0,1fr)}.field{min-width:0}.fpolicy{overflow:auto}
+     .fbpanel{max-height:90vh}.ux-dialog-body{padding:10px}.tab{padding:10px}
++    .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}.tab{flex:0 0 auto;white-space:nowrap}
+     .dashrow .nm,.dashrow .meta{overflow-wrap:anywhere}.attention-item{overflow-wrap:anywhere}
+   }
+ </style>
+@@ -1145,6 +1147,10 @@
+   let mapActive=false;
+   function showView(v){
+     document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("sel",x.dataset.view===v));
++    // On narrow screens the tab row scrolls sideways; keep the selected tab visible
++    // without scrolling the page itself.
++    const selTab=document.querySelector(".tab.sel"),tabBar=selTab&&selTab.parentElement;
++    if(tabBar&&tabBar.scrollWidth>tabBar.clientWidth) tabBar.scrollLeft+=selTab.getBoundingClientRect().left-tabBar.getBoundingClientRect().left-16;
+     document.querySelectorAll(".view").forEach(x=>x.classList.toggle("sel", x.id==="view-"+v));
+     mapActive = v==="map";
+     if (v==="config") loadDashboard();      // landing = dashboard
+@@ -2548,9 +2554,9 @@
+       $("homecount").textContent=rows.length?rows.length+" recent":"";
+       $("home-empty").style.display=rows.length?"none":"";
+       $("homefeed").innerHTML=rows.map(r=>`<tr>
+-        <td>${esc(r.time)}</td><td>${esc(r.site)}</td><td>${esc(r.client)}</td>
+-        <td><span class="sev ${sevClass(r.severity)}">${esc(uiLabel(r.severity||""))}</span></td>
+-        <td>${r.rule_id}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td></tr>`).join("");
++        <td class="nw">${esc(r.time)}</td><td class="nw">${esc(r.site)}</td><td class="nw">${esc(r.client)}</td>
++        <td class="nw"><span class="sev ${sevClass(r.severity)}">${esc(uiLabel(r.severity||""))}</span></td>
++        <td class="nw">${Number(r.rule_id)||0}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td></tr>`).join("");
+     }catch(e){}
+   }
+   function modePill(m){
+@@ -2641,9 +2647,9 @@
+         rows=rows.filter(r=>logMatchesFilter(r,q));
+         $("loghead").innerHTML=`<tr><th>Time</th><th>Site</th><th>Client</th><th>Severity</th><th>Rule</th><th>Inspection step</th><th>URL</th><th>Message</th><th>Review</th></tr>`;
+         $("logbody").innerHTML=rows.map(r=>`<tr>
+-          <td>${esc(r.time)}</td><td>${esc(r.site)}</td><td>${esc(r.client)}</td>
+-          <td><span class="sev ${sevClass(r.severity)}">${esc(uiLabel(r.severity||""))}</span></td>
+-          <td>${Number(r.rule_id)||0}</td><td>${esc(inspectionStep(r.phase))}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td><td><button class="btn sm" data-event="${uxState.events.indexOf(r)}">Details</button></td></tr>`).join("");
++          <td class="nw">${esc(r.time)}</td><td class="nw">${esc(r.site)}</td><td class="nw">${esc(r.client)}</td>
++          <td class="nw"><span class="sev ${sevClass(r.severity)}">${esc(uiLabel(r.severity||""))}</span></td>
++          <td class="nw">${Number(r.rule_id)||0}</td><td>${esc(inspectionStep(r.phase))}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td><td><button class="btn sm" data-event="${uxState.events.indexOf(r)}">Details</button></td></tr>`).join("");
+         $("logbody").querySelectorAll("[data-event]").forEach(b=>b.onclick=()=>showEvent(uxState.events[+b.dataset.event]).catch(e=>toast(e.message,"err")));
+         $("logcount").textContent=rows.length+" events";
+         $("log-empty").style.display=rows.length?"none":"";
+@@ -2653,8 +2659,8 @@
+         rows=rows.filter(r=>logMatchesFilter(r,q));
+         $("loghead").innerHTML=`<tr><th>Time</th><th>Site</th><th>Client</th><th>Method</th><th>Path</th><th>Status</th></tr>`;
+         $("logbody").innerHTML=rows.map(r=>`<tr>
+-          <td>${esc(r.time)}</td><td>${esc(r.site)}</td><td>${esc(r.client)}</td>
+-          <td>${esc(r.method)}</td><td class="mono">${esc(r.path)}</td>
++          <td class="nw">${esc(r.time)}</td><td class="nw">${esc(r.site)}</td><td class="nw">${esc(r.client)}</td>
++          <td class="nw">${esc(r.method)}</td><td class="mono">${esc(r.path)}</td>
+           <td><b style="color:${statusColor(r.status)}">${r.status}</b></td></tr>`).join("");
+         $("logcount").textContent=rows.length+" requests";
+         $("log-empty").style.display=rows.length?"none":"";

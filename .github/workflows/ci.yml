@@ -28,6 +28,16 @@ jobs:
       - name: Console startup, product wording, and unchanged setting values
         run: node --test tools/tests/test-console-copy.mjs
 
+      - name: Install pinned Playwright + Chromium for console workflow tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Console browser workflows (draft/apply, guided setup, permissions, keyboard)
+        run: WAF_PLAYWRIGHT_MODULE="$RUNNER_TEMP/pw/node_modules/playwright" node --test tools/tests/test-console-workflows.mjs
+
       - name: dependency-free root source-shape gate
         run: ./tools/tests/test-go-root-shape.sh
 

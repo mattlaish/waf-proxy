@@ -153,6 +153,7 @@
   table{width:100%;border-collapse:collapse;font:12px var(--mono)}
   th{color:var(--mut);text-align:left;font-weight:500;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
   td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-all}
+  td.nw{white-space:nowrap;word-break:normal}
   tr:hover td{background:var(--raised)}
   .sev{border-radius:4px;padding:1px 6px;font-size:11px;white-space:nowrap}
   .sev.critical,.sev.emergency,.sev.alert{background:color-mix(in srgb,var(--red) 20%,transparent);color:var(--red)}
@@ -232,6 +233,7 @@
     .metgrid{grid-template-columns:minmax(0,1fr)}.feedhead,.dashrow,.cardhead,.crawlbar{flex-wrap:wrap}
     .grid2{grid-template-columns:minmax(0,1fr)}.field{min-width:0}.fpolicy{overflow:auto}
     .fbpanel{max-height:90vh}.ux-dialog-body{padding:10px}.tab{padding:10px}
+    .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}.tab{flex:0 0 auto;white-space:nowrap}
     .dashrow .nm,.dashrow .meta{overflow-wrap:anywhere}.attention-item{overflow-wrap:anywhere}
   }
 </style>
@@ -1145,6 +1147,10 @@
   let mapActive=false;
   function showView(v){
     document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("sel",x.dataset.view===v));
+    // On narrow screens the tab row scrolls sideways; keep the selected tab visible
+    // without scrolling the page itself.
+    const selTab=document.querySelector(".tab.sel"),tabBar=selTab&&selTab.parentElement;
+    if(tabBar&&tabBar.scrollWidth>tabBar.clientWidth) tabBar.scrollLeft+=selTab.getBoundingClientRect().left-tabBar.getBoundingClientRect().left-16;
     document.querySelectorAll(".view").forEach(x=>x.classList.toggle("sel", x.id==="view-"+v));
     mapActive = v==="map";
     if (v==="config") loadDashboard();      // landing = dashboard
@@ -2548,9 +2554,9 @@
       $("homecount").textContent=rows.length?rows.length+" recent":"";
       $("home-empty").style.display=rows.length?"none":"";
       $("homefeed").innerHTML=rows.map(r=>`<tr>
-        <td>${esc(r.time)}</td><td>${esc(r.site)}</td><td>${esc(r.client)}</td>
-        <td><span class="sev ${sevClass(r.severity)}">${esc(uiLabel(r.severity||""))}</span></td>
-        <td>${r.rule_id}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td></tr>`).join("");
+        <td class="nw">${esc(r.time)}</td><td class="nw">${esc(r.site)}</td><td class="nw">${esc(r.client)}</td>
+        <td class="nw"><span class="sev ${sevClass(r.severity)}">${esc(uiLabel(r.severity||""))}</span></td>
+        <td class="nw">${Number(r.rule_id)||0}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td></tr>`).join("");
     }catch(e){}
   }
   function modePill(m){
@@ -2641,9 +2647,9 @@
         rows=rows.filter(r=>logMatchesFilter(r,q));
         $("loghead").innerHTML=`<tr><th>Time</th><th>Site</th><th>Client</th><th>Severity</th><th>Rule</th><th>Inspection step</th><th>URL</th><th>Message</th><th>Review</th></tr>`;
         $("logbody").innerHTML=rows.map(r=>`<tr>
-          <td>${esc(r.time)}</td><td>${esc(r.site)}</td><td>${esc(r.client)}</td>
-          <td><span class="sev ${sevClass(r.severity)}">${esc(uiLabel(r.severity||""))}</span></td>
-          <td>${Number(r.rule_id)||0}</td><td>${esc(inspectionStep(r.phase))}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td><td><button class="btn sm" data-event="${uxState.events.indexOf(r)}">Details</button></td></tr>`).join("");
+          <td class="nw">${esc(r.time)}</td><td class="nw">${esc(r.site)}</td><td class="nw">${esc(r.client)}</td>
+          <td class="nw"><span class="sev ${sevClass(r.severity)}">${esc(uiLabel(r.severity||""))}</span></td>
+          <td class="nw">${Number(r.rule_id)||0}</td><td>${esc(inspectionStep(r.phase))}</td><td class="mono">${esc(r.uri)}</td><td>${esc(r.msg||"")}</td><td><button class="btn sm" data-event="${uxState.events.indexOf(r)}">Details</button></td></tr>`).join("");
         $("logbody").querySelectorAll("[data-event]").forEach(b=>b.onclick=()=>showEvent(uxState.events[+b.dataset.event]).catch(e=>toast(e.message,"err")));
         $("logcount").textContent=rows.length+" events";
         $("log-empty").style.display=rows.length?"none":"";
@@ -2653,8 +2659,8 @@
         rows=rows.filter(r=>logMatchesFilter(r,q));
         $("loghead").innerHTML=`<tr><th>Time</th><th>Site</th><th>Client</th><th>Method</th><th>Path</th><th>Status</th></tr>`;
         $("logbody").innerHTML=rows.map(r=>`<tr>
-          <td>${esc(r.time)}</td><td>${esc(r.site)}</td><td>${esc(r.client)}</td>
-          <td>${esc(r.method)}</td><td class="mono">${esc(r.path)}</td>
+          <td class="nw">${esc(r.time)}</td><td class="nw">${esc(r.site)}</td><td class="nw">${esc(r.client)}</td>
+          <td class="nw">${esc(r.method)}</td><td class="mono">${esc(r.path)}</td>
           <td><b style="color:${statusColor(r.status)}">${r.status}</b></td></tr>`).join("");
         $("logcount").textContent=rows.length+" requests";
         $("log-empty").style.display=rows.length?"none":"";

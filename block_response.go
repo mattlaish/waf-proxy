@@ -27,6 +27,13 @@ func blockPageReason(reason string) string {
 	return reason
 }
 
+// acceptsHTML reports whether the client explicitly accepts an HTML page,
+// which browsers do on navigation. API clients that send no Accept header or
+// only application/json are not treated as browsers.
+func acceptsHTML(r *http.Request) bool {
+	return r != nil && strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
 func writeBlockResponse(w http.ResponseWriter, r *http.Request, status int, reason string, jsonMode bool) {
 	id := requestCorrelationID(r)
 	if id != "" {
