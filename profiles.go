@@ -64,18 +64,18 @@ var crsFamilyRanges = map[string][]int{
 
 func builtinProfiles() []Profile {
 	return []Profile{
-		{Name: "form-sqli-xss", Label: "Form (SQLi+XSS strict)", Mode: "On", ParanoiaLevel: 3,
-			Description: "Pages that accept form input. Strong SQLi/XSS coverage at PL3.", BuiltIn: true},
-		{Name: "query-hardened", Label: "Query-hardened", Mode: "On", ParanoiaLevel: 2,
-			Description: "Pages driven by query parameters. Injection coverage at PL2.", BuiltIn: true},
-		{Name: "upload-strict", Label: "Upload (strict)", Mode: "On", ParanoiaLevel: 3,
-			Description: "Pages with file uploads. Keeps RCE/PHP/LFI families hot.", BuiltIn: true},
+		{Name: "form-sqli-xss", Label: "Forms — strict protection", Mode: "On", ParanoiaLevel: 3,
+			Description: "Checks submitted fields for database injection and malicious scripts. Uses inspection sensitivity 3.", BuiltIn: true},
+		{Name: "query-hardened", Label: "Search and URL parameters", Mode: "On", ParanoiaLevel: 2,
+			Description: "Checks values in the URL query string for injection attacks. Uses inspection sensitivity 2.", BuiltIn: true},
+		{Name: "upload-strict", Label: "File uploads — strict protection", Mode: "On", ParanoiaLevel: 3,
+			Description: "Checks upload requests for command execution, malicious code, and file-access attacks. Does not scan files for viruses.", BuiltIn: true},
 		{Name: "api-json", Label: "API / JSON", Mode: "On", ParanoiaLevel: 2,
 			RelaxFamilies: []string{"xss"},
-			Description:   "JSON endpoints. Injection coverage; XSS relaxed (not HTML-rendered).", BuiltIn: true},
-		{Name: "static-lenient", Label: "Static (lenient)", Mode: "DetectionOnly", ParanoiaLevel: 1,
+			Description:   "Checks JSON requests for injection attacks with fewer script checks. Use for data that is not displayed as HTML.", BuiltIn: true},
+		{Name: "static-lenient", Label: "Static files — monitor only", Mode: "DetectionOnly", ParanoiaLevel: 1,
 			RelaxFamilies: []string{"sqli", "rce", "php", "session"},
-			Description:   "Static assets/content with no inputs. Minimal rules to avoid FPs.", BuiltIn: true},
+			Description:   "Records security findings for files and pages without input fields. This preset does not block requests.", BuiltIn: true},
 	}
 }
 
@@ -777,14 +777,14 @@ func (s *signalStore) summary(site, path string) string {
 	defer ss.mu.Unlock()
 	sig := ss.byPath[path]
 	if sig == nil {
-		return "no signals"
+		return "No page details observed yet"
 	}
 	var parts []string
 	if sig.crawled {
-		parts = append(parts, "crawled")
+		parts = append(parts, "page scan completed")
 	}
 	if sig.hasForm {
-		parts = append(parts, "has <form>")
+		parts = append(parts, "contains a form")
 	}
 	if sig.postForm {
 		parts = append(parts, "POST form")
@@ -805,13 +805,13 @@ func (s *signalStore) summary(site, path string) string {
 		parts = append(parts, "static asset")
 	}
 	if sig.queryParams > 0 {
-		parts = append(parts, "query params")
+		parts = append(parts, "URL query fields")
 	}
 	if sig.seenPost {
-		parts = append(parts, "observed POST/PUT")
+		parts = append(parts, "form or API submission observed")
 	}
 	if len(parts) == 0 {
-		return "no notable signals"
+		return "No additional page details"
 	}
 	return strings.Join(parts, ", ")
 }
@@ -831,16 +831,16 @@ func classify(sig *pageSignal) (profile, rationale string, confidence int) {
 	case sig.hasFile:
 		return "upload-strict", "file upload input present", 90
 	case sig.hasPassword:
-		return "form-sqli-xss", "password field — likely a login/credential form", 92
+		return "form-sqli-xss", "Contains a password field; likely a sign-in form", 92
 	case sig.postForm || (sig.hasForm && sig.inputs > 0):
 		return "form-sqli-xss", "HTML form with input fields", 85
 	case sig.seenPost && sig.json:
-		return "api-json", "observed POST/PUT to a JSON endpoint", 82
+		return "api-json", "JSON API submissions observed", 82
 	case sig.seenPost:
 		// Live POST/PUT/PATCH traffic is real write-path evidence and must
 		// outrank crawl-derived "static" conclusions — a crawler only issues
 		// GETs, so it can never see a write endpoint's true shape.
-		return "form-sqli-xss", "observed POST/PUT/PATCH traffic (write endpoint)", 65
+		return "form-sqli-xss", "Form or API submissions observed", 65
 	case sig.json:
 		return "api-json", "JSON content type", 80
 	case sig.queryParams >= 1:
@@ -848,9 +848,9 @@ func classify(sig *pageSignal) (profile, rationale string, confidence int) {
 	case sig.static:
 		return "static-lenient", "static asset, no inputs", 75
 	case sig.crawled:
-		return "static-lenient", "crawled HTML with no forms or inputs", 55
+		return "static-lenient", "Page scan found no forms or input fields", 55
 	default:
-		return "", "not enough signal — crawl this page (Discover)", 20
+		return "", "More page details are needed; select Scan linked pages", 20
 	}
 }
 

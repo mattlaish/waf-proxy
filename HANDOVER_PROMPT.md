@@ -1,5 +1,33 @@
 # New Chat Handover Prompt
 
+## Current continuation — 2026-10-18
+
+Read DOCUMENTATION_INDEX.md, AI_HANDOFF.md and patch.md first. Work only in
+`C:\Users\mattlai\Projects\waf-proxy`; do not clone, relocate or run Git.
+
+Active root: `C:\Users\mattlai\Projects\waf-proxy`. No Git operations,
+source relocation, deployment, binary rebuild or ZIP regeneration. This is a
+console workflow slice, not a new protection engine/API-security capability.
+Verified locally: **19/19** dependency-free Node tests, **15/15** isolated
+headless Edge/Playwright workflow tests, and **18/18** Python source/document
+gates PASS. Browser requests are intercepted fixtures, not a live WAF/VM.
+
+Go/gofmt and WSL remain unavailable. The added active-certificate status helper
+and its Go tests, root tidy/build/vet/full tests/race, and the Go-executing route
+gate are **NOT_RUN/BLOCKED** on these bytes. Historical Go PASS does not qualify
+this slice. State remains **IMPLEMENTED_TESTING_DEFERRED**.
+
+Next: on a Go 1.26.9+ host, format/review the three touched Go files and run
+`GOTOOLCHAIN=local go mod tidy -diff`, `CGO_ENABLED=0 go build ./...`,
+`go vet ./...`, `go test ./...`, `go test -race ./...`, and the existing
+Go-backed route gate. Include `TestConsoleRuntimeCertificateExpiry` and the
+previous slice's `TestBlockPageProductLanguagePreservesAPIReason`.
+Then qualify real VM save/apply/restart, managed-IP, certificate modes, crawler
+and page-rule behavior before rebuilding/reissuing a package. Do not use
+unchanged binaries/archives as evidence for these source changes. Continue in
+the same source root; no Git operations unless the user explicitly authorizes them.
+
+
 
 ## Current canonical addendum — 2026-09-30 — TLS Session Resumption + Handshake Observability
 

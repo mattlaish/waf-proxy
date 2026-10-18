@@ -1295,3 +1295,57 @@ R3 controls implemented in source include per-tenant+principal rate/concurrency 
 Supporting exact connector-source evidence on the available Go 1.23.2 host is **25 PASS / 2 intentional SKIP**, with the same set passing under `-race`; real subprocess SIGKILL→restart/GAP, store contention deadline/retry, injected write failure/recovery, client cancellation, oversize failure, scope reduction, and accelerated retention expiry are covered. The R3 source gate is **38/38 PASS**. The regenerated product return validates **61 files, 18 positive responses, 15 negative cases and 11 transport cases**. Integrated repository Go 1.25 build/vet/test/race remains `BLOCKED_ENVIRONMENT / NOT_RUN`; G2 Dashboard offline acceptance and G3 live TLS/ACL/intended-runtime qualification remain `NOT_RUN`.
 
 <!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->
+
+
+## 2026-10-17 — Console wording verification
+
+Host: Windows, Node v24.19.0, Python 3.12. Source: current local waf-proxy tree;
+no Git operation was used. This evidence covers the wording pass only.
+
+- PASS: `node --test tools/tests/test-console-copy.mjs`, 9 executable tests.
+  Covers complete console startup, display labels, escaping, exact dropdown values,
+  draft-only labels, site/field/policy rendering, API mode buttons, diagnostics,
+  and unchanged traffic-control serialization.
+- PASS: all 18 dependency-free Python API/production/duplication/TLS/Markdown
+  source gates, run with Python UTF-8 mode on Windows.
+- PASS: embedded JavaScript compiles; pre/post option-value comparison 132/132;
+  API route literals and element IDs unchanged.
+- BLOCKED/NOT_RUN: root Go build/vet/test/race, Go-dependent route gate, and
+  `TestBlockPageProductLanguagePreservesAPIReason`. No Go/gofmt executable or WSL
+  is installed. Route gate was retried with permitted temporary-file access and
+  reached a missing-Go error; this is not a test assertion failure or PASS.
+- NOT_RUN: live/browser visual qualification and release/package regeneration.
+
+Historical Go results above do not validate these newly changed bytes. CI now
+runs the dependency-free console test under Node 22 before the existing Go gates.
+
+## 2026-10-18 — Console workflow UX, local verification
+
+- PASS: `node --test tools/tests/test-console-copy.mjs` — 19/19. Executes the
+  embedded script and tests display/request values, diff/secret handling, order,
+  affected sites, cached failures, mutation guards and accurate signal labels.
+- PASS: `node --test tools/tests/test-console-workflows.mjs` — 15/15 using
+  installed headless Edge and bundled Playwright 1.62.1. Intercepted HTTP fixtures
+  only; includes wizard, unsaved drafts, apply cancellation/commit payloads,
+  field-only exceptions and undo, scope-safe page deletion, scan completion,
+  slow/failed API sections, stale-config checks, permission/numeric validation,
+  mobile width and modal keyboard focus, and confirmation/POST for clear.
+- PASS: all 18 Python API/production/duplication/TLS/Markdown source gates with
+  `PYTHONUTF8=1`; source inventory remains 139 Admin/update routes.
+- BLOCKED/NOT_RUN: pinned Go tidy/build/vet/full tests/race/gofmt, Go-executing
+  route gate, `TestConsoleRuntimeCertificateExpiry`, and the prior
+  `TestBlockPageProductLanguagePreservesAPIReason`. Go/gofmt and WSL absent.
+- NOT_RUN: live WAF/VM traffic, restart, real network/TLS/HSM/managed-IP acceptance,
+  deployment, binary rebuild and release/archive regeneration.
+
+The first browser launch was blocked by Windows sandbox profile/pipe restrictions;
+the isolated fixture suite was rerun with scoped execution permission. Initial
+test runs found a real narrow-screen overflow (fixed) and test locator issues
+(fixed without weakening assertions). Later boundary checks added slow-request,
+same-URL scope, draft/page interlock and clear-request coverage. Final passing
+results apply to this source slice, not to unchanged shipped artifacts.
+
+State remains IMPLEMENTED_TESTING_DEFERRED. Historical Go PASS above is not
+qualification of the 2026-10-18 Go/console changes. Full scope and next steps are
+in the newest AI_HANDOFF.md entry.
+

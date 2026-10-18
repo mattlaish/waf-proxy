@@ -53,8 +53,8 @@ for route in (
     'POST /api/security/schema/enforcement/{operation_id}/exceptions',
 ):
     req(route in admin, f"route wired: {route}")
-req("Positive schema enforcement" in ui and "api-schema-promote" in ui and "api-enforce-next" in ui, "admin UI exposes promotion and mode workflow")
-req("AI review never activates this table" in ui, "UI states AI non-authority boundary")
+req("API field protection" in ui and "api-schema-promote" in ui and "api-enforce-next" in ui, "admin UI exposes promotion and mode workflow")
+req("AI cannot turn on blocking" in ui, "UI states AI non-authority boundary")
 for testname in (
     "TestAPI4PromotionRequiresCurrentOperatorReview",
     "TestAPI4ModeLifecycleRequiresDetectBeforeEnforce",

@@ -159,7 +159,7 @@ for t in ('function requiredCapability','function hasCapability','Clear learning
     req(t in ui,'Console capability/lifecycle contains '+t)
 req('can_review' in ui and 'can_edit_config' in ui and 'can_manage_users' in ui,'Console consumes server role capabilities')
 req('path==="/api/notifications/webhook"' in ui and 'path==="/api/security/contracts/import"' in ui,'operator-only webhook clear and contract import are role-gated in Console')
-req('dedicated peer-only HTTPS' in ui and 'webhook URLs are never returned' in ui,'Console explains HA/webhook secret semantics')
+req('Synchronization uses a separate HTTPS address and credential' in ui and 'A saved webhook address is hidden' in ui,'Console explains HA/webhook secret semantics')
 
 req('install_supported' in ui and 'external package manager' in ui and 'updateInstallSupported' in ui,'Console reflects hardened updater install mode instead of implying in-process install')
 req('const roleControlIDs' in ui and 'function applyRoleUI' in ui,'Console proactively disables fixed controls the active role cannot use')

@@ -1,5 +1,137 @@
 # AI Development Handoff
 
+## Current maintenance — 2026-10-18 — Console workflow UX
+
+Active root: `C:\Users\mattlai\Projects\waf-proxy`. No Git operations,
+source relocation, deployment, binary rebuild or ZIP regeneration. This is a
+console workflow slice, not a new protection engine/API-security capability.
+Verified locally: **19/19** dependency-free Node tests, **15/15** isolated
+headless Edge/Playwright workflow tests, and **18/18** Python source/document
+gates PASS. Browser requests are intercepted fixtures, not a live WAF/VM.
+
+Go/gofmt and WSL remain unavailable. The added active-certificate status helper
+and its Go tests, root tidy/build/vet/full tests/race, and the Go-executing route
+gate are **NOT_RUN/BLOCKED** on these bytes. Historical Go PASS does not qualify
+this slice. State remains **IMPLEMENTED_TESTING_DEFERRED**.
+
+Implemented the approved UX improvements in the shipping `static/admin.html`:
+
+- Unsaved full-config and page-edit guards; save/discard/cancel navigation,
+  before-unload warnings, draft/active state, and explicit sign-out confirmation.
+- All full-config Apply controls now share an escaped, nested-secret-redacted
+  change preview, affected-site list, and active-config preflight. Cancellation
+  sends no write; named-list order changes are shown; previews cap at 200
+  differences and conservatively list all sites when capped. No browser draft
+  or entered secret is stored in local/session storage (only the existing login
+  session token). Repeated mutations are guarded and never blindly auto-retried.
+- API Security loads all 31 reads independently/progressively, including when one
+  stalls. Successful results survive other failures; stale data, last success,
+  permission denial, persistent errors and read Retry are visible. Searchable
+  endpoint selectors replace seven raw-ID inputs; existing workflow, field and
+  schema choices remain. Native prompt chains/password prompts become validated
+  dialogs with reason/field/expiry controls.
+- Four-step site wizard: address, application servers, HTTPS/network, protection,
+  then explicit review/save as draft. Management NICs are excluded. Existing
+  groups and a new single-server group are supported without disabling upstream
+  TLS verification. Readiness validation is not a backend connectivity test.
+- Event detail opens the page or prepares a named field-only rule exception.
+  Old events lack authoritative method/field metadata, so both are chosen by the
+  operator, never inferred from match text or data. Page editor reloads current
+  rules, displays inheritance and overlapping rules in execution order, preserves
+  hidden target exceptions, validates inputs, previews changes, and supports
+  session-local undo with preflight. Exact/prefix policies sharing one path are
+  selected/deleted separately. Existing policy scope/path is not silently renamed.
+- Direct page actions/presets/learner shortcuts require a clean full-config draft
+  and explicit review, refresh the active baseline and record session undo.
+  This prevents a known stale full draft from later overwriting a page change.
+- Scan progress is polled per site without rebuilding open page editors.
+  Completion shows pages/forms/field observations and reviewable new field names.
+  Field listing uses at most four parallel requests over 200 known page paths;
+  partial results/baselines are labelled. Resumed scans with no baseline do not
+  claim that every discovered field is new. Scan counts are observations, not
+  guaranteed distinct fields. Clear discovery now confirms and uses the existing
+  registered POST method (the old console incorrectly sent GET).
+- Dashboard attention list: unavailable servers, recent response-error samples,
+  recent matches, pending field suggestions, restart/config activation needs,
+  and certificate expiry/unknown status. 403/429 samples are explicitly not
+  labelled WAF-block rates, nor are match counts labelled blocked attacks.
+- Inline numeric/form/page errors, linked error summaries, modal Escape/Tab/focus
+  return, labelled dialogs and responsive narrow-screen layout.
+
+Backend scope: `admin.go`, `console_status.go`, `console_status_test.go` add
+only read-only `tls_certificate_expires_at` per site to GET /api/status, using
+the earliest active Go-listener certificate for that site. No private key/file
+reads; unavailable/external TLS expiry remains unknown. Route count remains 139.
+
+Important boundaries: preflight detects already-visible concurrent edits but is
+not an atomic revision/CAS API, and redacted secrets cannot be compared for
+revision identity. Undo exists only in the current browser session and refuses
+known intervening page changes. Page rule exceptions apply to all HTTP methods
+matching the URL; the method selector gates field validation, not these existing
+phase-1 exceptions. The UI states this explicitly; enforcement semantics were not
+changed. The effective-policy display is explanatory, not a full CRS simulation.
+
+Next: on a Go 1.26.9+ host, format/review the three touched Go files and run
+`GOTOOLCHAIN=local go mod tidy -diff`, `CGO_ENABLED=0 go build ./...`,
+`go vet ./...`, `go test ./...`, `go test -race ./...`, and the existing
+Go-backed route gate. Include `TestConsoleRuntimeCertificateExpiry` and the
+previous slice's `TestBlockPageProductLanguagePreservesAPIReason`.
+Then qualify real VM save/apply/restart, managed-IP, certificate modes, crawler
+and page-rule behavior before rebuilding/reissuing a package. Do not use
+unchanged binaries/archives as evidence for these source changes. Continue in
+the same source root; no Git operations unless the user explicitly authorizes them.
+
+
+## Current maintenance — 2026-10-17 — Console product language
+
+Active source root remains `C:\Users\mattlai\Projects\waf-proxy`. No Git operation,
+source relocation, deployment, or package regeneration was performed. This pass
+replaces operator-facing engineering vocabulary in the shipping console and its
+suggestions with action/result wording. English is retained. API paths, DOM IDs,
+config keys, enum values, policy modes, profile IDs, and protection decisions are
+preserved; all 132 option values match the pre-change console.
+
+- Console sections now describe API usage patterns, record ID fields, possible
+  unauthorized access, GraphQL protection, system health, and request diagnostics.
+  Mode/status/finding labels are translated only for display and remain escaped.
+- The Application Servers tab uses application servers and server groups in place
+  of nodes/pools. Inspection sensitivity replaces paranoia. Stage numbers and
+  implementation/evidence terminology are removed from normal UI copy.
+- Node/AI/HA/notification/syslog buttons that only save a draft now say Save draft;
+  Setup explains activation through Sites > Apply and that tests use active settings.
+- Whole-console execution exposed an existing temporal-dead-zone startup failure:
+  early button bindings referenced the later `const liveApply`. Making it a hoisted
+  function fixes startup while retaining the same apply implementation.
+- Built-in profile labels/descriptions and learner suggestions use product language.
+  Display mappings also recognize the old built-in preset labels in saved configs;
+  observation-test wording expectations are updated without changing assertions.
+  HTML block pages translate known IP/traffic-limit reasons; JSON reason codes stay
+  unchanged. Unknown HTML reasons still pass through the escaping template.
+- `OPERATOR_GUIDE.md` is the daily operating guide; README/INSTALL link to it.
+  Technical history, API/config identifiers, and verification records are retained.
+- `tools/tests/test-console-copy.mjs` executes the complete embedded script in a
+  simulated DOM and tests startup, friendly labels, escaped values, dropdown values,
+  renderers, diagnostics, and unchanged traffic settings. CI runs it under Node 22.
+  Source-gate copy assertions track the new language and still check the same
+  non-blocking/approval boundaries. The Markdown gate normalizes relative paths
+  with `as_posix()` so Windows can verify the same ledger as Linux.
+
+Executed on this Windows host: Node console tests **9/9 PASS**; **18/18** Python
+source/document gates PASS; embedded JavaScript syntax PASS. Pre/post console
+comparison confirms unchanged API route literals, element IDs, and all 132 option
+values. No browser screenshot or live WAF qualification was performed.
+
+Not executed on these changed bytes: Go build/vet/test/race, the new
+`TestBlockPageProductLanguagePreservesAPIReason`, and the Go-dependent route gate.
+This host has no Go/gofmt executable and no WSL installation; the route gate
+reached its `go run` step after temp-directory access was allowed and could not
+find Go. Prior Go 1.26.9 PASS below is historical evidence for the prior bytes.
+Project state remains `IMPLEMENTED_TESTING_DEFERRED`.
+
+Next: run the existing Go 1.26.9+ qualification gates on the final changed source,
+including the block-page copy test, then review actual console layout. No WAF
+capability from the proposed feature-completion roadmap was implemented here.
+
 
 ## Current canonical addendum — 2026-10-15 — Root test-suite correctness fixes (L7, API-3/6/7/8)
 

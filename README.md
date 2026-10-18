@@ -1,5 +1,28 @@
 # waf-proxy
 
+## Console workflow update — 2026-10-18
+
+The console now protects unsaved edits, distinguishes drafts from active settings,
+previews changes before activation, and offers guided site setup. API sections
+load independently with actionable errors and searchable endpoint choices. Events
+can lead to page/field protection review; page changes support session-local undo.
+Page scans report progress and new fields; Dashboard highlights items to review.
+See [Console operating guide](OPERATOR_GUIDE.md) for operation and
+[verification status](DOCUMENTATION_INDEX.md) for release/test boundaries.
+
+This is source implementation, not a newly qualified binary/package. Browser
+fixture tests pass; Go/live-VM qualification remains pending on these changed bytes.
+
+
+Protect your websites and APIs, route requests to available application servers,
+and review security activity from one management console.
+
+For daily operation, start with the [Console operating guide](OPERATOR_GUIDE.md).
+It explains the product labels, saving and activating settings, protection modes,
+page scans, and per-field rules. For installation, see [INSTALL.md](INSTALL.md).
+The dated development and verification records below are technical reference;
+current verification status is maintained in [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md).
+
 
 ## Current canonical addendum — 2026-09-30 — TLS Session Resumption + Handshake Observability
 
@@ -158,14 +181,14 @@ BLOCKED** until the exact repaired bytes pass Go 1.25 `go mod tidy -diff` and
 `go build ./...` plus the downstream CI gates. No production DEB/RPM should be
 built from an unproven root source commit.
 
-## Model (F5-style)
+## Sites and application servers
 
 | Object | Meaning |
 |---|---|
-| **node** | one backend server, addressed by IP/hostname (no port). Reusable across pools. |
-| **member** | a node **+ port + weight** inside a specific pool |
-| **pool** | a set of members **+ load-balancing method + health monitor** |
-| **site** | a **listen address** + hostnames + one pool. Its own WAF instance. |
+| **Application server** | A server identified by its IP address or hostname. It can belong to several groups. |
+| **Server within a group** | An application server, its connection port, and its share of traffic. |
+| **Server group** | A set of application servers with traffic-distribution settings and health checks. |
+| **Site** | The IP address, port, domain names, server group, and protection settings for an application. |
 
 Listen addresses now live **on each site** — different sites can bind different addresses, and sites sharing an address are demultiplexed by `Host` (and SNI for TLS). A request matching no site on its listener gets **421**.
 
@@ -173,7 +196,7 @@ Listen addresses now live **on each site** — different sites can bind differen
 
 - **LB methods**: `round_robin` (weighted by member weight), `least_conn` (tracks real in-flight connections), `ip_hash` (client affinity), `random`.
 - **Health monitor** per pool: `tcp` (port open), `http` (GET a path, match a status), or `none`. Rise/fall hysteresis; only healthy members receive traffic. **Fail-open** — if every member is marked down, the pool still tries them rather than blackholing the site.
-- Green/red dots and live connection counts show per member on the **Pools & Nodes** tab.
+- Green/red indicators and current connection counts appear for each server on the **Application Servers** tab.
 
 ## Build (Debian)
 
@@ -277,11 +300,18 @@ Example config with two backends load-balanced behind one site:
 
 ## Console tabs
 
-- **Config** — sites (name, listen address, hostnames, **pool selector**, **policy selector**, engine mode, AI mode, Host forwarding, TLS), plus global timeouts and the header engine selector.
-- **Pools & Nodes** — define nodes, then pools (scheme, LB method, monitor, members) with live health.
-- **Policies** — named rulesets: rules file, paranoia level, body limit, path-scoped exclusions.
-- **Site Map** — per-site path tree, learned `seen` (passive) and `crawled` (opt-in polite spider via the site's pool). Mapper, not a scanner.
-- **Setup / AI** — connect an LLM and let it analyze traffic, with optional per-site real-time blocking.
+- **Dashboard** — traffic, site availability, and recent security events.
+- **Sites** — domain names, public IP and port, server group, protection, and certificates.
+- **Application Servers** — servers, traffic distribution, and health checks.
+- **Policies** — security rules, inspection sensitivity, size limits, and exceptions.
+- **API Security** — discovered endpoints, field definitions, access checks, request-order findings, and GraphQL protection.
+- **Site Map** — visited pages, linked-page scans, and page or field protection settings.
+- **Setup / AI** — optional AI analysis, synchronization, notifications, log delivery, and updates.
+- **System**, **Logs**, and **Users** — health checks, request diagnostics, security events, and account management.
+
+**Save draft** stores settings without activating them. **Apply** activates the
+checked draft, including other saved changes. See the [operating guide](OPERATOR_GUIDE.md)
+for editors that save drafts and actions that apply immediately.
 
 ## AI-assisted analysis & enforcement (Setup / AI tab)
 
@@ -425,54 +455,62 @@ now fails Apply instead of silently leaving only an IP_FREEBIND listener.
 }
 ```
 
-## Policies (per-site rulesets)
+## Protection policies
 
-A **policy** is a named ruleset + tuning that sites reference like they reference a pool:
+A **policy** groups protection settings that you can assign to one or more sites:
 
-- **rules file** (SecLang, usually including CRS) — pick it with the file browser
-- **paranoia level** (1–4) — injected as CRS `tx.*_paranoia_level` after the rules load
-- **request body limit**
-- **exclusions** — remove a CRS rule (or a specific target of it), optionally scoped to a URL path prefix
+- **Security rules file** — choose the installed rules using Browse.
+- **Inspection sensitivity** — 1 (Standard) through 4 (Maximum); higher levels can require more false-positive review.
+- **Request and response size limits** — limit how much content is inspected.
+- **Rule exceptions** — skip a selected rule, optionally for specific fields or pages.
 
-Each site selects a policy; each site still compiles its own engine from that policy, so per-site engine mode and correct per-site match attribution are preserved. Two sites can share one policy (edit once, applies to both) or run different ones. Exclusion values are integer rule IDs / sanitized paths — never raw strings spliced into directives.
+Sites can share a policy or use separate policies. Editing a shared policy changes
+the defaults for all sites using it when you apply the draft. Page-specific
+settings remain attached to the individual site.
 
-## Learned policy fit (Site Map → "Suggest policy fit")
+## Protection suggestions (Site Map → "Review protection suggestions")
 
 The learner watches per-page signals — request volume, response outcomes, and which CRS rules fire from how many **distinct clients** — and recommends tuning for each page:
 
 - **likely false positive**: a rule firing on a meaningful share of a page's traffic from several distinct clients (legit users tripping it) → suggests a **path-scoped exclusion**.
-- **attack**: a rule concentrated on a few sources → flagged as hostile; keep/raise paranoia, don't exclude.
-- Each page gets a **risk class** (benign / normal / elevated / hostile); the site rolls up to a **suggested paranoia level**.
+- **Possible attack**: repeated matches from a small number of clients suggest investigating attacks and retaining the rules.
+- Each page shows an activity assessment; the site also receives a suggested inspection sensitivity.
 
-True per-*page* engines aren't practical (one Coraza instance per site), so the unit of action is a **page-scoped exclusion written into the site's policy** plus a policy-level paranoia suggestion. Click **Exclude N rule(s)** on a page and it appends the exclusion to that site's policy and applies it live. Heuristics are deliberately transparent — no black box; you review every suggestion before it's applied.
+Review the requests behind each suggestion before accepting it. **Exclude N
+rule(s)** adds a rule exception for that page and applies it immediately. These
+suggestions cover pages; configure field-specific exceptions in the page editor.
 
-## Page profiles: learn content → suggest → review → apply
+## Page protection presets: discover, review, and apply
 
 The Site Map drives a content- and structure-aware pipeline that picks a **pre-built profile** for each page based on what the page *is*:
 
-1. **Learn** — the crawler (Discover) reads each page's HTML and records content signals: forms, input fields, `type=password`/`file`/`hidden`, method, JSON vs static content-type. Passive traffic contributes weaker signals (observed POST, query-param count).
-2. **Suggest** — a classifier maps signals → a pre-built profile with a confidence: a password/form page → **form-sqli-xss** (SQLi 942xxx + XSS 941xxx strict at PL3); a file input → **upload-strict**; JSON under `/api` → **api-json**; query-driven → **query-hardened**; static/no-inputs → **static-lenient**.
-3. **Review** — suggestions are shown in the Site Map "Page profiles" panel (path, suggested profile, confidence, rationale). A human accepts per row (with an override dropdown), **or** tick *review with LLM* so the AI confirms each page's purpose before it counts.
-4. **Apply** — accept binds the profile as a per-URL page policy. **Auto-apply** button: applies everything at/above a confidence threshold; with *review with LLM* on, only pages the LLM also confirms are applied. Off by default — you press the button.
+1. **Discover** — visit the site or use **Scan linked pages** to find pages, forms, and fields. Real submissions reveal fields on pages that require sign-in or JavaScript.
+2. **Review** — open **Page protection presets** to see the proposed settings, confidence, and reasons. Presets cover forms, URL parameters, uploads, JSON APIs, and static files.
+3. **Select** — accept the suggestion or choose another preset. Optional **Review with AI** adds an AI assessment.
+4. **Apply** — apply a preset to one page, or use **Apply matching suggestions** for suggestions meeting your selected confidence threshold. Nothing is applied until you choose an apply action.
 
-Profiles are pre-built (editable via `config.profiles`) and express intent as CRS-family tuning (paranoia + relaxing irrelevant families), bound per-URL — not a separate engine per page. Content signals are strongest on **crawled** pages; passively-seen pages are marked `passive` (weaker), so Discover first for best results.
+Presets set inspection sensitivity and rule exceptions for a page. **Live traffic**
+and **Page scan** labels show how page details were discovered. Page scans can
+add information, but do not sign in, run JavaScript, or submit forms. The upload
+preset checks attack patterns in requests; it does not scan files for viruses.
 
 API: `GET /api/profiles` · `GET /api/profiles/suggest?site=` · `POST /api/profiles/apply {site,path,profile}` · `POST /api/profiles/auto {site,threshold,use_llm}`.
 
-## Per-URL policies (Site Map is the editor)
+## Page protection (Site Map)
 
 
 
 The unit of policy is the **URL**. Each page under a site can carry its own **page policy** bound to it by path (⚙ on any node in the **Site Map**). A page policy is one of two things:
 
-- **Tune** — engine mode, paranoia level, and rule exclusions for that path (what the profiles pipeline binds). A `policy` badge marks bound pages.
-- **Block path (virtual patch)** — deny the URL outright before it reaches the backend, for known-vulnerable paths (leftover admin panels, exploitable endpoints, CVE URLs). Choose **exact** or **prefix** (covers sub-paths) and the response: **403** or **404** (hide that it exists). Blocked paths show a red `blocked` badge. The deny forces the engine on for that transaction, so a virtual patch enforces even if the site runs DetectionOnly, and blocks are logged in the match feed.
+- **Customize protection** — choose a protection mode, inspection sensitivity, and rule exceptions for this page.
+- **Block page** — reject requests before they reach the application. Choose **This page only** or **Page and subpages**, and a **403 Forbidden** or **404 Not Found** response. An explicit page block remains active when the site's standard rules are in Monitor mode.
 
-- **Bound by path, not a separate engine.** A page policy compiles to path-gated SecLang inside the site's single engine: `SecRule REQUEST_FILENAME "@beginsWith /path" "…ctl:ruleEngine=…,ctl:ruleRemoveById=…,setvar:tx.*_paranoia_level=…"`. So each URL effectively has its own policy without the cost of an engine per URL.
-- **Generated or designed.** The learner *generates* suggested page policies (rule exclusions for false-positive-prone pages); you can also *design* one by hand in the editor. Both bind to the URL and are reviewed from the Site Map.
-- **Per-site, not shared.** Page policies live on the site — tuning one site never leaks into another site that happens to use the same base policy. (The base **policy** on the Policies tab still defines which rules file / CRS and the site-wide defaults; page policies are URL-scoped overrides on top.)
+- **Page scope.** Settings apply to requests matching the selected page address.
+- **Suggested or manual.** Review protection suggestions, or enter page settings yourself.
+- **Site scope.** A page setting belongs to its site, including when another site shares the same default policy.
 
-Reliability: `ctl:ruleEngine` and `ctl:ruleRemoveById` apply exactly from phase 1; per-page paranoia reliably affects body (phase-2) rules — for strict phase-1 paranoia, set it on the base policy.
+Page sensitivity affects request-content inspection. Set header-inspection
+sensitivity in the site's default policy.
 
 **When it takes effect, and how sub-pages inherit.** Applying a policy or page policy is **immediate, not gradual** — there is no propagation delay and sub-pages do not "catch up over time." On **Apply (go live)** the engine is rebuilt and atomically swapped into the live listener (sub-second); the *next request* to any matching path already uses the new policy. Sub-page coverage is **structural, via prefix matching**, evaluated fresh on every request rather than pushed down to each page:
 
@@ -534,8 +572,8 @@ applies every policy. Open the page-policy editor from Site Map to configure:
 }
 ```
 
-Field names and profiles are allow-listed before SecLang compilation; the UI
-does not accept raw regular expressions or directives. Password and free-text
+Field names, presets, and allowed-format expressions are checked before the
+policy is applied. The editor accepts validated expressions, not security-engine directives. Password and free-text
 profiles permit punctuation such as apostrophes while their length limits and
 all non-excluded CRS targets continue to apply. The application must still use
 parameterized database queries and context-appropriate output encoding.

@@ -119,6 +119,22 @@ historical evidence.
 
 <!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->
 
+### 2026-10-17 console wording review
+
+- `OPERATOR_GUIDE.md` — daily console operations using product labels; verified against the console controls and save/apply handlers.
+
+### 2026-10-18 console workflow review
+
+Re-reviewed current entries in `AI_HANDOFF.md`, `patch.md`,
+`DOCUMENTATION_INDEX.md`, `HANDOVER_STATUS.md`, `HANDOVER_PROMPT.md`,
+`NEXT_CHAT_HANDOVER.md`, `README.md`, `INSTALL.md`,
+`DEVELOPMENT_ROADMAP.md`, `TESTING.md`, `MANIFEST.md`,
+`RELEASE_PROCESS.md` and `OPERATOR_GUIDE.md`. Appended dated records to
+`DEVELOPMENT.md` and `TESTING_RESULTS.md`; older results remain historical.
+No new Markdown file or package identity is introduced. Latest scope is the
+approved UX pass with 19 Node/15 mocked browser/18 Python checks, not live Go/VM
+or release qualification. See the newest AI_HANDOFF.md continuation point.
+
 ### 2026-09-30 R3 connector additions
 
 - `DASHBOARD_CONNECTOR_R3.md` — added after the 2026-09-28 review; carries the review marker and current R3 connector truth.

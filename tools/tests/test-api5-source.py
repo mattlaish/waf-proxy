@@ -69,8 +69,8 @@ for route in (
     'GET /api/security/identity/violations',
 ):
     req(route in admin, f"route wired: {route}")
-req("JWT + identity-aware API security" in ui and "api-op-identity" in ui and "api-idpol-mode" in ui, "admin UI exposes issuer and operation identity workflow")
-req("Only cryptographically verified claims enter policy context" in ui, "UI states verified-claims-only boundary")
+req("API sign-in and access checks" in ui and "api-op-identity" in ui and "api-idpol-mode" in ui, "admin UI exposes issuer and operation identity workflow")
+req("Check API access using verified JWT sign-in tokens" in ui, "UI states verified-claims-only boundary")
 req("test-api5-source.py" in build and "test-api5-source.py" in ci, "API-5 source gate is wired into local build and CI")
 req("test-api12-source.py" in build and "test-api3-source.py" in build, "local build retains earlier API source gates")
 req("test-api12-source.py" in ci and "test-api3-source.py" in ci, "CI retains earlier API source gates")

@@ -1,5 +1,20 @@
 # waf-proxy — install guide
 
+## Console workflow update — 2026-10-18
+
+The new console is embedded in the Go binary: replacing an HTML file beside an
+old binary does not install this update. Qualify and rebuild the current source
+under the pinned Go toolchain before using the normal upgrade process. No new
+binary/package has been produced in this slice. No install/upgrade/systemd or
+managed-IP behavior was changed here; existing verified VM results remain
+historical evidence, not a new deployment test. See OPERATOR_GUIDE.md for the
+new draft/apply and site-setup workflows.
+
+
+For day-to-day console operation after installation, see [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md).
+It explains application servers, protection modes, Save draft versus Apply,
+page discovery, and field settings using the labels shown in the console.
+
 ## Current canonical baseline — 2026-09-28
 
 The current source is the **Code Duplication Review and Consolidation** working

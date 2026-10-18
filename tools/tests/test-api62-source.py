@@ -47,8 +47,8 @@ req('migrateV1StateLocked' in src and 'state.Version == 1' in base, 'API-6.1 dur
 req('Workflows: model.Workflows' in base and 'workflowRuntimeFromModel' in src, 'workflow models persist and restore across restart')
 req('GET /api/security/sequence/workflows' in admin and 'authRole(roleReviewer, a.handleSequenceWorkflows)' in admin, 'workflow detail visibility is Reviewer-gated')
 req('api_sequence.workflows_view' in src, 'workflow visibility is audited')
-req('API-6.2 LEARN-only workflow construction' in ui, 'console retains the API-6.2 learning boundary')
-req('API-6.3 DETECT-only anomaly evidence' in ui and 'never blocks traffic' in ui, 'console distinguishes later DETECT-only evidence from API-6.2 learning')
+req('Learn how clients move between API endpoints' in ui, 'console retains the API-6.2 learning boundary')
+req('Findings for review — requests are not blocked' in ui and 'does not block requests' in ui, 'console distinguishes later DETECT-only evidence from API-6.2 learning')
 for forbidden in ('UNKNOWN_TRANSITION','PREREQUISITE_SKIPPED','SEQUENCE_REVERSAL','ABNORMAL_REPETITION','http.StatusForbidden','BLOCK','DENY'):
     req(forbidden not in src, f'API-6.2 does not introduce detection/enforcement token {forbidden}')
 req('OpenAI' not in base+src, 'OpenAI is absent from request-path sequence learning code')

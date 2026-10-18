@@ -90,10 +90,10 @@ req('func (s *objectLocatorStore) wrap' not in src, 'API-7.1 does not install a 
 req('OpenAI' not in src, 'OpenAI is absent from API-7.1 locator authority')
 
 # Console and build/CI retention.
-for label in ('API-7.1 object locator discovery','Normalized object selector inventory','Operator include / suppress override','Raw object values are never retained'):
+for label in ('Record ID discovery','Record ID fields','Track or ignore a record field','Record IDs are stored as protected identifiers'):
     req(label in ui, f'Admin Console exposes/document boundary: {label}')
 req('/api/security/object-locators' in ui and '/api/security/object-locators/overrides' in ui, 'Admin Console uses API-7.1 read/config endpoints')
-req('API-7.1 makes no ownership, tenant-boundary, BOLA, or blocking decision.' in ui, 'Admin Console states non-authority boundary')
+req('Discovery does not grant access or block requests' in ui, 'Admin Console states non-authority boundary')
 req('test-api71-source.py' in build, 'local build retains API-7.1 source gate')
 req('test-api71-source.py' in ci, 'CI retains API-7.1 source gate')
 

@@ -167,10 +167,10 @@ req('DisallowUnknownFields()' in src,'GraphQL mutation JSON rejects unknown fiel
 req('http.MaxBytesReader(w, r.Body, 1<<16)' in src,'GraphQL policy mutation body bounded')
 
 # Console coverage.
-for token in ('API-8 GraphQL Security','api_graphql_operations','api_graphql_persisted','api_graphql_policies','api_graphql_violations','api_graphql_status','api_graphql_policy_save'):
+for token in ('GraphQL protection','api_graphql_operations','api_graphql_persisted','api_graphql_policies','api_graphql_violations','api_graphql_status','api_graphql_policy_save'):
     req(token in ui,f'Admin Console includes {token}')
-req('LEARN → DETECT → ENFORCE' in ui,'console explains explicit enforcement promotion')
-req('API-6/API-7 learned sequence/BOLA evidence remains non-enforcing' in ui,'console preserves learned-signal authority boundary')
+req('Start in Learning, use Monitor to review findings, then choose Block' in ui,'console explains explicit enforcement promotion')
+req('This feature records findings for review and does not block requests' in ui and 'they do not establish record ownership or block requests' in ui,'console preserves learned-signal authority boundary')
 req('/api/security/graphql/operations' in ui and '/api/security/graphql/policies' in ui,'console calls GraphQL APIs')
 req('require_persisted_queries' in ui and 'allow_introspection' in ui and 'allow_mutation' in ui,'console exposes GraphQL policy controls')
 

@@ -67,7 +67,7 @@ func TestObservationPlaneDrainAppliesTelemetry(t *testing.T) {
 	sl.mu.Unlock()
 
 	summary := signals.summary("site-a", "/api/login")
-	for _, want := range []string{"password field", "JSON content-type", "query params", "observed POST/PUT"} {
+	for _, want := range []string{"password field", "JSON content-type", "URL query fields", "form or API submission observed"} {
 		if !strings.Contains(summary, want) {
 			t.Fatalf("signal summary %q missing %q", summary, want)
 		}

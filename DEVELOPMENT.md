@@ -668,3 +668,41 @@ R3 controls implemented in source include per-tenant+principal rate/concurrency 
 Supporting exact connector-source evidence on the available Go 1.23.2 host is **25 PASS / 2 intentional SKIP**, with the same set passing under `-race`; real subprocess SIGKILL→restart/GAP, store contention deadline/retry, injected write failure/recovery, client cancellation, oversize failure, scope reduction, and accelerated retention expiry are covered. The R3 source gate is **38/38 PASS**. The regenerated product return validates **61 files, 18 positive responses, 15 negative cases and 11 transport cases**. Integrated repository Go 1.25 build/vet/test/race remains `BLOCKED_ENVIRONMENT / NOT_RUN`; G2 Dashboard offline acceptance and G3 live TLS/ACL/intended-runtime qualification remain `NOT_RUN`.
 
 <!-- documentation-review: 2026-09-28; classification: current/canonical; current-authority: DOCUMENTATION_INDEX.md -->
+
+
+## 2026-10-17 — Console product language and startup regression
+
+Updated the shipping console’s navigation, headings, help, prompts, status and
+finding labels, profile descriptions, and learner suggestions to operator wording.
+Kept API/config identifiers, 132 dropdown values, DOM IDs, and route literals.
+Corrected draft-only save button labels; no save/apply behavior was changed.
+Fixed the existing liveApply initialization error found by executing the full
+console script. Known HTML block reasons use visitor wording while JSON reason
+codes remain compatible. Added OPERATOR_GUIDE.md and Node console tests in CI;
+updated wording assertions and Windows-compatible Markdown ledger checks.
+
+Executed: 9/9 Node console tests, embedded script syntax, and 18/18 Python source/
+document gates PASS. Root Go build/vet/tests/race, new block-page Go tests, and
+Go route-registration execution are NOT_RUN/BLOCKED: no Go/gofmt or WSL here.
+No Git operation, source-root change, artifact regeneration, or deployment.
+
+## 2026-10-18 — Approved console workflow UX pass
+
+Implemented the ten approved UX areas: unsaved edit/navigation guards, global
+draft/active state and apply preview, progressive independent API reads, guided
+site setup, event/page/field policy workflow and session undo, scan progress/new
+field review, searchable endpoint selectors and validated forms, persistent
+error/retry state, attention summary, and keyboard/mobile handling.
+
+Added read-only active Go-listener certificate expiry to status, without reading
+private keys or guessing external TLS state. Direct page shortcuts now respect
+the full-draft interlock and confirmation. Clear discovery now confirms and uses
+the registered POST endpoint; API routes/protection semantics are unchanged.
+
+Verification: 19/19 Node console checks, 15/15 intercepted headless-browser
+workflows, and 18/18 Python source/document gates PASS. Go/gofmt, tidy/build/vet/
+full tests/race, the new certificate test and prior block-reason test remain
+NOT_RUN/BLOCKED on this host. See AI_HANDOFF.md for precise safety/qualification
+boundaries. Browser fixtures are not live VM evidence. No Git action, relocation,
+deployment, binary rebuild, package regeneration or new protection capability.
+

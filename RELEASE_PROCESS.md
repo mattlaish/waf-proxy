@@ -1,5 +1,29 @@
 # Release Process
 
+## Console UX release gate — 2026-10-18
+
+Active root: `C:\Users\mattlai\Projects\waf-proxy`. No Git operations,
+source relocation, deployment, binary rebuild or ZIP regeneration. This is a
+console workflow slice, not a new protection engine/API-security capability.
+Verified locally: **19/19** dependency-free Node tests, **15/15** isolated
+headless Edge/Playwright workflow tests, and **18/18** Python source/document
+gates PASS. Browser requests are intercepted fixtures, not a live WAF/VM.
+
+Go/gofmt and WSL remain unavailable. The added active-certificate status helper
+and its Go tests, root tidy/build/vet/full tests/race, and the Go-executing route
+gate are **NOT_RUN/BLOCKED** on these bytes. Historical Go PASS does not qualify
+this slice. State remains **IMPLEMENTED_TESTING_DEFERRED**.
+
+Before releasing, run the Go gates on the final bytes including the active-cert
+expiry helper, the 19 Node checks, the 15 mocked-browser cases, existing source
+gates and real VM acceptance. Confirm full draft cancellation sends no write,
+page/field exceptions preserve unrelated protection, interface assignment still
+works and all TLS termination modes show accurate/unknown expiry. Do not stamp
+the mock browser results as production/runtime qualification. Rebuild embedded
+assets and regenerate release/package identity, manifests and hashes from the
+final qualified source; this slice did not regenerate them.
+
+
 
 ## Current canonical addendum — 2026-09-30 — TLS Session Resumption + Handshake Observability
 

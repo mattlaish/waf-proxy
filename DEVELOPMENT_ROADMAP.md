@@ -1,5 +1,36 @@
 # Development Roadmap — WAF Proxy
 
+## Maintenance checkpoint — 2026-10-18 — Approved UX pass implemented
+
+Active root: `C:\Users\mattlai\Projects\waf-proxy`. No Git operations,
+source relocation, deployment, binary rebuild or ZIP regeneration. This is a
+console workflow slice, not a new protection engine/API-security capability.
+Verified locally: **19/19** dependency-free Node tests, **15/15** isolated
+headless Edge/Playwright workflow tests, and **18/18** Python source/document
+gates PASS. Browser requests are intercepted fixtures, not a live WAF/VM.
+
+Go/gofmt and WSL remain unavailable. The added active-certificate status helper
+and its Go tests, root tidy/build/vet/full tests/race, and the Go-executing route
+gate are **NOT_RUN/BLOCKED** on these bytes. Historical Go PASS does not qualify
+this slice. State remains **IMPLEMENTED_TESTING_DEFERRED**.
+
+Implemented: (1) edit guards, (2) draft/active state and apply review, (3) progressive
+independent API reads, (4) site wizard, (5) event/page/field workflow and undo,
+(6) scan progress/new fields, (7) searchable endpoints and validated dialogs,
+(8) persistent load/error/retry state, (9) attention summary, (10) inline validation,
+modal keyboard/focus handling and responsive layout. No AV/CSRF/full enterprise-WAF
+feature parity or new API-9 functionality is claimed. Next is qualification, not
+further feature expansion; follow AI_HANDOFF.md.
+
+
+## Maintenance checkpoint — 2026-10-17
+
+Operator language and console-startup repair implemented. This adds no detection
+capability or new API-security slice. Nine Node console tests and eighteen Python
+gates pass locally. Exact changed bytes still require the Go 1.26.9+ build/vet/test/
+race gates on a host with Go installed; previous qualification records do not
+qualify these edits. See OPERATOR_GUIDE.md and AI_HANDOFF.md.
+
 
 ## Current canonical addendum — 2026-10-15 — Root test-suite correctness fixes (L7, API-3/6/7/8)
 

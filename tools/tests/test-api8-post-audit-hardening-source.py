@@ -39,13 +39,13 @@ for t in ('data-view="system"','id="view-system"','id="doctor_body"','id="debug_
 for route in ('/api/doctor','/api/debug/status','/api/debug/capture','/api/debug/evidence','/api/debug/export','/api/hsm/status','/api/hsm/audit','/api/vector-acceleration','/api/vector-acceleration/reset'):
     req(route in ui,'Console calls '+route)
 req('async function downloadAPI' in ui,'Console has authenticated blob download helper')
-req('Reviewer permission required' in ui,'Console degrades restricted evidence surfaces without hiding all diagnostics')
+req('A Reviewer or Administrator account is required' in ui,'Console degrades restricted evidence surfaces without hiding all diagnostics')
 
 # HSM site editor.
 for field in ('provider','module_path','slot_id','token_label','key_label','key_id','pin_secret_ref'):
     req(f'data-hsm-f="{field}"' in ui,'site HSM editor exposes '+field)
 req('env:WAF_HSM_PIN or file:/run/secrets/hsm-pin' in ui,'HSM UI documents secret-reference-only PIN')
-req('Leave blank to preserve the existing secret reference' in ui,'HSM UI documents redacted secret preservation')
+req('Leave blank to keep the saved PIN location' in ui,'HSM UI documents redacted secret preservation')
 req('s.tls_key_provider=h' in ui and 'if(h.provider) s.tls_key=""' in ui,'HSM editor serializes nested key provider and clears conflicting file key')
 
 # CIDR/L7 traffic controls.
@@ -53,13 +53,13 @@ for t in ('id="l7_enabled"','id="l7_requests"','id="l7_window"','id="l7_concurre
     req(t in ui,'traffic controls expose '+t)
 for fn in ('fillTrafficControls','collectL7Abuse','collectCIDRPolicy','renderCIDRRules','syncCIDRRules'):
     req(f'function {fn}' in ui,'traffic control wiring includes '+fn)
-req('expires_at' in ui and 'RFC3339' in ui,'CIDR UI exposes explicit expiry')
+req('expires_at' in ui and 'expiry date and time including the time zone' in ui,'CIDR UI exposes explicit expiry')
 req('tls_handshake_per_window' in ui,'L7 TLS handshake setting is serialized')
 
 # OpenAPI lifecycle.
 for route in ('/api/security/contracts/${encodeURIComponent(contractID)}','/versions','/bindings','/match','/compare','/diffs','/drift','/export?format=json','/export?format=yaml'):
     req(route in ui,'OpenAPI Console lifecycle includes '+route)
-for t in ('api-contract-open','loadOpenAPIContract','Match latest','Refresh drift','Compare from','Export JSON','Export YAML'):
+for t in ('api-contract-open','loadOpenAPIContract','Match current endpoints','Check traffic differences','Compare from','Export JSON','Export YAML'):
     req(t in ui,'OpenAPI lifecycle UI includes '+t)
 req('api_contract_detail' in ui,'OpenAPI detail panel exists')
 

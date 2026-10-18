@@ -458,7 +458,7 @@ func (a *adminServer) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		if mode == "" {
 			mode = rt.cfg.EngineMode
 		}
-		sites = append(sites, map[string]any{
+		siteStatus := map[string]any{
 			"name":             sc.Name,
 			"listen":           sc.Listen,
 			"hostnames":        sc.Hostnames,
@@ -466,7 +466,9 @@ func (a *adminServer) handleStatus(w http.ResponseWriter, _ *http.Request) {
 			"engine":           mode,
 			"tls":              siteTLSEnabled(sc),
 			"tls_key_provider": hsmStatusLabel(sc),
-		})
+		}
+		siteStatus["tls_certificate_expires_at"] = runtimeCertificateExpiry(rt, sc.Name)
+		sites = append(sites, siteStatus)
 	}
 	anyTLS := false
 	for _, t := range publicListenerSet(rt.cfg) {

@@ -103,7 +103,7 @@ req('api_object_relationship.view' in src and 'api_object_relationship.status_vi
 req('POST /api/security/object-relationships' not in admin and 'DELETE /api/security/object-relationships' not in admin, 'API-7.2 exposes no operator ownership mutation endpoint')
 
 # Console and build/CI.
-for label in ('API-7.2 identity/object relationship','Verified identity ↔ keyed object evidence','Caller-supplied tenant/owner headers and cookies are not authority','API-7.2 makes no ownership, tenant-boundary, BOLA, or blocking decision.'):
+for label in ('User and record activity','Which users access which records','Unverified tenant or owner headers and cookies are not used to establish identity','Observations do not establish ownership or change access permissions'):
     req(label in ui, f'Admin Console states API-7.2 boundary: {label}')
 req('/api/security/object-relationships' in ui and '/api/security/object-relationships/status' in ui, 'Admin Console reads API-7.2 evidence/status endpoints')
 req('identity_fingerprint' in ui and 'object_fingerprint' in ui and 'tenant_fingerprint' in ui, 'Admin Console displays pseudonymous relationship evidence only')

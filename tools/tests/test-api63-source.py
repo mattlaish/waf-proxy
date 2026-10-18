@@ -49,7 +49,7 @@ req('sequenceDetectionEnforce' not in src and '"ENFORCE"' not in src, 'API-6.3 i
 req('OpenAI' not in base+learn+src, 'OpenAI is absent from sequence request-path decision code')
 req('GET /api/security/sequence/violations' in admin and 'authRole(roleReviewer, a.handleSequenceViolations)' in admin, 'violation evidence read endpoint is Reviewer-gated')
 req('api_sequence.violations_view' in src, 'violation evidence reads are audited')
-req('API-6.3 DETECT-only anomaly evidence' in ui and 'never blocks traffic' in ui, 'admin copy states the non-enforcement boundary')
+req('Findings for review — requests are not blocked' in ui and 'does not block requests' in ui, 'admin copy states the non-enforcement boundary')
 req('test-api61-source.py' in build and 'test-api62-source.py' in build and 'test-api63-source.py' in build, 'local source gates retain API-6.1 through API-6.3')
 req('test-api61-source.py' in ci and 'test-api62-source.py' in ci and 'test-api63-source.py' in ci, 'CI source gates retain API-6.1 through API-6.3')
 for testname in (

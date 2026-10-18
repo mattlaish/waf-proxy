@@ -20,7 +20,7 @@ else:
     # A file must be recorded in at least one dated review ledger.
     lt='\n'.join(p.read_text(encoding='utf-8') for p in sorted(root.glob('MARKDOWN_REVIEW_*.md')))
     for p in mds:
-        rel=str(p.relative_to(root))
+        rel=p.relative_to(root).as_posix()
         if f'`{rel}`' not in lt:
             fail.append(f'ledger missing: {rel}')
 required_current=[

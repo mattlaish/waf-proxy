@@ -200,15 +200,15 @@ func (l *learnStore) recommend(site string) siteRecommendation {
 		switch {
 		case hasAttack && hasFP:
 			rec.Risk = "elevated"
-			rec.SuggestNote = "under attack and generating false positives — exclude the FP rules for this page, keep paranoia high"
+			rec.SuggestNote = "Attack activity and possible false positives detected. Review individual rule exceptions and keep inspection sensitivity high."
 			attackPages++
 		case hasAttack:
 			rec.Risk = "hostile"
-			rec.SuggestNote = "targeted attack traffic — keep or raise paranoia; do not exclude"
+			rec.SuggestNote = "Possible targeted attacks. Keep these rules active and consider increasing inspection sensitivity."
 			attackPages++
 		case hasFP:
 			rec.Risk = "benign"
-			rec.SuggestNote = "legitimate traffic tripping rules — safe to exclude these rule ids for this page"
+			rec.SuggestNote = "Possible false positives affecting multiple clients. Review these requests before adding a rule exception for this page."
 			fpOnlyPages++
 		default:
 			rec.Risk = "normal"
@@ -228,16 +228,16 @@ func (l *learnStore) recommend(site string) siteRecommendation {
 	switch {
 	case attackPages >= 3:
 		out.SuggestParanoia = 3
-		out.Summary = "multiple pages under attack — a strict policy (PL3) is warranted"
+		out.Summary = "Attack activity on several pages. Consider inspection sensitivity 3 for this site."
 	case attackPages >= 1:
 		out.SuggestParanoia = 2
-		out.Summary = "some attack pressure — consider PL2 for this site"
+		out.Summary = "Some attack activity detected. Consider inspection sensitivity 2 for this site."
 	case fpOnlyPages >= 1:
 		out.SuggestParanoia = 1
-		out.Summary = "mostly benign; tune out the flagged false positives and PL1 is fine"
+		out.Summary = "Mostly normal traffic. Review possible false positives; inspection sensitivity 1 may be sufficient."
 	default:
 		out.SuggestParanoia = 0
-		out.Summary = "not enough signal yet — send more traffic"
+		out.Summary = "More traffic is needed before protection suggestions are available."
 	}
 	return out
 }

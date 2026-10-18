@@ -1,5 +1,35 @@
 # Testing Policy
 
+## Console workflow checks — 2026-10-18
+
+Run `node --test tools/tests/test-console-copy.mjs` (19 dependency-free tests;
+existing CI command automatically runs the expanded suite). The real-browser
+suite is `node --test tools/tests/test-console-workflows.mjs` (15 cases). It needs
+an installed Playwright module and browser; it does not install/download either.
+Set `WAF_PLAYWRIGHT_MODULE` to the module directory if not resolvable locally, and
+optionally `WAF_BROWSER_EXECUTABLE` to an installed Chrome/Edge executable.
+The current Windows run used bundled Playwright 1.62.1 and installed headless Edge;
+all network routes were intercepted fixtures. Browser tests are locally executed,
+not yet installed as a browser-download CI job. Never call these live WAF tests.
+
+Coverage includes partial/slow reads, keyboard/mobile behavior, draft navigation,
+cancel/apply payloads, page undo/scope selection, full-draft/page interlock,
+field-only exceptions, scan results, permission controls and clear-discovery POST.
+Python source gates on Windows require `PYTHONUTF8=1` when the OS default code
+page is not UTF-8. Root Go/gofmt/build/vet/test/race and live-VM qualification are
+still required; current results are summarized in AI_HANDOFF.md.
+
+
+## Console language and operation checks — 2026-10-17
+
+Run `node --test tools/tests/test-console-copy.mjs` for console changes. CI uses
+Node 22; the test has no npm dependencies and executes the embedded script with
+a simulated DOM. It verifies startup, display-only mappings, safe rendering,
+unchanged selection/request values, and accurate Save draft labels. Do not
+replace backend enum values or remove approval/non-blocking explanations when
+editing copy. Go changes still require the normal pinned-toolchain gates,
+including `TestBlockPageProductLanguagePreservesAPIReason` for HTML/JSON parity.
+
 
 ## Current canonical addendum — 2026-10-15 — Root test-suite correctness fixes (L7, API-3/6/7/8)
 

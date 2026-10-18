@@ -1,5 +1,39 @@
 # Documentation Index and Current Project Truth
 
+## Current maintenance — 2026-10-18 — Console workflows
+
+Active root: `C:\Users\mattlai\Projects\waf-proxy`. No Git operations,
+source relocation, deployment, binary rebuild or ZIP regeneration. This is a
+console workflow slice, not a new protection engine/API-security capability.
+Verified locally: **19/19** dependency-free Node tests, **15/15** isolated
+headless Edge/Playwright workflow tests, and **18/18** Python source/document
+gates PASS. Browser requests are intercepted fixtures, not a live WAF/VM.
+
+Go/gofmt and WSL remain unavailable. The added active-certificate status helper
+and its Go tests, root tidy/build/vet/full tests/race, and the Go-executing route
+gate are **NOT_RUN/BLOCKED** on these bytes. Historical Go PASS does not qualify
+this slice. State remains **IMPLEMENTED_TESTING_DEFERRED**.
+
+The approved ten-area UX pass is implemented: draft guards/state/apply review,
+progressive API loading, guided site setup, event-to-field policy and undo,
+scan completion, searchable endpoints/validated dialogs, persistent load errors,
+attention summary and keyboard/mobile handling. Read AI_HANDOFF.md for scope,
+safety boundaries and the exact remaining qualification work. OPERATOR_GUIDE.md
+contains current operating instructions; older current/canonical blocks below
+are dated historical evidence when they conflict with this entry.
+
+
+## Current maintenance — 2026-10-17 — Product-facing console wording
+
+Daily operating instructions: [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md). The console
+now uses product labels for servers, sensitivity, API review, request diagnostics,
+and protection modes. API/config values and protection behavior remain compatible.
+An existing console startup initialization error is fixed. Executed: 9 Node console
+tests and 18 Python source/document gates PASS. Current Windows host has no Go;
+root Go build/vet/test/race and the new block-page copy test remain NOT_RUN for
+these changed bytes. Earlier Go PASS records apply to their dated source.
+Implementation/release state is unchanged. See AI_HANDOFF.md for exact scope.
+
 
 ## Current canonical addendum — 2026-10-15 — Root test-suite fixes + Go 1.26 toolchain
 

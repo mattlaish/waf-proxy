@@ -56,11 +56,11 @@ req('authRole(roleReviewer, a.handleSequenceExceptionCreate)' in admin and 'auth
 for action in ('api_sequence.mode','api_sequence.relearn','api_sequence.exception_create','api_sequence.exception_delete'):
     req(action in src, f'control mutation is audited: {action}')
 req('persistSequenceMutation' in src and 'a.srv.sequence.save(a.srv.configPath)' in src, 'sequence control mutations persist durable state immediately')
-for label in ('API sequence foundation + operations','Learning state','Active / recent sessions','Workflow models','Sequence violations','Exceptions','Reset / relearn'):
+for label in ('API usage patterns','Learning progress','Active / recent sessions','Learned workflows','Unusual request order','Exceptions','Reset / relearn'):
     req(label in ui, f'operations console exposes {label}')
 req('/api/security/sequence/learning-state' in ui and '/api/security/sequence/recent-sessions' in ui and '/api/security/sequence/exceptions' in ui, 'console reads operations endpoints')
 req('/api/security/sequence/mode' in ui and '/api/security/sequence/relearn' in ui, 'console exposes audited LEARN/DETECT and relearn controls')
-req('Raw URLs, object values, JWTs, cookies, and claim values are not accepted as selectors' in ui, 'console documents sensitive-value exclusion boundary')
+req('Use workflow and endpoint IDs rather than submitted values, sign-in tokens, or cookies' in ui, 'console documents sensitive-value exclusion boundary')
 req('Authorization' not in src and 'Cookie' not in src and 'OpenAI' not in src, 'API-6.4 control/evidence code does not parse tokens/cookies or call OpenAI')
 req('test-api64-source.py' in build, 'local build retains API-6.4 source gate')
 req('test-api64-source.py' in ci, 'CI retains API-6.4 source gate')

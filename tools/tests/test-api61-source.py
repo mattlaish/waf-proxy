@@ -49,8 +49,8 @@ for route in (
     req(route in admin, f"admin visibility route wired: {route}")
 req('authRole(roleReviewer, a.handleSequenceSessions)' in admin and 'authRole(roleReviewer, a.handleSequenceTransitions)' in admin, "session and transition detail requires Reviewer RBAC")
 req("api_sequence.sessions_view" in src and "api_sequence.transitions_view" in src, "sensitive sequence visibility is audited")
-req("API sequence foundation" in ui and "/api/security/sequence/model" in ui, "embedded admin UI exposes API-6.1 visibility")
-req("Sequence analytics never blocks traffic" in ui, "UI retains the API-6.1 non-enforcement authority boundary")
+req("API usage patterns" in ui and "/api/security/sequence/model" in ui, "embedded admin UI exposes API-6.1 visibility")
+req("This feature records findings for review and does not block requests" in ui, "UI retains the API-6.1 non-enforcement authority boundary")
 req("test-api61-source.py" in build and "test-api61-source.py" in ci, "API-6.1 source gate is retained by build.sh and CI")
 for testname in (
     "TestAPI61UsesNormalizedOperationIDsAndVerifiedIdentityOnly",

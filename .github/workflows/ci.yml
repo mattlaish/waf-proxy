@@ -21,6 +21,13 @@ jobs:
           go-version: '1.26'
           check-latest: true
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Console startup, product wording, and unchanged setting values
+        run: node --test tools/tests/test-console-copy.mjs
+
       - name: dependency-free root source-shape gate
         run: ./tools/tests/test-go-root-shape.sh
 

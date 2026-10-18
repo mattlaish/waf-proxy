@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT=Path(__file__).resolve().parents[2]
 src=(ROOT/'bola_policy_api74.go').read_text(encoding='utf-8')
@@ -120,15 +121,16 @@ for event in ('api_bola.policies_view','api_bola.policy_upsert','api_bola.policy
 req('persistBOLAPolicyMutation' in src and 'bolaPolicy.save(a.srv.configPath)' in src,'mutations persist before success')
 
 # Console completeness and authority messaging.
-for token in ('API-7.3 / API-7.4 BOLA evidence','api_bola_evidence','api_bola_policies','api_bola_policy_save','api_bola_policy_action','api_bola_policy_type','api_bola_policy_conf','api_bola_policy_ttl'):
+for token in ('Possible unauthorized record access','api_bola_evidence','api_bola_policies','api_bola_policy_save','api_bola_policy_action','api_bola_policy_type','api_bola_policy_conf','api_bola_policy_ttl'):
     req(token in ui,f'Admin console includes {token}')
-for action in ('Ack','Dismiss','Resolve','Reopen'):
+for action in ('Investigate','Dismiss','Resolve','Reopen'):
     req(f'>{action}<' in ui,f'Admin console workflow action exists: {action}')
-req('BOLA candidates are inferred evidence only' in ui,'console labels inferred evidence as non-authoritative')
-req('never authorize request-path BLOCK/DENY/403' in ui,'console states no BOLA request blocking')
-req('Policies are evidence-routing controls only' in ui,'console explains evidence-policy semantics')
-req('<option>REVIEW</option><option>SUPPRESS</option>' in ui,'console exposes REVIEW/SUPPRESS only')
-req('ENFORCE action' in ui,'console explicitly rejects ENFORCE policy semantics')
+req('These are signals for investigation' in ui,'console labels inferred evidence as non-authoritative')
+req('they do not establish record ownership or block requests' in ui,'console states no BOLA request blocking')
+req('Choose which record-access findings need review and which should be ignored' in ui,'console explains evidence-policy semantics')
+actions=re.search(r'<select id="api_bola_policy_action">(.*?)</select>',ui,re.S)
+req(actions is not None and re.findall(r'<option value="([^"]+)"',actions.group(1)) == ['REVIEW','SUPPRESS'],'console exposes REVIEW/SUPPRESS only')
+req('These settings do not block requests' in ui,'console explicitly rejects ENFORCE policy semantics')
 
 # Tests.
 for name in (

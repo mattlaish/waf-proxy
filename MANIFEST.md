@@ -1,5 +1,30 @@
 # waf-proxy — package manifest
 
+## Console workflow source additions — 2026-10-18
+
+- `static/admin.html`: draft/apply guardrails, guided setup, independent API
+  loading, field/page workflows, scan review and accessible console controls.
+- `console_status.go`, `console_status_test.go`, `admin.go`: read-only active
+  certificate expiry metadata and tests (Go execution pending locally).
+- `tools/tests/test-console-workflows.mjs`: isolated real-browser UX regressions;
+  requires separately available Playwright and browser.
+- `tools/tests/test-console-copy.mjs`: expanded dependency-free console checks.
+- Operating, handover, roadmap and verification documents synchronized.
+
+These are source-tree changes, not regenerated release deliverables. Old ZIPs,
+manifest hashes and binaries do not include or qualify this slice. A fresh
+release must follow RELEASE_PROCESS.md after the pending Go/live-VM gates.
+
+
+## Console language maintenance — 2026-10-17
+
+- `OPERATOR_GUIDE.md` — product-facing daily console instructions.
+- `tools/tests/test-console-copy.mjs` — dependency-free Node console execution,
+  display mapping, draft-label, and request-value compatibility regression checks.
+- `block_response_copy_test.go` — visitor wording and unchanged JSON reason tests.
+- Existing console, profile/learner descriptions, block-page wording, CI, source
+  assertions, and handover documents updated. No release artifact was regenerated.
+
 
 ## Current canonical addendum — 2026-10-15 — Root test-suite correctness fixes (L7, API-3/6/7/8)
 

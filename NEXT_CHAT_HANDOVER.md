@@ -1,5 +1,26 @@
 # Next Chat Handover
 
+## Current continuation — 2026-10-18
+
+Active root: `C:\Users\mattlai\Projects\waf-proxy`. No Git operations,
+source relocation, deployment, binary rebuild or ZIP regeneration. This is a
+console workflow slice, not a new protection engine/API-security capability.
+Verified locally: **19/19** dependency-free Node tests, **15/15** isolated
+headless Edge/Playwright workflow tests, and **18/18** Python source/document
+gates PASS. Browser requests are intercepted fixtures, not a live WAF/VM.
+
+Go/gofmt and WSL remain unavailable. The added active-certificate status helper
+and its Go tests, root tidy/build/vet/full tests/race, and the Go-executing route
+gate are **NOT_RUN/BLOCKED** on these bytes. Historical Go PASS does not qualify
+this slice. State remains **IMPLEMENTED_TESTING_DEFERRED**.
+
+The approved console UX pass is implemented, not released. Start with current
+AI_HANDOFF.md and patch.md rather than older roadmap checkpoints. Do not undo
+progressive API loading, draft/page conflict checks, explicit review dialogs or
+field-only exception preparation. Preserve the event metadata and expiry unknown
+boundaries. The next required work is exact-source Go and real-VM qualification.
+
+
 
 ## Current canonical addendum — 2026-09-30 — TLS Session Resumption + Handshake Observability
 
