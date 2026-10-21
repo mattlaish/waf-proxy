@@ -1,6 +1,45 @@
 # Development Engineering Ledger
 
 
+## Current maintenance — 2026-10-18 — Console workflow UX qualification + review fixes
+
+This closes the "Next" step of the console workflow UX slice (`070ebb5`): the
+Go 1.26.9 qualification gates have now run on that source, and the console
+layout was reviewed in headless Chromium against mocked API fixtures.
+
+On the unmodified `070ebb5` bytes (go1.26.9, linux/amd64): `go mod tidy -diff`
+clean; `go build ./...`, `go vet ./...`, `go test ./...` (including
+`TestBlockPageProductLanguagePreservesAPIReason`) and `go test -race ./...`
+PASS; root shape PASS (111 files); all 18 CI source gates PASS; 19/19
+console-copy Node tests and 15/15 Playwright console workflow tests PASS.
+The 2026-10-15 fixes (L7 fail-closed eviction, GraphQL contract clone and
+fingerprint, API-7.2 path locators, Go 1.26.9 pin) were confirmed intact; no
+removed dead file was reintroduced; the slice's gate edits track the new
+console wording and do not weaken any check. Every operator Admin API route
+(136 of 137; the remaining `PUT /api/ha/peer-config` is node-to-node HA sync)
+has a console control.
+
+Review fixes:
+- **Rate-limit visitor page was unreachable.** The L7 limiter forced a JSON
+  429, so the new "Too many requests… please wait" page never rendered.
+  Browsers (`Accept` contains `text/html`) now get that page; API clients with
+  no `Accept` or JSON-only `Accept` keep the JSON body
+  (`TestRateLimitPageForBrowsersJSONForAPIClients`).
+- **Table cells broke mid-token.** The global `td{word-break:break-all}` let
+  narrow tables split times, client IPs and rule IDs (e.g. `942100` rendered
+  as `94210`/`0`). Dashboard activity and Logs tables now keep time, site,
+  client, severity, rule and method cells on one line (`td.nw`).
+- **Phone layout:** the 10 tabs wrapped into four rows. Under 600px they are
+  now a single horizontally scrollable row, and the selected tab is scrolled
+  into view without moving the page.
+- **CI gap:** `test-console-workflows.mjs` was not run in CI. CI now installs
+  pinned Playwright 1.56.1 + Chromium and runs it.
+
+After the fixes, the same Go, race, gate, Node and Playwright suites PASS.
+Project state remains `IMPLEMENTED_TESTING_DEFERRED`: native VectorScan,
+real-Coraza and hardware qualification have not run.
+
+
 ## Current canonical addendum — 2026-10-15 — Root test-suite correctness fixes (L7, API-3/6/7/8)
 
 This slice restores a fully green root test suite on top of the 2026-09-30 TLS

@@ -154,7 +154,9 @@ func (c *l7AbuseController) wrap(site string, next http.Handler) http.Handler {
 		}
 		state, allowed := c.allowAt(site, identity, time.Now())
 		if !allowed {
-			writeBlockResponse(w, r, http.StatusTooManyRequests, "l7_abuse_limit", true)
+			// API clients keep the machine-readable JSON body; browsers get the
+			// visitor page explaining the limit.
+			writeBlockResponse(w, r, http.StatusTooManyRequests, "l7_abuse_limit", !acceptsHTML(r))
 			return
 		}
 		if state != nil {
