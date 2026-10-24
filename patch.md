@@ -1553,3 +1553,91 @@ index 0c2d2d1..eb67143 100644
            <td><b style="color:${statusColor(r.status)}">${r.status}</b></td></tr>`).join("");
          $("logcount").textContent=rows.length+" requests";
          $("log-empty").style.display=rows.length?"none":"";
+
+
+## Saved-draft control visibility — 2026-10-24
+
+Hide Continue/Discard saved draft when the server reports no saved draft; new Playwright workflow test.
+
+diff --git a/static/admin.html b/static/admin.html
+index 72c959e..3b49714 100644
+--- a/static/admin.html
++++ b/static/admin.html
+@@ -154,6 +154,7 @@
+   th{color:var(--mut);text-align:left;font-weight:500;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+   td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-all}
+   td.nw{white-space:nowrap;word-break:normal}
++  .workbar .btn[hidden]{display:none}
+   tr:hover td{background:var(--raised)}
+   .sev{border-radius:4px;padding:1px 6px;font-size:11px;white-space:nowrap}
+   .sev.critical,.sev.emergency,.sev.alert{background:color-mix(in srgb,var(--red) 20%,transparent);color:var(--red)}
+@@ -1134,10 +1135,27 @@
+       const r=await fetch(path,{...opts,headers,signal:controller.signal});
+       if(r.status===401){sessionStorage.removeItem("waf_token");showGate();}
+       if(!r.ok){const e=new Error(r.status===401?"Session expired — sign in again":r.status===403?"This account does not have access.":(await r.text()).trim()||("HTTP "+r.status));e.status=r.status;throw e;}
+-      const result=await r.json();resourceSuccess(path);return result;
++      const result=await r.json();resourceSuccess(path);noteServerDraft(path,method,r);return result;
+     }catch(error){const e=error.name==="AbortError"?new Error("The request timed out. Check the connection and retry."):error;resourceFailure(path,e,mutation?"ACTION":"GET");throw e;}
+     finally{clearTimeout(timer);if(registered)uxState.pending.delete(key);}
+   }
++  // The server returns a saved draft only when it is newer than the active
++  // configuration and labels the response with X-WAF-Config-Source. Track that
++  // so the draft controls are hidden only when no saved draft exists.
++  function noteServerDraft(path,method,response){
++    let known;
++    if(path==="/api/config?draft=1"){
++      if(method==="GET"){const src=response.headers.get("X-WAF-Config-Source");if(src==="draft"||src==="live")known=src==="draft";}
++      else if(method==="PUT")known=true;
++      else if(method==="DELETE")known=false;
++    }else if(path==="/api/config"&&method==="PUT")known=false;
++    if(known===undefined)return;
++    uxState.serverDraft=known;updateDraftControls();
++  }
++  function updateDraftControls(){
++    const none=uxState.serverDraft===false;
++    $("ux_resume_draft").hidden=none;$("ux_discard_draft").hidden=none;
++  }
+   async function downloadAPI(path, filename){
+     const r=await fetch(path,{headers:{"Authorization":"Bearer "+getToken()}});
+     if(r.status===401){sessionStorage.removeItem("waf_token");showGate();throw new Error("session expired — sign in again");}
+@@ -3061,7 +3079,7 @@
+   // secrets are never written to browser storage or shown in change previews.
+   const uxState={ready:false,saved:null,active:null,activeRaw:null,baseline:"",writing:false,
+     resources:new Map(),cache:new Map(),pending:new Set(),endpoints:[],events:[],access:[],scan:new Map(),scanTimers:new Map(),scanResults:new Map(),
+-    pageHistory:new Map(),pageOriginal:null,dialogResolve:null,dialogReturn:null,attention:[],previousErrorShare:null};
++    pageHistory:new Map(),pageOriginal:null,serverDraft:null,dialogResolve:null,dialogReturn:null,attention:[],previousErrorShare:null};
+   const copyJSON=value=>JSON.parse(JSON.stringify(value));
+   function stableConfig(value){
+     if(Array.isArray(value))return value.map(stableConfig);
+diff --git a/tools/tests/test-console-workflows.mjs b/tools/tests/test-console-workflows.mjs
+index 0c0a3c4..ed5b191 100644
+--- a/tools/tests/test-console-workflows.mjs
++++ b/tools/tests/test-console-workflows.mjs
+@@ -505,6 +505,27 @@ test('discard failure keeps the saved draft available and never claims success',
+   } finally { await s.close(); }
+ });
+ 
++test('saved-draft controls hide when the server reports no saved draft and return after saving', async () => {
++  const s = await session();
++  try {
++    await s.page.route('**/api/config?draft=1', route => route.request().method() === 'GET'
++      ? route.fulfill({ status: 200, contentType: 'application/json', headers: { 'X-WAF-Config-Source': 'live' }, body: JSON.stringify(s.active) })
++      : route.fallback());
++    await s.page.locator('#ux_resume_draft').click();
++    await s.page.locator('#ux_discard_draft').waitFor({ state: 'hidden' });
++    assert.equal(await s.page.locator('#ux_resume_draft').isHidden(), true);
++    await tab(s.page, 'sites');await s.page.locator('#site_list [data-sel]').first().click();
++    await s.page.locator('#sites input[data-f="listen"]').fill(':8081');await s.page.locator('#ux_save').click();
++    await s.page.locator('#ux_change_state').filter({ hasText: 'Draft saved' }).waitFor();
++    assert.equal(await s.page.locator('#ux_discard_draft').isVisible(), true);
++    assert.equal(await s.page.locator('#ux_resume_draft').isVisible(), true);
++    await s.page.locator('#ux_review').click();await choice(s.page, 'apply');
++    await s.page.locator('#ux_change_state').filter({ hasText: 'matches active settings' }).waitFor();
++    assert.equal(await s.page.locator('#ux_discard_draft').isHidden(), true);
++    assert.deepEqual(s.errors, []);
++  } finally { await s.close(); }
++});
++
+ test('reviewer and viewer cannot discard the shared saved draft', async () => {
+   for (const role of ['reviewer', 'viewer']) {
+     const s = await session({ role });

@@ -505,6 +505,27 @@ test('discard failure keeps the saved draft available and never claims success',
   } finally { await s.close(); }
 });
 
+test('saved-draft controls hide when the server reports no saved draft and return after saving', async () => {
+  const s = await session();
+  try {
+    await s.page.route('**/api/config?draft=1', route => route.request().method() === 'GET'
+      ? route.fulfill({ status: 200, contentType: 'application/json', headers: { 'X-WAF-Config-Source': 'live' }, body: JSON.stringify(s.active) })
+      : route.fallback());
+    await s.page.locator('#ux_resume_draft').click();
+    await s.page.locator('#ux_discard_draft').waitFor({ state: 'hidden' });
+    assert.equal(await s.page.locator('#ux_resume_draft').isHidden(), true);
+    await tab(s.page, 'sites');await s.page.locator('#site_list [data-sel]').first().click();
+    await s.page.locator('#sites input[data-f="listen"]').fill(':8081');await s.page.locator('#ux_save').click();
+    await s.page.locator('#ux_change_state').filter({ hasText: 'Draft saved' }).waitFor();
+    assert.equal(await s.page.locator('#ux_discard_draft').isVisible(), true);
+    assert.equal(await s.page.locator('#ux_resume_draft').isVisible(), true);
+    await s.page.locator('#ux_review').click();await choice(s.page, 'apply');
+    await s.page.locator('#ux_change_state').filter({ hasText: 'matches active settings' }).waitFor();
+    assert.equal(await s.page.locator('#ux_discard_draft').isHidden(), true);
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
 test('reviewer and viewer cannot discard the shared saved draft', async () => {
   for (const role of ['reviewer', 'viewer']) {
     const s = await session({ role });
