@@ -1,5 +1,32 @@
 # Development Roadmap — WAF Proxy
 
+## Current maintenance — 2026-10-24 — Saved-draft console qualification + draft-control visibility
+
+Qualifies the saved-draft console slice (`9c77181`: `DELETE /api/config?draft=1`
+discard, Continue saved draft, explicit discovered-field suggestions, wizard
+Back retention, scope-aware page undo) on go1.26.9, linux/amd64: `go mod tidy
+-diff` clean; build, vet, `go test ./...` and `go test -race ./...` PASS; root
+shape PASS (112 files); all 18 CI source gates PASS; 21/21 console-copy Node
+tests and 27/27 Playwright workflow tests PASS. Earlier fixes (L7 fail-closed
+eviction, GraphQL clone/fingerprint, API-7.2 path locators, Go 1.26.9 pin,
+browser rate-limit page, `td.nw` table cells, phone tab row, CI Playwright
+step) are intact. The discard endpoint is operator-only, `draft=1`-only,
+audited, durable, and serialized with draft saves under `applyMu`. Every
+operator Admin API route (137 of 138; `PUT /api/ha/peer-config` is node-to-node
+HA sync) has a console control.
+
+Review fix: **Continue saved draft** and the red **Discard saved draft** were
+always shown, even when no saved draft existed. The console now reads the
+server's existing `X-WAF-Config-Source` header and tracks successful draft
+save (draft exists), apply (draft becomes stale) and discard (removed). Both
+controls are hidden only when the server has reported that no saved draft
+exists; an unknown state keeps them visible. On a 390px phone the controls bar
+is one row shorter. New Playwright test: "saved-draft controls hide when the
+server reports no saved draft and return after saving" (28/28 PASS; verified
+to fail without the fix). Project state remains `IMPLEMENTED_TESTING_DEFERRED`:
+native VectorScan, real-Coraza and hardware qualification have not run.
+
+
 ## Maintenance checkpoint — 2026-10-24
 
 The five issues from the 10/23 operation review are fixed: cross-URL forms,
