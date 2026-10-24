@@ -279,6 +279,8 @@
     <button class="btn sm" id="ux_review">Review changes</button>
     <button class="btn sm" id="ux_save">Save draft</button>
     <button class="btn sm" id="ux_discard">Discard edits</button>
+    <button class="btn sm" id="ux_resume_draft">Continue saved draft</button>
+    <button class="btn sm danger" id="ux_discard_draft">Discard saved draft</button>
   </div>
   <div id="ux_config_errors" class="error-summary" role="alert" tabindex="-1"></div>
   <div class="resource-errors" id="ux_errors" role="region" aria-label="Connection and loading problems" aria-live="polite"></div>
@@ -972,11 +974,12 @@
       </div>
       <div class="field"><label>Rule exceptions (IDs, comma-separated)</label><input type="text" id="pp_excl" spellcheck="false" placeholder="941100,942100"></div>
       <div class="field"><label>Field-validation methods (comma-separated)</label><input type="text" id="pp_methods" spellcheck="false" placeholder="POST"></div>
-      <div class="field" id="pp_formwrap" style="display:none"><label>Discovered form submission address</label><select id="pp_formaction"></select></div>
+      <div class="field" id="pp_formwrap" style="display:none"><label>Discovered form submission address</label><select id="pp_formaction"></select><button class="btn sm" type="button" id="pp_open_form">Configure this form</button></div>
       <div class="field">
         <label>Field policies <button class="btn sm" type="button" id="pp_addfield" style="margin-left:auto">+ Field</button></label>
         <div class="hint" style="margin-bottom:8px">Fields are discovered from page scans and real form or API submissions. Only names are saved, not submitted values. A rule exception here applies only to the selected field.</div>
         <div id="pp_fields"></div>
+        <div id="pp_candidates" class="field-context"></div>
       </div>
       </div>
       <div class="field"><label>Note</label><input type="text" id="pp_note" spellcheck="false"></div>
@@ -1006,6 +1009,7 @@
     On:"Block", DetectionOnly:"Monitor", Off:"Off", off:"Off", auto:"Automatic", required:"Require acceleration",
     LEARN:"Learning", LEARNING:"Learning", learn:"Learning", DETECT:"Monitor", detect:"Monitor",
     ENFORCE:"Block", BLOCK:"Block", block:"Blocked", deny:"Blocked", allow:"Allowed", pass:"Allowed",
+    identifier:"Username or identifier", password:"Password", free_text:"Free text", email:"Email address", numeric:"Number",
     CANDIDATE:"Ready for review", REVIEWED:"Approved", MATURE:"Ready for monitoring", STALE:"Needs more recent traffic",
     ACTIVE:"Active", RECENT:"Recent", OBSERVED:"Observed", SUPPRESSED:"Ignored", INCLUDE:"Track field",
     REVIEW:"Needs review", SUPPRESS:"Ignore matching findings", OPEN:"Open", ACKNOWLEDGED:"Investigating",
@@ -1103,6 +1107,7 @@
   };
   function applyRoleUI(){
     if(!curUser) return;
+    $("ux_discard_draft").disabled=!hasCapability("edit");
     for(const [cap,ids] of Object.entries(roleControlIDs)) for(const id of ids){
       const el=$(id); if(!el) continue;
       const denied=!hasCapability(cap);
@@ -1113,7 +1118,7 @@
     document.querySelectorAll("[data-required-capability]").forEach(el=>{
       const cap=el.dataset.requiredCapability||"";
       const denied=!hasCapability(cap);
-      el.disabled=denied;
+      el.disabled=denied||el.dataset.unavailable==="1";
       if(denied) el.title=`${curUser.role||"viewer"} role cannot perform this action`;
     });
   }
@@ -2309,7 +2314,7 @@
   }
   function renderPPFields(){
     $("pp_fields").innerHTML=ppFields.length?ppFields.map(fieldPolicyRow).join(""):`<div class="empty">No field rules yet. Scan linked pages, submit a real form, or add a field manually.</div>`;
-    $("pp_fields").querySelectorAll("[data-fdel]").forEach(b=>b.onclick=()=>{ syncPPFields(); ppFields.splice(+b.dataset.fdel,1); renderPPFields(); });
+    $("pp_fields").querySelectorAll("[data-fdel]").forEach(b=>b.onclick=()=>{ syncPPFields(); ppFields.splice(+b.dataset.fdel,1); renderPPFields();seedDiscoveredAction($("pp_formaction").value||$("pp_path").value); });
   }
   function syncPPFields(){
     document.querySelectorAll("#pp_fields .fpolicy").forEach(row=>{
@@ -2327,21 +2332,47 @@
     try{ return new URL(action||pagePath,"http://waf.local"+pagePath).pathname; }
     catch(e){ return pagePath; }
   }
+  function mergeDiscoveredCandidates(fields,path){
+    const unique=new Map();
+    for(const field of fields){
+      const f={...field,action:resolvedFormAction(field.action,path)},key=JSON.stringify([f.name,f.method,f.action]),old=unique.get(key);
+      if(old){
+        old.required=old.required||f.required;if(!old.type||old.type==="text")old.type=f.type||old.type;
+        if(old.discovery_source&&f.discovery_source&&old.discovery_source!==f.discovery_source)old.discovery_source="both";
+        else old.discovery_source=old.discovery_source||f.discovery_source;
+      }
+      else unique.set(key,f);
+    }
+    return [...unique.values()];
+  }
   function seedDiscoveredAction(action){
     syncPPFields();
     const known=new Set(ppFields.map(f=>(f.source||"ARGS_POST")+":"+f.name));
-    ppDiscovered.filter(f=>f.method!=="GET"&&resolvedFormAction(f.action,ppSourcePath)===action).forEach(f=>{
-      const key="ARGS_POST:"+f.name;
-      if(known.has(key)) return;
-      known.add(key);
-      ppFields.push({name:f.name,source:"ARGS_POST",discovery_source:f.discovery_source||"",profile:suggestedFieldProfile(f),allow_pattern:"",required:!!f.required,min_length:0,max_length:0,exclude_rule_ids:[]});
+    const candidates=ppDiscovered.filter(f=>f.method!=="GET"&&resolvedFormAction(f.action,ppSourcePath)===action);
+    const rows=[...new Map(candidates.map(f=>[f.name,f])).values()];
+    $("pp_candidates").innerHTML=rows.length?'<b>Discovered fields — not applied automatically</b><p class="hint">Add a suggested rule only for fields you want to configure. Existing field rules stay unchanged.</p>'+rows.map((f,i)=>'<div class="actions"><span>'+esc(f.name)+' · '+esc(uiLabel(suggestedFieldProfile(f)))+'</span><button type="button" class="btn sm" data-add-discovered="'+i+'" data-required-capability="review" '+(known.has("ARGS_POST:"+f.name)||action!==$("pp_path").value||!hasCapability("review")?'disabled':'')+'>'+ (known.has("ARGS_POST:"+f.name)?'Already configured':'Add suggested rule')+'</button></div>').join(''):'';
+    $("pp_candidates").querySelectorAll("[data-add-discovered]").forEach(b=>{
+      b.dataset.unavailable=b.disabled?"1":"0";
+      b.onclick=()=>{
+        if(!hasCapability("review")||action!==$("pp_path").value)return;
+        syncPPFields();const f=rows[+b.dataset.addDiscovered];
+        if(ppFields.some(x=>x.name===f.name&&(x.source||"ARGS_POST")==="ARGS_POST"))return;
+        ppFields.push({name:f.name,source:"ARGS_POST",discovery_source:f.discovery_source||"",profile:suggestedFieldProfile(f),allow_pattern:"",required:!!f.required,min_length:0,max_length:0,exclude_rule_ids:[]});
+        $("pp_methods").value=!uxState.pageOriginal&&ppFields.length===1?(f.method||"POST"):[...new Set([...$("pp_methods").value.split(",").map(x=>x.trim()).filter(Boolean),f.method||"POST"])].join(",");
+        renderPPFields();seedDiscoveredAction(action);
+      };
     });
-    renderPPFields();
   }
-  $("pp_formaction").onchange=()=>{const site=ppSite,action=$("pp_formaction").value;if(site&&action)openPageEditor(site,action);};
+  $("pp_formaction").onchange=()=>seedDiscoveredAction($("pp_formaction").value);
+  $("pp_open_form").onclick=async()=>{
+    const site=ppSite,action=$("pp_formaction").value;if(!site||!action)return;
+    if(action===$("pp_path").value){seedDiscoveredAction(action);return;}
+    const discovered=ppDiscovered.filter(f=>resolvedFormAction(f.action,ppSourcePath)===action).map(f=>({...f,action}));
+    await openPageEditor(site,action,"",{discovered});
+  };
   $("pp_addfield").onclick=()=>{ syncPPFields(); ppFields.push({name:"",source:"ARGS_POST",profile:"identifier",allow_pattern:"",required:false,min_length:0,max_length:0,exclude_rule_ids:[]}); renderPPFields(); };
   function ppToggle(){ const deny=$("pp_action").value==="deny"; $("pp_tune").style.display=deny?"none":""; $("pp_statuswrap").style.display=deny?"":"none"; }
-  async function openPageEditor(site,path,match=""){
+  async function openPageEditor(site,path,match="",options={}){
     if(ppSite&&pageDirty()){toast("Apply or close the current page edits first.","warn");return false;}
     const serial=(uxState.pageLoadSerial||0)+1;uxState.pageLoadSerial=serial;
     let pages,context;
@@ -2350,7 +2381,7 @@
     if(serial!==uxState.pageLoadSerial)return false;
     curPagePol={};pages.forEach(p=>curPagePol[site+"|"+p.path]=p);uxState.contextConfig=context;
     uxState.pageReturn=document.activeElement;ppSite=site;ppSourcePath=path;ppDiscovered=[];
-    $("pp_formwrap").style.display="none";
+    $("pp_formwrap").style.display="none";$("pp_candidates").innerHTML="";
     const choices=pages.filter(p=>p.path===path);
     if(choices.length>1&&!match){
       const input=await askForm("Choose page policy",[{key:"match",label:"Policy scope",required:true,options:choices.map(p=>[p.match||"prefix",(p.match==="exact"?"This page only":"Path prefix")+" · "+(p.action==="deny"?"Explicit block":uiLabel(p.mode||"Inherit"))])}],{},"Open policy");
@@ -2358,10 +2389,10 @@
     }
     const ex=pageRecord(pages,path,match);uxState.pageOriginal=ex?copyJSON(ex):null;
     $("ux_page_errors").textContent="";$("ux_page_context").innerHTML=pageContext(site,path,pages);
-    $("ux_page_undo").hidden=!uxState.pageHistory.has(pageKey(site,path,ex?.match||"exact"));
+    updatePageUndo(site,path);
     $("pp_site").textContent=site;
     $("pp_path").value=path;
-    $("pp_match").value=ex?(ex.match||"prefix"):"exact";
+    $("pp_match").value=ex?(ex.match||"prefix"):(match||"exact");
     $("pp_action").value=(ex&&ex.action)||"";
     $("pp_status").value=String((ex&&ex.deny_status)||403);
     $("pp_mode").value=(ex&&ex.mode)||"";
@@ -2378,17 +2409,21 @@
     try{
       const found=await api("/api/forms?site="+encodeURIComponent(site)+"&path="+encodeURIComponent(path));
       if(serial!==uxState.pageLoadSerial||ppSite!==site||$("pp_path").value!==path||configText(readPagePolicy())!==unchanged)return;
-      ppDiscovered=found||[];
+      ppDiscovered=mergeDiscoveredCandidates([...(found||[]),...(options.discovered||[])],path);
       const actions=[...new Set(ppDiscovered.filter(f=>f.method!=="GET").map(f=>resolvedFormAction(f.action,path)))];
       $("pp_formwrap").style.display=actions.length?"":"none";
       $("pp_formaction").innerHTML=actions.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join("");
       if(actions.length){
         const selected=actions.includes(path)?path:actions[0];
         $("pp_formaction").value=selected;
-        if(selected===path){seedDiscoveredAction(selected);seeded=true;}
-        else $("ux_page_context").innerHTML+='<br>Form submits to '+esc(selected)+'. Choose that address above to edit its policy.';
+        seedDiscoveredAction(selected);seeded=true;
+        if(selected!==path)$("ux_page_context").innerHTML+='<br>Form submits to '+esc(selected)+'. Select Configure this form to open its page settings.';
       }
-    }catch(e){$("ux_page_errors").textContent="Field discovery could not load. Existing page settings are preserved; add fields manually or retry."; }
+    }catch(e){
+      $("ux_page_errors").textContent="Field discovery could not load. Existing page settings are preserved; add fields manually or retry.";
+      ppDiscovered=mergeDiscoveredCandidates(options.discovered||[],path);
+      if(ppDiscovered.length){$("pp_formwrap").style.display="";$("pp_formaction").innerHTML='<option value="'+esc(path)+'">'+esc(path)+'</option>';seedDiscoveredAction(path);}
+    }
     if(serial===uxState.pageLoadSerial&&ppSite===site){if(seeded||configText(readPagePolicy())===unchanged)uxState.pageBaseline=configText(readPagePolicy());applyRoleUI();}return true;
   }
   $("pp_action").onchange=ppToggle;
@@ -3111,7 +3146,7 @@
     }).join("")}<div class="actions"><button class="btn primary" type="submit">${esc(submitLabel)}</button>${options.back?'<button class="btn" type="button" data-form-back>Back</button>':""}<button class="btn" type="button" data-form-cancel>Cancel</button></div></form>`);
     const form=$("ux_dialog_body").querySelector("form");
     form.querySelector("[data-form-cancel]").onclick=()=>closeUXDialog(null);
-    if(options.back)form.querySelector("[data-form-back]").onclick=()=>closeUXDialog({__back:true});
+    if(options.back)form.querySelector("[data-form-back]").onclick=()=>closeUXDialog({__back:true,values:Object.fromEntries(fields.map(f=>[f.key,form.elements.namedItem(f.key).value]))});
     form.onsubmit=e=>{e.preventDefault();const values={},errors=[];
       for(const f of fields){const el=form.elements.namedItem(f.key),value=f.type==="password"?el.value:el.value.trim();values[f.key]=value;
         const error=f.required&&!value?"Enter "+f.label.toLowerCase():f.type==="number"&&value&&(!Number.isFinite(Number(value))||(f.min!==undefined&&Number(value)<f.min)||(f.max!==undefined&&Number(value)>f.max))?"Enter a number in the allowed range":f.validate?.(value,values)||"";
@@ -3213,8 +3248,30 @@
     setConfigBaseline(copyJSON(uxState.saved));
   }
   async function reloadActive(){
-    if(await chooseAction("Load current active settings?",'<p>This replaces the draft displayed in this browser, including unsaved edits. It does not delete a saved server draft until you explicitly save or apply again.</p>',[['reload','Load active settings'],['cancel','Keep editing']])!=="reload")return;
+    if(await chooseAction("Load current active settings?",'<p>This replaces settings displayed in this browser, including unsaved edits. It does not change or delete the saved server draft. Use Continue saved draft to return to it, or Discard saved draft to remove it.</p>',[['reload','Load active settings'],['cancel','Keep editing']])!=="reload")return;
     setConfigBaseline(await api("/api/config"),true);toast("Active settings loaded — the server draft has not been changed");
+  }
+  async function resumeSavedDraft(){
+    if(!uxState.ready||uxState.writing||uxState.pageWriting)return;
+    if(pageDirty()){toast("Apply or close the page edits first.","warn");return;}
+    if(hasUnsavedEdits()&&await chooseAction("Continue the saved draft?",'<p>Replace unsaved configuration edits in this browser with the saved server draft? Active protection does not change.</p>',[['load','Continue saved draft'],['cancel','Keep editing']])!=="load")return;
+    uxState.writing=true;configControlLock(true);
+    try{
+      const [active,draft]=await Promise.all([api("/api/config"),api("/api/config?draft=1")]);
+      setConfigBaseline(active,true);setConfigBaseline(draft);
+      toast(configChanges(uxState.active,uxState.saved).length?"Saved draft loaded — not active":"No saved changes differ from active settings");
+    }finally{uxState.writing=false;configControlLock(false);}
+  }
+  async function discardSavedDraft(){
+    if(!uxState.ready||uxState.writing||uxState.pageWriting||!hasCapability("edit"))return;
+    if(pageDirty()){toast("Apply or close the page edits first.","warn");return;}
+    if(await chooseAction("Discard the saved server draft?",'<p>Remove the saved draft for all operators and discard unsaved configuration edits in this browser. Active protection, page policies, interfaces and credentials stay unchanged. This cannot be undone; another operator’s saved work is included.</p>',[['discard','Discard saved draft'],['cancel','Keep draft']])!=="discard")return;
+    uxState.writing=true;configControlLock(true);let discarded=false;
+    try{
+      await api("/api/config?draft=1",{method:"DELETE"});discarded=true;
+      setConfigBaseline(await api("/api/config"),true);toast("Saved draft discarded — active settings unchanged");
+    }catch(e){if(discarded)throw new Error("Saved draft was discarded, but active settings could not be loaded. Use Load active settings to refresh. "+e.message);throw e;}
+    finally{uxState.writing=false;configControlLock(false);}
   }
   function validListen(value){
     const m=/^(?:\[[0-9a-fA-F:]+\]|[^:\s]*):(\d+)$/.exec(value);
@@ -3254,7 +3311,7 @@
     let index=0,result;
     while(index<steps.length){
       const step=steps[index],values=await askForm(step.title,step.fields,input,index===3?"Review site":"Next",{back:index>0});
-      if(!values)return;if(values.__back){index--;continue;}Object.assign(input,values);
+      if(!values)return;if(values.__back){Object.assign(input,values.values);index--;continue;}Object.assign(input,values);
       if(index===1&&!input.pool&&!input.backend){toast("Choose a group or enter a server address.","warn");continue;}
       if(index===2&&input.tls==="files"&&(!input.cert||!input.key)){toast("Provide both certificate and key paths.","warn");continue;}
       if(index===2&&input.manage==="yes"&&input.listen.startsWith(":")){toast("Assigning an IP requires a concrete IP in the listen address.","warn");continue;}
@@ -3281,6 +3338,14 @@
       note:$("pp_note").value.trim(),source:"manual"};
   }
   function pageKey(site,path,match){return site+"|"+path+"|"+(match||"prefix");}
+  function pageUndoChoices(site,path){
+    return ["exact","prefix"].filter(match=>uxState.pageHistory.has(pageKey(site,path,match)));
+  }
+  function updatePageUndo(site,path){
+    const choices=pageUndoChoices(site,path);
+    $("ux_page_undo").hidden=!choices.length;
+    $("ux_page_undo").textContent=choices.length===1?"Undo last page change ("+(choices[0]==="prefix"?"URL prefix":"this page only")+")":"Undo a page change";
+  }
   function pageRecord(pages,path,match=""){return pages.find(p=>p.path===path&&(!match||(p.match||"prefix")===(match||"prefix")))||null;}
   function pageErrors(policy){
     const errors=[];
@@ -3367,8 +3432,14 @@
   }
   async function undoPageChange(){
     if(!ppSite||uxState.pageWriting)return;
-    const site=ppSite,path=$("pp_path").value.trim(),key=pageKey(site,path,$("pp_match").value),entry=uxState.pageHistory.get(key);if(!entry)return;
     if(pageDirty()){toast("Discard page edits before undoing the last applied change.","warn");return;}
+    const site=ppSite,path=$("pp_path").value.trim(),choices=pageUndoChoices(site,path);if(!choices.length)return;
+    let match=choices[0];
+    if(choices.length>1){
+      const selected=await askForm("Choose the page change to undo",[{key:"match",label:"Policy scope",options:choices.map(value=>[value,value==="prefix"?"URL prefix":"This page only"])}],{match:$("pp_match").value},"Review undo");
+      if(!selected)return;match=selected.match;
+    }
+    const key=pageKey(site,path,match),entry=uxState.pageHistory.get(key);if(!entry)return;
     try{
       await ensureCleanLiveConfig();
       const pages=await api("/api/pagepolicy?site="+encodeURIComponent(site));
@@ -3401,7 +3472,7 @@
       if(!uxState.pageOriginal)$("pp_match").value="exact";
       $("pp_methods").value=[...new Set([...($("pp_methods").value||"").split(",").filter(Boolean),input.method])].join(",");
       $("pp_note").value="Reviewed event: rule "+id+"; exception for "+input.name+" only";
-      renderPPFields();toast("Field-only exception prepared — review before applying");
+      renderPPFields();seedDiscoveredAction($("pp_formaction").value||path);toast("Field-only exception prepared — review before applying");
     }else await openPageEditor(row.site,path);
   }
   function attentionItems(st,poolRows,matches,access,candidates){
@@ -3469,6 +3540,8 @@
     $("ux_review").onclick=()=>applyConfig().catch(e=>toast(e.message,"err"));
     $("ux_save").onclick=()=>writeConfigDraft().then(()=>toast("Draft saved — not active")).catch(e=>toast(e.message,"err"));
     $("ux_discard").onclick=()=>discardUnsaved();
+    $("ux_resume_draft").onclick=()=>resumeSavedDraft().catch(e=>toast(e.message,"err"));
+    $("ux_discard_draft").onclick=()=>discardSavedDraft().catch(e=>toast(e.message,"err"));
     $("ux_wizard").onclick=siteWizard;$("ux_wizard_sites").onclick=siteWizard;
     $("ux_attention_refresh").onclick=loadDashboard;$("ux_map_refresh").onclick=()=>pollMap();
     $("ux_page_undo").onclick=undoPageChange;

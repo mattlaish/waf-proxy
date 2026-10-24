@@ -273,3 +273,19 @@ test('failed mutations are not offered as blindly repeatable read retries', asyn
   assert.doesNotMatch(element('ux_errors').innerHTML, /data-resource-retry/);
   assert.match(element('ux_errors').innerHTML, /Check the current result/);
 });
+
+test('discovery profiles use operator labels without changing submitted values', () => {
+  const { copy } = consoleHarness();
+  assert.equal(copy.uiLabel('identifier'), 'Username or identifier');
+  assert.equal(copy.uiLabel('password'), 'Password');
+  assert.equal(copy.uiLabel('free_text'), 'Free text');
+  assert.ok(copy.fieldPolicyRow({ name: 'user', source: 'ARGS_POST', profile: 'identifier' }, 0).includes('value="identifier" selected'));
+});
+
+test('saved draft disposal is explicitly separate from loading active settings', () => {
+  assert.ok(html.includes('id="ux_resume_draft"'));
+  assert.ok(html.includes('id="ux_discard_draft"'));
+  assert.ok(script.includes('api("/api/config?draft=1",{method:"DELETE"})'));
+  const loadActive = script.slice(script.indexOf('  async function reloadActive(){'), script.indexOf('  async function resumeSavedDraft(){'));
+  assert.doesNotMatch(loadActive, /method:"(?:PUT|POST|DELETE)"/);
+});

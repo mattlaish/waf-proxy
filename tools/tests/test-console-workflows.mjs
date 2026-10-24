@@ -27,7 +27,7 @@ async function session({ failures = {}, holds = {}, role = 'admin', pagePolicies
     policy: sample.policies[0].name, preserve_host: false, ai_mode: 'off',
     page_policies: clone(pagePolicies),
   }] };
-  let draft = clone(active), running = false, scanPolls = 0;
+  let draft = null, running = false, scanPolls = 0;
   const calls = [], errors = [];
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -50,12 +50,17 @@ async function session({ failures = {}, holds = {}, role = 'admin', pagePolicies
     if (failures[path]) return send({ error: 'fixture unavailable' }, failures[path]);
     if (path === '/api/whoami') return send({ user: 'operator', role, can_edit_config: ['admin', 'operator'].includes(role), can_review: role !== 'viewer', can_manage_users: role === 'admin' });
     if (path.startsWith('/api/config')) {
+      if (method === 'DELETE') {
+        if (role !== 'admin' && role !== 'operator') return send({ error: 'forbidden' }, 403);
+        if (url.searchParams.get('draft') !== '1') return send({ error: 'draft=1 required' }, 400);
+        draft = null;return send({ discarded: true });
+      }
       if (method === 'PUT') {
         if (url.searchParams.has('draft')) draft = clone(body);
-        else { Object.assign(active, clone(body)); draft = clone(active); }
+        else { Object.assign(active, clone(body)); draft = null; }
         return send({ config: clone(body), draft: url.searchParams.has('draft'), applied: !url.searchParams.has('draft'), apply_ready: true });
       }
-      return send(clone(url.searchParams.has('draft') ? draft : active));
+      return send(clone(url.searchParams.has('draft') ? (draft || active) : active));
     }
     if (path === '/api/interfaces') return send([
       { name: 'ens33', up: true, plane: 'management', addresses: ['192.168.1.66/21'] },
@@ -193,6 +198,8 @@ test('event field-only exception review, active apply and session undo', async (
     assert.deepEqual(saved.exclude_rule_ids, []);
     assert.equal(saved.match, 'exact');
     assert.deepEqual(saved.fields.find(f => f.name === 'password').exclude_rule_ids, [942100]);
+    assert.deepEqual(saved.fields.map(f => f.name), ['password']);
+    assert.equal(saved.fields[0].profile, '');
     assert.equal(saved.fields.some(f => 'discovery_source' in f), false);
     await s.page.locator('[data-event]').first().click();
     await choice(s.page, 'page');
@@ -344,6 +351,224 @@ test('clearing discovery requires confirmation and sends the registered POST met
     assert.equal(writes(s.calls).at(-1).path, '/api/sitemap/clear?site=shop');
     assert.equal(writes(s.calls).at(-1).method, 'POST');
     assert.equal(s.active.sites[0].page_policies[0].mode, 'On');
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('a single different form action opens its target and carries discovery candidates', async () => {
+  const s = await session();
+  try {
+    await s.page.route('**/api/forms?**', route => {
+      const path = new URL(route.request().url()).searchParams.get('path');
+      return route.fulfill({ json: path === '/login' ? [{ name: 'username', type: 'text', method: 'POST', action: '/authenticate', discovery_source: 'crawled' }] : [] });
+    });
+    await tab(s.page, 'logs');await s.page.locator('[data-event]').first().click();await choice(s.page, 'page');
+    await s.page.locator('#pp_formaction option[value="/authenticate"]').waitFor({ state: 'attached' });
+    assert.equal(await s.page.locator('#pp_formaction option').count(), 1);
+    assert.equal(await s.page.locator('#pp_fields .fpolicy').count(), 0);
+    assert.equal(await s.page.locator('[data-add-discovered]').first().isDisabled(), true);
+    await s.page.locator('#pp_open_form').click();
+    await s.page.waitForFunction(() => document.querySelector('#pp_path').value === '/authenticate' && document.querySelector('[data-add-discovered]'));
+    assert.equal(await s.page.locator('#pp_fields .fpolicy').count(), 0);
+    await s.page.locator('[data-add-discovered]').first().click();
+    assert.equal(await s.page.locator('#pp_fields [data-ff="name"]').inputValue(), 'username');
+    await s.page.locator('#pp_save').click();await choice(s.page, 'apply');
+    await s.page.locator('#pp[hidden]').waitFor({ state: 'attached' });
+    const policy = writes(s.calls).find(c => c.path === '/api/pagepolicy/upsert').body.policy;
+    assert.equal(policy.path, '/authenticate');
+    assert.deepEqual(policy.fields.map(f => f.name), ['username']);
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('discovery candidates never enable rules until the operator adds them', async () => {
+  const s = await session();
+  try {
+    await tab(s.page, 'logs');await s.page.locator('[data-event]').first().click();await choice(s.page, 'page');
+    await s.page.locator('[data-add-discovered]').first().waitFor();
+    assert.equal(await s.page.locator('#pp_fields .fpolicy').count(), 0);
+    await s.page.locator('#pp_note').fill('note only');
+    await s.page.locator('#pp_save').click();await choice(s.page, 'apply');
+    await s.page.locator('#pp[hidden]').waitFor({ state: 'attached' });
+    const policy = writes(s.calls).find(c => c.path === '/api/pagepolicy/upsert').body.policy;
+    assert.deepEqual(policy.fields, []);
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('field-only exceptions preserve existing rules and never add discovered siblings', async () => {
+  const username = { name: 'username', source: 'ARGS_POST', profile: 'email', allow_pattern: '', required: false, min_length: 0, max_length: 100, exclude_rule_ids: [] };
+  const s = await session({ pagePolicies: [{ path: '/login', match: 'exact', mode: 'On', methods: ['POST'], fields: [username], source: 'manual' }] });
+  try {
+    await tab(s.page, 'logs');await s.page.locator('[data-event]').first().click();await choice(s.page, 'field');
+    await s.page.locator('#ux_input_name').fill('password');await submit(s.page);
+    await s.page.waitForFunction(() => document.querySelector('#pp_fields [data-ff="name"][value="password"]'));
+    await s.page.locator('#pp_save').click();await choice(s.page, 'apply');
+    await s.page.locator('#pp[hidden]').waitFor({ state: 'attached' });
+    const policy = writes(s.calls).find(c => c.path === '/api/pagepolicy/upsert').body.policy;
+    assert.deepEqual(policy.fields.find(f => f.name === 'username'), username);
+    assert.deepEqual(policy.fields.find(f => f.name === 'password').exclude_rule_ids, [942100]);
+    assert.equal(policy.fields.length, 2);
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('wizard Back retains the unfinished current step without requiring validation', async () => {
+  const s = await session();
+  try {
+    await s.page.locator('#ux_wizard').click();
+    await s.page.locator('#ux_input_name').fill('portal');await s.page.locator('#ux_input_domains').fill('portal.test');await submit(s.page);
+    await s.page.locator('#ux_input_backend').fill('http://192.0.2.10:8080');
+    await s.page.locator('[data-form-back]').click();await submit(s.page);
+    assert.equal(await s.page.locator('#ux_input_backend').inputValue(), 'http://192.0.2.10:8080');
+    await s.page.locator('#ux_input_pool').selectOption('default-pool');await submit(s.page);
+    await s.page.locator('#ux_input_cert').fill('/etc/waf/portal.crt');
+    await s.page.locator('#ux_input_prefix').fill('999');
+    await s.page.locator('[data-form-back]').click();await submit(s.page);
+    assert.equal(await s.page.locator('#ux_input_cert').inputValue(), '/etc/waf/portal.crt');
+    assert.equal(await s.page.locator('#ux_input_prefix').inputValue(), '999');
+    await submit(s.page);
+    assert.equal(await s.page.locator('#ux_input_prefix').getAttribute('aria-invalid'), 'true');
+    assert.equal(writes(s.calls).length, 0);
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('a deleted prefix policy remains undoable from a new exact-page editor', async () => {
+  const original = { path: '/login', match: 'prefix', mode: 'DetectionOnly', fields: [], source: 'manual' };
+  const s = await session({ pagePolicies: [original] });
+  try {
+    await tab(s.page, 'logs');await s.page.locator('[data-event]').first().click();await choice(s.page, 'page');
+    await s.page.locator('#pp_delete').click();await choice(s.page, 'apply');
+    await s.page.locator('#pp[hidden]').waitFor({ state: 'attached' });
+    await s.page.locator('[data-event]').first().click();await choice(s.page, 'page');
+    await s.page.locator('#pp:not([hidden])').waitFor();
+    assert.equal(await s.page.locator('#pp_match').inputValue(), 'exact');
+    await s.page.locator('#ux_page_undo').click();await choice(s.page, 'apply');
+    await s.page.locator('#pp[hidden]').waitFor({ state: 'attached' });
+    assert.deepEqual(s.active.sites[0].page_policies, [original]);
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('view active settings and continue saved draft are read-only and distinct', async () => {
+  const s = await session();
+  try {
+    await tab(s.page, 'sites');await s.page.locator('#site_list [data-sel]').first().click();
+    await s.page.locator('#sites input[data-f="listen"]').fill(':8081');await s.page.locator('#ux_save').click();
+    await s.page.locator('#ux_change_state').filter({ hasText: 'Draft saved' }).waitFor();
+    const savedWrites = writes(s.calls).length;
+    await s.page.getByRole('button', { name: 'Load active settings', exact: true }).click();await choice(s.page, 'reload');
+    await s.page.locator('#ux_change_state').filter({ hasText: 'matches active settings' }).waitFor();
+    await s.page.locator('#ux_resume_draft').click();
+    await s.page.locator('#ux_change_state').filter({ hasText: 'Draft saved' }).waitFor();
+    assert.equal(writes(s.calls).length, savedWrites);
+    assert.equal(s.active.sites[0].listen, ':8080');
+    assert.equal(await s.page.locator('#sites input[data-f="listen"]').inputValue(), ':8081');
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('discard saved draft confirms, preserves live settings and survives browser reload', async () => {
+  const s = await session();
+  try {
+    await tab(s.page, 'sites');await s.page.locator('#site_list [data-sel]').first().click();
+    await s.page.locator('#sites input[data-f="listen"]').fill(':8081');await s.page.locator('#ux_save').click();
+    await s.page.locator('#ux_change_state').filter({ hasText: 'Draft saved' }).waitFor();
+    const before = clone(s.active);
+    await s.page.locator('#ux_discard_draft').click();await choice(s.page, 'cancel');
+    assert.equal(writes(s.calls).some(c => c.method === 'DELETE'), false);
+    await s.page.locator('#ux_discard_draft').click();await choice(s.page, 'discard');
+    await s.page.locator('#ux_change_state').filter({ hasText: 'matches active settings' }).waitFor();
+    assert.deepEqual(s.active, before);
+    assert.equal(writes(s.calls).filter(c => c.method === 'DELETE' && c.path === '/api/config?draft=1').length, 1);
+    await s.page.reload();
+    await s.page.locator('#ux_change_state').filter({ hasText: 'matches active settings' }).waitFor();
+    assert.equal(await s.page.evaluate(() => window.testUX.state.saved.sites[0].listen), ':8080');
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('discard failure keeps the saved draft available and never claims success', async () => {
+  const s = await session();
+  try {
+    await tab(s.page, 'sites');await s.page.locator('#site_list [data-sel]').first().click();
+    await s.page.locator('#sites input[data-f="listen"]').fill(':8081');await s.page.locator('#ux_save').click();
+    await s.page.locator('#ux_change_state').filter({ hasText: 'Draft saved' }).waitFor();
+    await s.page.route('**/api/config?draft=1', route => route.request().method() === 'DELETE' ? route.fulfill({ status: 500, body: 'disk error' }) : route.fallback());
+    await s.page.locator('#ux_discard_draft').click();await choice(s.page, 'discard');
+    await s.page.locator('#toast').filter({ hasText: 'disk error' }).waitFor();
+    assert.equal(await s.page.locator('#ux_errors [data-resource-retry="/api/config?draft=1"]').count(), 0);
+    await s.page.reload();await s.page.locator('#ux_change_state').filter({ hasText: 'Draft saved' }).waitFor();
+    assert.equal(await s.page.evaluate(() => window.testUX.state.saved.sites[0].listen), ':8081');
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('reviewer and viewer cannot discard the shared saved draft', async () => {
+  for (const role of ['reviewer', 'viewer']) {
+    const s = await session({ role });
+    try {
+      assert.equal(await s.page.locator('#ux_discard_draft').isDisabled(), true);
+      const status = await s.page.evaluate(async () => { try { await window.testUX.api('/api/config?draft=1', { method: 'DELETE' }); } catch (e) { return e.status; } });
+      assert.equal(status, 403);assert.equal(writes(s.calls).length, 0);
+      assert.deepEqual(s.errors, []);
+    } finally { await s.close(); }
+  }
+});
+
+test('a candidate that is already configured stays disabled for reviewers', async () => {
+  const field = { name: 'username', source: 'ARGS_POST', profile: 'email', required: false, min_length: 0, max_length: 0, exclude_rule_ids: [] };
+  const s = await session({ role: 'reviewer', pagePolicies: [{ path: '/login', match: 'exact', fields: [field], source: 'manual' }] });
+  try {
+    await tab(s.page, 'logs');await s.page.locator('[data-event]').first().click();await choice(s.page, 'page');
+    await s.page.locator('[data-add-discovered]').first().waitFor();
+    assert.equal(await s.page.locator('[data-add-discovered]').first().isDisabled(), true);
+    assert.equal(await s.page.locator('#pp_fields .fpolicy').count(), 1);
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('undo can select either scope without changing the other policy on the same URL', async () => {
+  const exact = { path: '/login', match: 'exact', mode: 'On', fields: [], source: 'manual' };
+  const prefix = { path: '/login', match: 'prefix', mode: 'DetectionOnly', fields: [], source: 'manual' };
+  const s = await session({ pagePolicies: [exact, prefix] });
+  try {
+    await tab(s.page, 'logs');
+    for (const scope of ['exact', 'prefix']) {
+      await s.page.locator('[data-event]').first().click();await choice(s.page, 'page');
+      await s.page.locator('#ux_input_match').selectOption(scope);await submit(s.page);
+      await s.page.locator('#pp:not([hidden])').waitFor();
+      await s.page.locator('#pp_note').fill(scope + ' changed');
+      await s.page.locator('#pp_save').click();await choice(s.page, 'apply');
+      await s.page.locator('#pp[hidden]').waitFor({ state: 'attached' });
+    }
+    await s.page.locator('[data-event]').first().click();await choice(s.page, 'page');
+    await s.page.locator('#ux_input_match').selectOption('prefix');await submit(s.page);
+    await s.page.locator('#pp:not([hidden])').waitFor();
+    await s.page.locator('#ux_page_undo').click();
+    await s.page.locator('#ux_input_match').selectOption('exact');await submit(s.page);await choice(s.page, 'apply');
+    await s.page.locator('#pp[hidden]').waitFor({ state: 'attached' });
+    assert.deepEqual(s.active.sites[0].page_policies.find(p => p.match === 'exact'), exact);
+    assert.equal(s.active.sites[0].page_policies.find(p => p.match === 'prefix').note, 'prefix changed');
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('undo refuses to overwrite a page policy changed by someone else', async () => {
+  const original = { path: '/login', match: 'prefix', mode: 'DetectionOnly', fields: [], source: 'manual' };
+  const s = await session({ pagePolicies: [original] });
+  try {
+    await tab(s.page, 'logs');await s.page.locator('[data-event]').first().click();await choice(s.page, 'page');
+    await s.page.locator('#pp:not([hidden])').waitFor();
+    await s.page.locator('#pp_delete').click();await choice(s.page, 'apply');await s.page.locator('#pp[hidden]').waitFor({ state: 'attached' });
+    s.active.sites[0].page_policies.push({ ...original, mode: 'On', note: 'another operator' });
+    await s.page.locator('[data-event]').first().click();await choice(s.page, 'page');await s.page.locator('#pp:not([hidden])').waitFor();
+    const before = writes(s.calls).length;
+    await s.page.locator('#ux_page_undo').click();
+    await s.page.locator('#ux_page_errors').filter({ hasText: 'Active settings have changed' }).waitFor();
+    assert.equal(writes(s.calls).length, before);
+    assert.equal(s.active.sites[0].page_policies[0].note, 'another operator');
     assert.deepEqual(s.errors, []);
   } finally { await s.close(); }
 });

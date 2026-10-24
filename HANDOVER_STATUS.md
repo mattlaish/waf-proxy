@@ -1,5 +1,29 @@
 # New-Chat Handover Status
 
+## Latest work — 2026-10-24 — Five operation-workflow fixes
+
+Continue only in `C:\Users\mattlai\Projects\waf-proxy`. No Git operations unless
+explicitly authorized by the user. The five 10/23 review findings are fixed:
+form-action button/forwarded candidates, opt-in field rules, Back retention,
+scope-aware undo, and durable shared-draft discard.
+
+Executed on this host: **21/21** dependency-free Node checks and **27/27** isolated
+headless Edge/Playwright browser tests PASS; **18/18** Python source/document
+gates PASS. Source route inventory is now **140** Admin/update patterns.
+Browser tests use intercepted fixtures, never a live WAF. The 12 new browser
+cases cover all five fixes plus candidate approval/permissions, existing-field
+preservation, dual-scope undo, concurrent edits, cancellation, reload and failure.
+
+Added four Go tests in `console_draft_test.go` for durable/idempotent deletion,
+active-file/runtime preservation, selector/role checks, failure and missing storage.
+They and root Go tidy/build/vet/full tests/race/gofmt and the Go-executing route
+gate are **NOT_RUN/BLOCKED on these changed bytes**: Go/gofmt are not installed on
+this Windows host. Earlier 2026-10-18 Go PASS is historical, not proof of this slice.
+Run pinned Go 1.26.9+ qualification and real VM acceptance before release.
+State remains `IMPLEMENTED_TESTING_DEFERRED`. No Git operation, project relocation,
+live mutation, deployment, binary build or archive regeneration was performed.
+
+
 ## Latest work — 2026-10-18 — Console workflow UX
 
 Active root: `C:\Users\mattlai\Projects\waf-proxy`. No Git operations,

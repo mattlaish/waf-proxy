@@ -745,3 +745,27 @@ NOT_RUN/BLOCKED on this host. See AI_HANDOFF.md for precise safety/qualification
 boundaries. Browser fixtures are not live VM evidence. No Git action, relocation,
 deployment, binary rebuild, package regeneration or new protection capability.
 
+## 2026-10-24 — Five console workflow findings fixed
+
+Implemented explicit navigation from a page to its single/different form action,
+forwarding discovered suggestions without enabling them. Suggested fields now
+require individual approval, so a password-only exception does not add sibling
+validation. Wizard Back retains raw unfinished entries. Session undo uses its
+recorded exact/prefix scope, survives deletion/reopening, offers a scope choice,
+and retains the intervening-change refusal.
+
+Separated read-only Load active / Continue saved draft from explicit durable
+Discard saved draft. Added Operator/Admin-only DELETE /api/config?draft=1, under
+the existing apply lock, removing only the auxiliary draft with directory sync.
+Active configuration and runtime are unchanged. The UI warns that this shared
+device draft includes others' saved changes; no revision/CAS protocol was added.
+
+Verification: 21/21 Node console checks, 27/27 intercepted headless-browser
+workflows, and 18/18 Python source/document gates PASS; route inventory is 140.
+Four new backend draft-discard tests are written but NOT_RUN. Current-byte Go
+tidy/build/vet/full tests/race/gofmt and the Go-executing route gate remain
+NOT_RUN/BLOCKED because Go/gofmt are unavailable here. Earlier dated Linux Go
+qualification does not qualify these changed bytes. State remains
+IMPLEMENTED_TESTING_DEFERRED. No Git operation, relocation, deployment, binary
+rebuild, release/archive generation, or new protection capability.
+

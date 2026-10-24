@@ -1388,3 +1388,28 @@ State remains IMPLEMENTED_TESTING_DEFERRED. Historical Go PASS above is not
 qualification of the 2026-10-18 Go/console changes. Full scope and next steps are
 in the newest AI_HANDOFF.md entry.
 
+## 2026-10-24 — Five console workflow regression fixes
+
+- PASS: 21/21 Node console checks, including product profile labels and distinct
+  read-only versus destructive saved-draft controls.
+- PASS: 27/27 intercepted headless-Edge browser workflows. Added coverage for a
+  single different form action; opt-in suggestions and note-only saves; preserving
+  sibling policies during a password-only exception; Back with unfinished/invalid
+  input; deleted-prefix undo; read-only draft resume; cancelled/successful/failed
+  discard; permissions; dual-scope undo; and concurrent-page-change refusal.
+- PASS: 18/18 Python source/document gates with PYTHONUTF8=1; source inventory
+  contains 140 Admin/update routes. No assertions were relaxed.
+- NOT_RUN/BLOCKED: four new Go backend tests (active bytes/runtime preserved,
+  authentication/roles, filesystem failure, missing storage), pinned Go tidy-diff,
+  root build/vet/full tests/race/gofmt, and the Go-executing route gate. Go/gofmt
+  are absent from this host. Existing unexecuted 10/18 Go tests remain deferred.
+- NOT_RUN: live WAF/VM/systemd/restart/network/TLS/HSM/managed-IP acceptance,
+  deployment, binary rebuild, and package regeneration.
+
+The first expanded browser run caught an asynchronous test wait issue; the test
+now waits for the reopened editor to be visible before asserting exact scope.
+Final assertions retain the required behavior. Browser API/filesystem behavior
+is intercepted fixture evidence, not execution of the Go deletion handler.
+Historical Go PASS remains historical. Current state is
+IMPLEMENTED_TESTING_DEFERRED until exact-source Go and VM qualification.
+

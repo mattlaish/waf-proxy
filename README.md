@@ -1,5 +1,19 @@
 # waf-proxy
 
+## Console operation fixes — 2026-10-24
+
+Forms submitting to a different URL now have an explicit **Configure this form**
+button. Discovered fields remain suggestions until you add a rule; a field-only
+exception does not activate sibling-field restrictions. Wizard Back preserves
+inputs; page undo supports removed prefix policies. The action bar separates
+loading active settings, continuing a saved draft, and confirmed **Discard saved
+draft**. See [operating guide](OPERATOR_GUIDE.md).
+
+Source implementation is tested with mocked-browser/Node/source checks; the new
+Go draft-discard operation still needs pinned-toolchain and live-VM qualification.
+No newly built binary/package is supplied. See [current status](DOCUMENTATION_INDEX.md).
+
+
 ## Console workflow update — 2026-10-18
 
 The console now protects unsaved edits, distinguishes drafts from active settings,

@@ -1,5 +1,18 @@
 # Release Process
 
+## Workflow-fix release gate — 2026-10-24
+
+Before release: qualify the exact final source under pinned Go 1.26.9+ (tidy,
+build, vet, full tests, race and gofmt); run `TestConsoleDiscardDraft*`, Admin
+route registration, 21 Node and 27 mocked-browser tests, all source gates and
+real VM acceptance. Confirm discard removes only the auxiliary saved draft,
+requires Operator/Admin, preserves active bytes/runtime, and remains discarded
+after restart/reload. Check form target navigation, opt-in candidates, wizard
+Back, and exact/prefix undo with concurrent changes. Mock results are not live
+qualification. Package embedded HTML/backend together; regenerate identities/
+checksums from the qualified source, not historical return ZIPs.
+
+
 ## Console UX release gate — 2026-10-18
 
 Active root: `C:\Users\mattlai\Projects\waf-proxy`. No Git operations,

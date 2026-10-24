@@ -1,5 +1,17 @@
 # Markdown Review Ledger — 2026-09-28
 
+## 2026-10-24 console workflow follow-up
+
+Re-reviewed and synchronized AI_HANDOFF.md, patch.md, DOCUMENTATION_INDEX.md,
+HANDOVER_STATUS.md, HANDOVER_PROMPT.md, NEXT_CHAT_HANDOVER.md, README.md,
+INSTALL.md, DEVELOPMENT_ROADMAP.md, TESTING.md, MANIFEST.md, RELEASE_PROCESS.md,
+and OPERATOR_GUIDE.md. Appended evidence to DEVELOPMENT.md and TESTING_RESULTS.md
+without rewriting historical results. No new Markdown files were introduced.
+Current evidence is 21 Node / 27 intercepted browser / 18 Python checks PASS;
+four new Go tests and current-byte Go/VM qualification remain deferred. Shared
+draft deletion, candidate approval, undo scope and wizard behavior are documented
+without claiming new protection capability or a regenerated release package.
+
 This ledger records the requested review of **every Markdown file** in the source
 tree after the Code Duplication Review and Consolidation. Current/canonical
 documents were synchronized to current source truth. Historical result,

@@ -1,5 +1,62 @@
 # AI Development Handoff
 
+## Current maintenance — 2026-10-24 — Five operation-workflow fixes
+
+The five issues reproduced in the 2026-10-23 user-operation review are fixed in
+the shipping source at `C:\Users\mattlai\Projects\waf-proxy`:
+
+1. `Configure this form` explicitly opens a submission path even when the
+   only option was already selected. Candidates observed on the source page are
+   carried to the target editor, merged with target observations, and deduplicated.
+2. Discovered fields are read-only candidates until `Add suggested rule` is
+   pressed. Preparing a password exception changes only the selected target;
+   existing field rules are retained and discovered siblings are not activated.
+   Candidate buttons preserve permission/already-configured disabled state.
+3. Wizard Back captures the current step's raw inputs without validating them,
+   then restores them on return. Forward still validates before advancing.
+4. Page undo is found by recorded site/path/scope, including deleted prefix rules,
+   rather than the new editor's default exact scope. With two histories, the
+   operator chooses which scope to undo. Other policies and concurrency checks
+   are retained.
+5. Full-config actions distinguish `Load active settings` (read-only),
+   `Continue saved draft` (read-only), and `Discard saved draft` (confirmed
+   shared-draft deletion). Cancel does not write; failure does not claim success.
+   Reload after a successful discard cannot resume that old draft.
+
+`DELETE /api/config?draft=1` is the only new Admin operation. It requires
+Operator/Admin, rejects other/missing draft selectors, rejects unavailable storage,
+serializes with config writes via `applyMu`, and durably removes only
+`configPath + ".draft"` using the existing remove/fsync helper. Missing drafts
+are idempotently converged. Live config bytes/runtime, listeners, managed IPs,
+page policies and credentials are not rewritten. Success is audited. The browser
+warns that this removes the one shared server draft, including others' saved work,
+and local unsaved config edits; this is not a per-user draft or draft undo feature.
+There is no atomic draft revision/CAS token; the operation intentionally discards
+the shared draft present when the serialized request runs.
+
+
+Executed on this host: **21/21** dependency-free Node checks and **27/27** isolated
+headless Edge/Playwright browser tests PASS; **18/18** Python source/document
+gates PASS. Source route inventory is now **140** Admin/update patterns.
+Browser tests use intercepted fixtures, never a live WAF. The 12 new browser
+cases cover all five fixes plus candidate approval/permissions, existing-field
+preservation, dual-scope undo, concurrent edits, cancellation, reload and failure.
+
+Added four Go tests in `console_draft_test.go` for durable/idempotent deletion,
+active-file/runtime preservation, selector/role checks, failure and missing storage.
+They and root Go tidy/build/vet/full tests/race/gofmt and the Go-executing route
+gate are **NOT_RUN/BLOCKED on these changed bytes**: Go/gofmt are not installed on
+this Windows host. Earlier 2026-10-18 Go PASS is historical, not proof of this slice.
+Run pinned Go 1.26.9+ qualification and real VM acceptance before release.
+State remains `IMPLEMENTED_TESTING_DEFERRED`. No Git operation, project relocation,
+live mutation, deployment, binary build or archive regeneration was performed.
+
+Next: run pinned Go gates including `TestConsoleDiscardDraft*` and the full Admin
+route regression, then verify on a disposable VM that discard removes only the
+saved draft and never changes running protection. Rebuild embedded HTML only
+from that qualified source. Existing return/source ZIPs remain older artifacts.
+
+
 ## Current maintenance — 2026-10-18 — Console workflow UX qualification + review fixes
 
 This closes the "Next" step of the console workflow UX slice (`070ebb5`): the

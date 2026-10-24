@@ -1,5 +1,15 @@
 # waf-proxy — install guide
 
+## Workflow-fix deployment boundary — 2026-10-24
+
+The five workflow fixes include embedded HTML and the new Operator-only
+`DELETE /api/config?draft=1` handler. They must be qualified/rebuilt/deployed
+together; do not serve new HTML against an older binary. No binary/archive was
+regenerated here. Discard affects only the shared saved draft, not active config,
+network interfaces, credentials or running protection. Installation, upgrade and
+systemd scripts were not changed. Follow AI_HANDOFF.md for pending qualification.
+
+
 ## Console workflow update — 2026-10-18
 
 The new console is embedded in the Go binary: replacing an HTML file beside an

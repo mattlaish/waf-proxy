@@ -1,5 +1,30 @@
 # New Chat Handover Prompt
 
+## Current continuation — 2026-10-24
+
+Use `C:\Users\mattlai\Projects\waf-proxy` only; do not run Git. Read the newest
+DOCUMENTATION_INDEX.md, AI_HANDOFF.md and patch.md. Five operation-workflow fixes
+are implemented; next is exact-source Go 1.26.9+ and disposable-VM qualification,
+not more feature work or packaging. Preserve candidate opt-in, explicit form
+navigation, scope-aware undo, and Operator-only shared-draft deletion.
+
+Executed on this host: **21/21** dependency-free Node checks and **27/27** isolated
+headless Edge/Playwright browser tests PASS; **18/18** Python source/document
+gates PASS. Source route inventory is now **140** Admin/update patterns.
+Browser tests use intercepted fixtures, never a live WAF. The 12 new browser
+cases cover all five fixes plus candidate approval/permissions, existing-field
+preservation, dual-scope undo, concurrent edits, cancellation, reload and failure.
+
+Added four Go tests in `console_draft_test.go` for durable/idempotent deletion,
+active-file/runtime preservation, selector/role checks, failure and missing storage.
+They and root Go tidy/build/vet/full tests/race/gofmt and the Go-executing route
+gate are **NOT_RUN/BLOCKED on these changed bytes**: Go/gofmt are not installed on
+this Windows host. Earlier 2026-10-18 Go PASS is historical, not proof of this slice.
+Run pinned Go 1.26.9+ qualification and real VM acceptance before release.
+State remains `IMPLEMENTED_TESTING_DEFERRED`. No Git operation, project relocation,
+live mutation, deployment, binary build or archive regeneration was performed.
+
+
 ## Current continuation — 2026-10-18
 
 Read DOCUMENTATION_INDEX.md, AI_HANDOFF.md and patch.md first. Work only in

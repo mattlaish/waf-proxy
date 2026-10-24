@@ -1,5 +1,19 @@
 # waf-proxy — package manifest
 
+## Workflow-fix source additions — 2026-10-24
+
+- `static/admin.html`: explicit form target navigation, opt-in field candidates,
+  wizard Back retention, scope-correct undo and separate saved-draft controls.
+- `admin.go`: Operator-only `DELETE /api/config?draft=1`, durable auxiliary-draft
+  deletion under the configuration lock; live/runtime config unchanged.
+- `console_draft_test.go`: four handler/storage/RBAC/selector/failure regressions.
+- Existing console-copy/workflow tests expanded to 21/27 cases; current operating,
+  handover, testing and roadmap documents synchronized.
+
+This is not a regenerated release manifest. Old binaries/ZIPs/checksums do not
+include this slice; regenerate only after the pending Go/live-VM release gates.
+
+
 ## Current maintenance — 2026-10-18 — Console workflow UX qualification + review fixes
 
 This closes the "Next" step of the console workflow UX slice (`070ebb5`): the

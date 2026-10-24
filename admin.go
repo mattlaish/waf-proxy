@@ -309,6 +309,7 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("GET /api/config", a.auth(a.handleGetConfig))
 	mux.HandleFunc("GET /api/interfaces", a.auth(a.handleInterfaces))
 	mux.HandleFunc("PUT /api/config", a.authRole(roleOperator, a.handlePutConfig))
+	mux.HandleFunc("DELETE /api/config", a.authRole(roleOperator, a.handleDiscardConfigDraft))
 	mux.HandleFunc("POST /api/reload", a.authRole(roleOperator, a.handleReload))
 	mux.HandleFunc("GET /api/matches", a.auth(a.handleMatches))
 	mux.HandleFunc("GET /api/access", a.auth(a.handleAccess))
@@ -1615,6 +1616,28 @@ func (a *adminServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		"restart_required":      a.srv.restartPending(c),
 		"draft_cleanup_warning": draftCleanupWarning,
 	})
+}
+
+// handleDiscardConfigDraft deletes only the auxiliary saved draft. Live config,
+// runtime listeners, managed addresses and secrets are never rewritten.
+func (a *adminServer) handleDiscardConfigDraft(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("draft") != "1" {
+		http.Error(w, "only saved drafts can be discarded; use draft=1", http.StatusBadRequest)
+		return
+	}
+	if a.srv == nil || strings.TrimSpace(a.srv.configPath) == "" {
+		http.Error(w, "draft storage unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	a.srv.applyMu.Lock()
+	err := removeConfigFileDurable(draftConfigPath(a.srv.configPath))
+	a.srv.applyMu.Unlock()
+	if err != nil {
+		http.Error(w, "draft discard not confirmed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	a.audit.add(who(r).user, "config.draft_discarded", "saved draft removed; active config unchanged")
+	writeJSON(w, map[string]any{"discarded": true})
 }
 
 func (a *adminServer) handleReload(w http.ResponseWriter, r *http.Request) {

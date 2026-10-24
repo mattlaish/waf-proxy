@@ -39,9 +39,15 @@ rules; it does not activate an unrelated draft.
 When leaving a tab with unsaved settings, choose **Save draft and continue**,
 **Discard unsaved edits**, or **Continue editing**. Discard returns to the saved
 draft, not necessarily the active settings. **Load active settings** replaces the
-displayed draft only after confirmation; it does not delete a server-side draft
-until you save or apply. Copy any wanted edits first. If someone changed active
-settings while you were editing, reload/reconcile instead of applying stale work.
+displayed settings only after confirmation; it does not delete the saved draft.
+**Continue saved draft** opens the saved draft without activating it. Both actions
+only read settings. **Discard saved draft** permanently removes the saved draft
+after confirmation and loads active settings without changing live protection.
+Only Operators and Administrators can discard it. The draft is shared on this
+device, so this can remove someone else's saved changes too. There is no undo for
+this deletion, and reloading will not bring the discarded draft back. Copy any
+wanted edits first. If someone changed active settings while you were editing,
+reload/reconcile instead of applying stale work.
 
 Apply previews hide secrets, including secrets inside newly added objects.
 Settings remain in browser memory until explicitly saved; they are not stored as
@@ -74,6 +80,8 @@ then show a summary. Save creates a draft only. Start in **Monitor**, apply afte
 review, then check server health and send an actual request through the WAF.
 Configuration readiness and a TCP health check are not proof that the application
 works. Hardware keys and external TLS services use the full site editor.
+**Back** retains unfinished entries, including entries that still need correction;
+validation happens when you move forward.
 
 For manual setup:
 
@@ -125,6 +133,11 @@ applied protection policies.
 Open **Site Map**, select the site, and choose the settings button beside a page.
 Review its form submission address and request methods, then add or edit a field.
 Choose its type, allowed format, required setting, and length limits.
+If a form submits to a different URL, select its address and press **Configure
+this form**, even when there is only one address. Discovered field suggestions
+follow you to that address. Suggestions are not enabled rules: use **Add suggested
+rule** for each field you want to configure. Saving page notes or preparing an
+exception for one field does not silently enable validation for other fields.
 
 For example, a username can use **Username or identifier** while its password
 uses **Password**. If a rule incorrectly flags a legitimate password, an exception
@@ -154,6 +167,9 @@ instead of silently leaving the old rule behind.
 session. It is not a permanent version history and refuses known intervening
 changes. Closing the browser loses this undo history. Page-edit close/Escape asks
 before discarding unsaved work.
+Undo remains available after deleting a prefix policy, even if the reopened editor
+defaults to **This page only**. If both scopes have undo history, choose the policy
+to restore. Undo refuses a known intervening change instead of overwriting it.
 
 The **Allowed format** box accepts a validated regular expression for the whole
 value. Double quotes and line breaks are not accepted in the expression itself.
@@ -214,4 +230,4 @@ For software updates, verify the package and review its version before installin
 Use the operating system’s package manager for DEB/RPM installations. Standalone
 installations may allow installation and rollback from the console when configured.
 
-<!-- documentation-review: 2026-10-18; classification: operator-guide; current-authority: DOCUMENTATION_INDEX.md -->
+<!-- documentation-review: 2026-10-24; classification: operator-guide; current-authority: DOCUMENTATION_INDEX.md -->

@@ -1,5 +1,29 @@
 # Documentation Index and Current Project Truth
 
+## Current maintenance — 2026-10-24 — Workflow review fixes
+
+All five 10/23 review findings are implemented: explicit form-action navigation,
+opt-in discovered-field rules, wizard Back retention, scope-correct page undo,
+and a distinct durable shared-draft discard. Read AI_HANDOFF.md and patch.md for
+scope, safety boundaries and exact continuation.
+
+Executed on this host: **21/21** dependency-free Node checks and **27/27** isolated
+headless Edge/Playwright browser tests PASS; **18/18** Python source/document
+gates PASS. Source route inventory is now **140** Admin/update patterns.
+Browser tests use intercepted fixtures, never a live WAF. The 12 new browser
+cases cover all five fixes plus candidate approval/permissions, existing-field
+preservation, dual-scope undo, concurrent edits, cancellation, reload and failure.
+
+Added four Go tests in `console_draft_test.go` for durable/idempotent deletion,
+active-file/runtime preservation, selector/role checks, failure and missing storage.
+They and root Go tidy/build/vet/full tests/race/gofmt and the Go-executing route
+gate are **NOT_RUN/BLOCKED on these changed bytes**: Go/gofmt are not installed on
+this Windows host. Earlier 2026-10-18 Go PASS is historical, not proof of this slice.
+Run pinned Go 1.26.9+ qualification and real VM acceptance before release.
+State remains `IMPLEMENTED_TESTING_DEFERRED`. No Git operation, project relocation,
+live mutation, deployment, binary build or archive regeneration was performed.
+
+
 ## Current maintenance — 2026-10-18 — Console workflow UX qualification + review fixes
 
 This closes the "Next" step of the console workflow UX slice (`070ebb5`): the
