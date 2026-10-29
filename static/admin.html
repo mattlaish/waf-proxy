@@ -111,6 +111,7 @@
   .btn.primary:hover{filter:brightness(1.08)}
   .btn.danger{color:var(--red)}
   .btn.danger:hover{border-color:var(--red)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}.btn:disabled:hover{border-color:var(--line);filter:none}
 
   .card{border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--bg)}
   .cardhead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -155,6 +156,15 @@
   td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-all}
   td.nw{white-space:nowrap;word-break:normal}
   .workbar .btn[hidden]{display:none}
+  /* The API section jump stays reachable below the pinned change bar while scrolling. */
+  .api-jump{position:sticky;top:var(--sticky-top,0px);z-index:30;background:var(--bg);padding:8px 0}
+  #view-api section{scroll-margin-top:calc(var(--sticky-top,0px) + 96px)}
+  @media(max-width:600px){
+    /* With nothing to save or apply, the change bar scrolls away and shows only
+       its status and remaining actions; it pins again once there are edits. */
+    .workbar.clean{position:static}
+    .workbar.clean #ux_review,.workbar.clean #ux_save,.workbar.clean #ux_discard{display:none}
+  }
   tr:hover td{background:var(--raised)}
   .sev{border-radius:4px;padding:1px 6px;font-size:11px;white-space:nowrap}
   .sev.critical,.sev.emergency,.sev.alert{background:color-mix(in srgb,var(--red) 20%,transparent);color:var(--red)}
@@ -443,7 +453,7 @@
 
   <!-- ══ API SECURITY ══ -->
   <div id="view-api" class="view">
-    <div class="row" style="margin-bottom:14px"><div class="field"><label for="ux_api_section">Go to API security section</label><select id="ux_api_section"><option value="api_ops_body">Discovered endpoints</option><option value="api_schema_body">Suggested field definitions</option><option value="api_enforce_body">Field protection</option><option value="api_identity_issuers">Sign-in providers</option><option value="api_sequence_states">API usage patterns</option><option value="api_object_locators">Record ID fields</option><option value="api_bola_evidence">Record-access findings</option><option value="api_graphql_operations">GraphQL</option><option value="api_contract_body">OpenAPI definitions</option></select></div><div class="hint">Each section loads independently. Endpoint selectors show the site, method, and URL.</div></div>
+    <div class="row api-jump" style="margin-bottom:14px"><div class="field"><label for="ux_api_section">Go to API security section</label><select id="ux_api_section"><option value="api_ops_body">Discovered endpoints</option><option value="api_schema_body">Suggested field definitions</option><option value="api_enforce_body">Field protection</option><option value="api_identity_issuers">Sign-in providers</option><option value="api_sequence_states">API usage patterns</option><option value="api_object_locators">Record ID fields</option><option value="api_bola_evidence">Record-access findings</option><option value="api_graphql_operations">GraphQL</option><option value="api_contract_body">OpenAPI definitions</option></select></div><div class="hint">Each section loads independently. Endpoint selectors show the site, method, and URL.</div></div>
     <section>
       <div class="feedhead"><div><div class="eyebrow">API endpoints</div><h3 style="margin:2px 0 0">Discovered endpoints</h3></div><div class="count" id="api_ops_count"></div><button class="btn sm" id="api_refresh">Refresh</button></div>
       <div class="hint" style="margin:6px 0 12px">API endpoints are discovered from live traffic. Organizing, hiding, or reclassifying an endpoint does not change its protection settings.</div>
@@ -3114,6 +3124,16 @@
     const current=snapshotEditors(),pending=configChanges(uxState.active,current),dirty=configText(current)!==uxState.baseline;
     $("ux_change_state").textContent=`${dirty?"Unsaved edits":pending.length?"Draft saved":"Active settings"} · ${pending.length}${pending.length>=200?"+":""} changes compared with active settings${pending.length?" — not active yet":" — matches active settings"}`;
     $("ux_save").disabled=!hasCapability("edit")||!dirty;$("ux_discard").disabled=!dirty;
+    $("ux_review").disabled=!pending.length;
+    $("ux_workbar").classList.toggle("clean",!dirty&&!pending.length);
+    // The dashboard call to action becomes a secondary "add" once a site is active.
+    const hasSite=((uxState.active&&uxState.active.sites)||[]).length>0,wizard=$("ux_wizard");
+    wizard.textContent=hasSite?"Add another site":"Set up a site";wizard.classList.toggle("primary",!hasSite);
+    updateStickyOffset();
+  }
+  function updateStickyOffset(){
+    const bar=$("ux_workbar"),pinned=getComputedStyle(bar).position==="sticky";
+    document.documentElement.style.setProperty("--sticky-top",(pinned?bar.offsetHeight:0)+"px");
   }
   function syncVisibleEditors(){if(!cfg)return;syncSites();syncNodes();syncPools();syncPolicies();syncCIDRRules();}
   function resourceLabel(path){
@@ -3566,7 +3586,33 @@
     $("ux_page_preview").onclick=()=>chooseAction("Page change preview",changeTable(configChanges(uxState.pageOriginal,readPagePolicy())),[['close','Return to editor']]);
     $("ux_dialog_close").onclick=()=>closeUXDialog();
     $("ux_dialog").onclick=e=>{if(e.target===$("ux_dialog"))closeUXDialog();};
-    $("ux_api_section").onchange=()=>{const target=$($("ux_api_section").value)?.closest("section");if(target){target.setAttribute("tabindex","-1");target.scrollIntoView({behavior:"smooth",block:"start"});target.focus();}};
+    if("ResizeObserver" in window)new ResizeObserver(updateStickyOffset).observe($("ux_workbar"));
+    window.addEventListener("resize",updateStickyOffset);
+    (()=>{
+      // Keep the section menu on the section the operator is reading: the last
+      // section whose top has passed just below the pinned menu.
+      const menu=$("ux_api_section");if(!menu)return;
+      const sections=[...menu.options].map(o=>[$(o.value)?.closest("section"),o.value]).filter(([section])=>section)
+        .sort(([a],[b])=>a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1);
+      // A section chosen from the menu stays selected until the operator scrolls
+      // by hand; otherwise a jump near the end of the page would be relabelled.
+      let queued=false,chosen=null;
+      menu.addEventListener("change",()=>{chosen=menu.value;});
+      for(const type of ["wheel","touchmove","keydown"])
+        window.addEventListener(type,event=>{if(event.target!==menu)chosen=null;},{passive:true});
+      const sync=()=>{
+        queued=false;
+        if(!sections.length||menu.offsetParent===null||document.activeElement===menu)return;
+        if(chosen){menu.value=chosen;return;}
+        const line=menu.closest(".api-jump").getBoundingClientRect().bottom+40;
+        let current=sections[0][1];
+        for(const [section,value] of sections)if(section.getBoundingClientRect().top<=line)current=value;
+        if(innerHeight+scrollY>=document.documentElement.scrollHeight-2)current=sections[sections.length-1][1];
+        menu.value=current;
+      };
+      window.addEventListener("scroll",()=>{if(!queued){queued=true;requestAnimationFrame(sync);}},{passive:true});
+    })();
+    $("ux_api_section").onchange=()=>{const target=$($("ux_api_section").value)?.closest("section");if(target){target.setAttribute("tabindex","-1");target.focus({preventScroll:true});target.scrollIntoView({behavior:"smooth",block:"start"});}};
     $("ux_errors").onclick=async e=>{const retry=e.target.closest?.("[data-resource-retry]");if(!retry)return;const path=retry.dataset.resourceRetry;
       retry.disabled=true;
       try{if(!uxState.ready){await startConsole();return;}
