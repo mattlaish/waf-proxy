@@ -1641,3 +1641,164 @@ index 0c0a3c4..ed5b191 100644
  test('reviewer and viewer cannot discard the shared saved draft', async () => {
    for (const role of ['reviewer', 'viewer']) {
      const s = await session({ role });
+
+
+## Console change bar and API section navigation — 2026-10-29
+
+Disabled-button styling, Review disabled with no pending changes, collapsing clean change bar on phones, pinned and scroll-synced API section menu, section-jump overshoot fix, and secondary "Add another site" call to action.
+
+diff --git a/static/admin.html b/static/admin.html
+index 3b49714..76c6b8b 100644
+--- a/static/admin.html
++++ b/static/admin.html
+@@ -111,6 +111,7 @@
+   .btn.primary:hover{filter:brightness(1.08)}
+   .btn.danger{color:var(--red)}
+   .btn.danger:hover{border-color:var(--red)}
++  .btn:disabled{opacity:.45;cursor:not-allowed}.btn:disabled:hover{border-color:var(--line);filter:none}
+ 
+   .card{border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--bg)}
+   .cardhead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+@@ -155,6 +156,15 @@
+   td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-all}
+   td.nw{white-space:nowrap;word-break:normal}
+   .workbar .btn[hidden]{display:none}
++  /* The API section jump stays reachable below the pinned change bar while scrolling. */
++  .api-jump{position:sticky;top:var(--sticky-top,0px);z-index:30;background:var(--bg);padding:8px 0}
++  #view-api section{scroll-margin-top:calc(var(--sticky-top,0px) + 96px)}
++  @media(max-width:600px){
++    /* With nothing to save or apply, the change bar scrolls away and shows only
++       its status and remaining actions; it pins again once there are edits. */
++    .workbar.clean{position:static}
++    .workbar.clean #ux_review,.workbar.clean #ux_save,.workbar.clean #ux_discard{display:none}
++  }
+   tr:hover td{background:var(--raised)}
+   .sev{border-radius:4px;padding:1px 6px;font-size:11px;white-space:nowrap}
+   .sev.critical,.sev.emergency,.sev.alert{background:color-mix(in srgb,var(--red) 20%,transparent);color:var(--red)}
+@@ -443,7 +453,7 @@
+ 
+   <!-- ══ API SECURITY ══ -->
+   <div id="view-api" class="view">
+-    <div class="row" style="margin-bottom:14px"><div class="field"><label for="ux_api_section">Go to API security section</label><select id="ux_api_section"><option value="api_ops_body">Discovered endpoints</option><option value="api_schema_body">Suggested field definitions</option><option value="api_enforce_body">Field protection</option><option value="api_identity_issuers">Sign-in providers</option><option value="api_sequence_states">API usage patterns</option><option value="api_object_locators">Record ID fields</option><option value="api_bola_evidence">Record-access findings</option><option value="api_graphql_operations">GraphQL</option><option value="api_contract_body">OpenAPI definitions</option></select></div><div class="hint">Each section loads independently. Endpoint selectors show the site, method, and URL.</div></div>
++    <div class="row api-jump" style="margin-bottom:14px"><div class="field"><label for="ux_api_section">Go to API security section</label><select id="ux_api_section"><option value="api_ops_body">Discovered endpoints</option><option value="api_schema_body">Suggested field definitions</option><option value="api_enforce_body">Field protection</option><option value="api_identity_issuers">Sign-in providers</option><option value="api_sequence_states">API usage patterns</option><option value="api_object_locators">Record ID fields</option><option value="api_bola_evidence">Record-access findings</option><option value="api_graphql_operations">GraphQL</option><option value="api_contract_body">OpenAPI definitions</option></select></div><div class="hint">Each section loads independently. Endpoint selectors show the site, method, and URL.</div></div>
+     <section>
+       <div class="feedhead"><div><div class="eyebrow">API endpoints</div><h3 style="margin:2px 0 0">Discovered endpoints</h3></div><div class="count" id="api_ops_count"></div><button class="btn sm" id="api_refresh">Refresh</button></div>
+       <div class="hint" style="margin:6px 0 12px">API endpoints are discovered from live traffic. Organizing, hiding, or reclassifying an endpoint does not change its protection settings.</div>
+@@ -3114,6 +3124,16 @@
+     const current=snapshotEditors(),pending=configChanges(uxState.active,current),dirty=configText(current)!==uxState.baseline;
+     $("ux_change_state").textContent=`${dirty?"Unsaved edits":pending.length?"Draft saved":"Active settings"} · ${pending.length}${pending.length>=200?"+":""} changes compared with active settings${pending.length?" — not active yet":" — matches active settings"}`;
+     $("ux_save").disabled=!hasCapability("edit")||!dirty;$("ux_discard").disabled=!dirty;
++    $("ux_review").disabled=!pending.length;
++    $("ux_workbar").classList.toggle("clean",!dirty&&!pending.length);
++    // The dashboard call to action becomes a secondary "add" once a site is active.
++    const hasSite=((uxState.active&&uxState.active.sites)||[]).length>0,wizard=$("ux_wizard");
++    wizard.textContent=hasSite?"Add another site":"Set up a site";wizard.classList.toggle("primary",!hasSite);
++    updateStickyOffset();
++  }
++  function updateStickyOffset(){
++    const bar=$("ux_workbar"),pinned=getComputedStyle(bar).position==="sticky";
++    document.documentElement.style.setProperty("--sticky-top",(pinned?bar.offsetHeight:0)+"px");
+   }
+   function syncVisibleEditors(){if(!cfg)return;syncSites();syncNodes();syncPools();syncPolicies();syncCIDRRules();}
+   function resourceLabel(path){
+@@ -3566,7 +3586,33 @@
+     $("ux_page_preview").onclick=()=>chooseAction("Page change preview",changeTable(configChanges(uxState.pageOriginal,readPagePolicy())),[['close','Return to editor']]);
+     $("ux_dialog_close").onclick=()=>closeUXDialog();
+     $("ux_dialog").onclick=e=>{if(e.target===$("ux_dialog"))closeUXDialog();};
+-    $("ux_api_section").onchange=()=>{const target=$($("ux_api_section").value)?.closest("section");if(target){target.setAttribute("tabindex","-1");target.scrollIntoView({behavior:"smooth",block:"start"});target.focus();}};
++    if("ResizeObserver" in window)new ResizeObserver(updateStickyOffset).observe($("ux_workbar"));
++    window.addEventListener("resize",updateStickyOffset);
++    (()=>{
++      // Keep the section menu on the section the operator is reading: the last
++      // section whose top has passed just below the pinned menu.
++      const menu=$("ux_api_section");if(!menu)return;
++      const sections=[...menu.options].map(o=>[$(o.value)?.closest("section"),o.value]).filter(([section])=>section)
++        .sort(([a],[b])=>a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1);
++      // A section chosen from the menu stays selected until the operator scrolls
++      // by hand; otherwise a jump near the end of the page would be relabelled.
++      let queued=false,chosen=null;
++      menu.addEventListener("change",()=>{chosen=menu.value;});
++      for(const type of ["wheel","touchmove","keydown"])
++        window.addEventListener(type,event=>{if(event.target!==menu)chosen=null;},{passive:true});
++      const sync=()=>{
++        queued=false;
++        if(!sections.length||menu.offsetParent===null||document.activeElement===menu)return;
++        if(chosen){menu.value=chosen;return;}
++        const line=menu.closest(".api-jump").getBoundingClientRect().bottom+40;
++        let current=sections[0][1];
++        for(const [section,value] of sections)if(section.getBoundingClientRect().top<=line)current=value;
++        if(innerHeight+scrollY>=document.documentElement.scrollHeight-2)current=sections[sections.length-1][1];
++        menu.value=current;
++      };
++      window.addEventListener("scroll",()=>{if(!queued){queued=true;requestAnimationFrame(sync);}},{passive:true});
++    })();
++    $("ux_api_section").onchange=()=>{const target=$($("ux_api_section").value)?.closest("section");if(target){target.setAttribute("tabindex","-1");target.focus({preventScroll:true});target.scrollIntoView({behavior:"smooth",block:"start"});}};
+     $("ux_errors").onclick=async e=>{const retry=e.target.closest?.("[data-resource-retry]");if(!retry)return;const path=retry.dataset.resourceRetry;
+       retry.disabled=true;
+       try{if(!uxState.ready){await startConsole();return;}
+diff --git a/tools/tests/test-console-workflows.mjs b/tools/tests/test-console-workflows.mjs
+index ed5b191..136f076 100644
+--- a/tools/tests/test-console-workflows.mjs
++++ b/tools/tests/test-console-workflows.mjs
+@@ -526,6 +526,61 @@ test('saved-draft controls hide when the server reports no saved draft and retur
+   } finally { await s.close(); }
+ });
+ 
++test('change bar: review needs pending changes, disabled actions look disabled, phone bar collapses when clean', async () => {
++  const s = await session();
++  try {
++    const review = s.page.locator('#ux_review');
++    assert.equal(await review.isDisabled(), true);
++    assert.ok(Number(await review.evaluate(el => getComputedStyle(el).opacity)) < 1);
++    assert.equal(await s.page.locator('#ux_wizard').innerText(), 'Add another site');
++    assert.equal(await s.page.locator('#ux_wizard').evaluate(el => el.classList.contains('primary')), false);
++    await s.page.setViewportSize({ width: 390, height: 844 });
++    assert.equal(await s.page.locator('#ux_workbar').evaluate(el => getComputedStyle(el).position), 'static');
++    assert.equal(await review.isHidden(), true);
++    assert.equal(await s.page.locator('#ux_save').isHidden(), true);
++    await tab(s.page, 'sites');await s.page.locator('#site_list [data-sel]').first().click();
++    await s.page.locator('#sites input[data-f="listen"]').fill(':8081');
++    await s.page.locator('#ux_change_state').filter({ hasText: 'Unsaved edits' }).waitFor();
++    assert.equal(await s.page.locator('#ux_workbar').evaluate(el => getComputedStyle(el).position), 'sticky');
++    assert.equal(await review.isVisible(), true);
++    assert.equal(await review.isDisabled(), false);
++    assert.equal(await s.page.locator('#ux_save').isVisible(), true);
++    assert.equal(await s.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
++    assert.deepEqual(s.errors, []);
++  } finally { await s.close(); }
++});
++
++test('API section menu stays pinned below the change bar and follows scrolling', async () => {
++  const s = await session();
++  try {
++    await tab(s.page, 'api');
++    const jump = s.page.locator('.api-jump');
++    assert.equal(await jump.evaluate(el => getComputedStyle(el).position), 'sticky');
++    const barBottom = await s.page.locator('#ux_workbar').evaluate(el => el.getBoundingClientRect().height);
++    assert.ok(parseFloat(await jump.evaluate(el => getComputedStyle(el).top)) >= barBottom);
++    const options = await s.page.locator('#ux_api_section option').evaluateAll(list => list.map(o => o.value));
++    const target = options[Math.min(3, options.length - 1)];
++    await s.page.evaluate(id => document.getElementById(id).closest('section').scrollIntoView({ block: 'start' }), target);
++    await s.page.waitForFunction(id => document.getElementById('ux_api_section').value === id, target);
++    const heading = await s.page.evaluate(id => document.getElementById(id).closest('section').getBoundingClientRect().top, target);
++    const jumpBottom = await jump.evaluate(el => el.getBoundingClientRect().bottom);
++    assert.ok(heading >= jumpBottom - 1, `section top ${heading} hidden under pinned menu ending at ${jumpBottom}`);
++    // Choosing a section from the menu lands it just below the pinned menu and the
++    // menu keeps the choice, even when the page cannot scroll that section to the top.
++    for (const chosen of [options[1], options[Math.min(5, options.length - 1)]]) {
++      await s.page.selectOption('#ux_api_section', chosen);
++      await s.page.waitForFunction(id => {
++        const top = document.getElementById(id).closest('section').getBoundingClientRect().top;
++        const bottom = document.querySelector('.api-jump').getBoundingClientRect().bottom;
++        return top >= bottom - 1 && top < bottom + 140;
++      }, chosen);
++      await s.page.waitForTimeout(400);
++      assert.equal(await s.page.locator('#ux_api_section').inputValue(), chosen);
++    }
++    assert.deepEqual(s.errors, []);
++  } finally { await s.close(); }
++});
++
+ test('reviewer and viewer cannot discard the shared saved draft', async () => {
+   for (const role of ['reviewer', 'viewer']) {
+     const s = await session({ role });

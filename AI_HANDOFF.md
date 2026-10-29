@@ -1,5 +1,36 @@
 # AI Development Handoff
 
+## Current maintenance — 2026-10-29 — Console change bar, API section navigation and dashboard call to action
+
+Console-only usability slice (`static/admin.html`); no backend, API or
+protection-behavior change.
+
+- **Change bar.** "Review changes" is disabled when nothing differs from the
+  active settings. Disabled buttons now look disabled (`.btn:disabled`); before,
+  disabled "Save draft" / "Discard edits" looked identical to active buttons.
+  On screens up to 600px, a clean bar (no unsaved edits, no pending changes) is
+  no longer pinned and hides its Review / Save / Discard buttons, so content
+  starts much higher; it pins and shows them again as soon as there are edits.
+- **API Security navigation.** The "Go to API security section" menu stays
+  pinned just below the change bar (`--sticky-top`, kept current by a
+  ResizeObserver), sections get a matching `scroll-margin-top`, and the menu
+  follows the section being read. A section chosen from the menu stays
+  selected until the operator scrolls by hand.
+- **Pre-existing jump bug fixed.** Choosing a section scrolled past it (e.g.
+  "Record ID fields" landed 639px above the viewport) because `focus()` ran an
+  instant scroll on top of the smooth `scrollIntoView`. The section is now
+  focused with `preventScroll` before scrolling.
+- **Dashboard call to action.** "Set up a site" (primary) becomes a secondary
+  "Add another site" once an active site exists; the guided setup it opens is
+  unchanged.
+
+Validation (go1.26.9, linux/amd64): tidy clean; build, vet, `go test ./...`,
+`go test -race ./...` PASS; root shape PASS (112 files); 18/18 CI source gates
+PASS; 21/21 console-copy tests and 30/30 Playwright workflow tests PASS (two new
+tests, verified to fail on the previous console and stable over 5 repeat runs).
+Project state remains `IMPLEMENTED_TESTING_DEFERRED`.
+
+
 ## Current maintenance — 2026-10-24 — Saved-draft console qualification + draft-control visibility
 
 Qualifies the saved-draft console slice (`9c77181`: `DELETE /api/config?draft=1`
