@@ -526,6 +526,61 @@ test('saved-draft controls hide when the server reports no saved draft and retur
   } finally { await s.close(); }
 });
 
+test('change bar: review needs pending changes, disabled actions look disabled, phone bar collapses when clean', async () => {
+  const s = await session();
+  try {
+    const review = s.page.locator('#ux_review');
+    assert.equal(await review.isDisabled(), true);
+    assert.ok(Number(await review.evaluate(el => getComputedStyle(el).opacity)) < 1);
+    assert.equal(await s.page.locator('#ux_wizard').innerText(), 'Add another site');
+    assert.equal(await s.page.locator('#ux_wizard').evaluate(el => el.classList.contains('primary')), false);
+    await s.page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await s.page.locator('#ux_workbar').evaluate(el => getComputedStyle(el).position), 'static');
+    assert.equal(await review.isHidden(), true);
+    assert.equal(await s.page.locator('#ux_save').isHidden(), true);
+    await tab(s.page, 'sites');await s.page.locator('#site_list [data-sel]').first().click();
+    await s.page.locator('#sites input[data-f="listen"]').fill(':8081');
+    await s.page.locator('#ux_change_state').filter({ hasText: 'Unsaved edits' }).waitFor();
+    assert.equal(await s.page.locator('#ux_workbar').evaluate(el => getComputedStyle(el).position), 'sticky');
+    assert.equal(await review.isVisible(), true);
+    assert.equal(await review.isDisabled(), false);
+    assert.equal(await s.page.locator('#ux_save').isVisible(), true);
+    assert.equal(await s.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
+test('API section menu stays pinned below the change bar and follows scrolling', async () => {
+  const s = await session();
+  try {
+    await tab(s.page, 'api');
+    const jump = s.page.locator('.api-jump');
+    assert.equal(await jump.evaluate(el => getComputedStyle(el).position), 'sticky');
+    const barBottom = await s.page.locator('#ux_workbar').evaluate(el => el.getBoundingClientRect().height);
+    assert.ok(parseFloat(await jump.evaluate(el => getComputedStyle(el).top)) >= barBottom);
+    const options = await s.page.locator('#ux_api_section option').evaluateAll(list => list.map(o => o.value));
+    const target = options[Math.min(3, options.length - 1)];
+    await s.page.evaluate(id => document.getElementById(id).closest('section').scrollIntoView({ block: 'start' }), target);
+    await s.page.waitForFunction(id => document.getElementById('ux_api_section').value === id, target);
+    const heading = await s.page.evaluate(id => document.getElementById(id).closest('section').getBoundingClientRect().top, target);
+    const jumpBottom = await jump.evaluate(el => el.getBoundingClientRect().bottom);
+    assert.ok(heading >= jumpBottom - 1, `section top ${heading} hidden under pinned menu ending at ${jumpBottom}`);
+    // Choosing a section from the menu lands it just below the pinned menu and the
+    // menu keeps the choice, even when the page cannot scroll that section to the top.
+    for (const chosen of [options[1], options[Math.min(5, options.length - 1)]]) {
+      await s.page.selectOption('#ux_api_section', chosen);
+      await s.page.waitForFunction(id => {
+        const top = document.getElementById(id).closest('section').getBoundingClientRect().top;
+        const bottom = document.querySelector('.api-jump').getBoundingClientRect().bottom;
+        return top >= bottom - 1 && top < bottom + 140;
+      }, chosen);
+      await s.page.waitForTimeout(400);
+      assert.equal(await s.page.locator('#ux_api_section').inputValue(), chosen);
+    }
+    assert.deepEqual(s.errors, []);
+  } finally { await s.close(); }
+});
+
 test('reviewer and viewer cannot discard the shared saved draft', async () => {
   for (const role of ['reviewer', 'viewer']) {
     const s = await session({ role });
