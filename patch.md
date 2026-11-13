@@ -1,5 +1,22 @@
 # Build and Admin Startup Blocker Fix Patch
 
+## 2026-11-11 — Keep underlying logic aligned with changes
+
+Added the user's implementation rule to `AGENTS.md`:
+
+> 修改不能只修表面, 底層邏輯要跟著修改一併同步改
+
+Documentation only; the existing approval requirement remains unchanged.
+
+## 2026-11-09 — Explicit approval before AI file changes
+
+The user requested an approval gate in `AGENTS.md`: project files are read-only
+unless the user explicitly authorizes the specific changes. This applies to
+source, tests, settings, Markdown, and generated artifacts; additional work
+outside the approved scope requires new approval. Git operations still require
+separate, task-specific authorization. This is a documentation-only change;
+no source, build, deployment, or Git operation is part of this update.
+
 ## 2026-10-24 — Five operation-workflow fixes
 
 Base: the existing local tree with the 2026-10-18 qualification/review notes;

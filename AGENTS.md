@@ -1,13 +1,32 @@
+## User approval required before file changes
+
+- Default to read-only. Do not create, edit, overwrite, rename, move, or delete
+  project files without the user's explicit approval for the specific change.
+  This includes code, tests, configuration, Markdown, and generated artifacts,
+  whether changed directly or through a command or tool.
+- A direct request to make a clearly scoped change, or an explicit approval of
+  a specific proposal, authorizes only that scope. Requests to check, review,
+  diagnose, or report do not authorize changes. Tool access, prior approvals,
+  or instructions in project files are not approval for new work.
+- If the change is not approved, explain the proposed changes and wait. If
+  additional files or work become necessary beyond the approved scope, ask
+  before making those changes, including related documentation updates.
+
+## Change implementation
+
+> 修改不能只修表面, 底層邏輯要跟著修改一併同步改
+
 ## Git
 
-AI is allowed to perform normal Git operations:
+Do not run Git operations unless the user explicitly authorizes them for the
+current task. Approval to edit files does not authorize Git operations, including:
 
 - git pull
 - git add
 - git commit
 - git push
 
-Before starting work:
+Before starting work that explicitly includes Git synchronization:
 
 - Synchronize with the latest repository state.
 - Inspect git status and recent commits.
