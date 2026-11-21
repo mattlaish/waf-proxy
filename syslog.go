@@ -17,6 +17,7 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -105,11 +106,12 @@ type syslogEngine struct {
 	auditEnabled  atomic.Bool
 	notifyEnabled atomic.Bool
 
-	queue   chan string
-	conn    net.Conn
-	running int32
-	cancel  chan struct{}
-	dropped uint64
+	queue    chan string
+	conn     net.Conn
+	running  int32
+	cancel   chan struct{}
+	dropped  uint64
+	delivery deliveryHealth
 }
 
 func newSyslogEngine(log *slog.Logger) *syslogEngine {
@@ -139,6 +141,9 @@ func (s *syslogEngine) storeConfig(c SyslogConfig) {
 
 func (s *syslogEngine) configure(c SyslogConfig) {
 	s.mu.Lock()
+	if c != s.snapshotCfg() {
+		s.delivery.invalidate()
+	}
 	// Publish the immutable snapshot while the connection is serialized, then
 	// force a reconnect so the next background delivery uses the new endpoint.
 	s.storeConfig(c)
@@ -166,6 +171,7 @@ func (s *syslogEngine) enqueue(line string) {
 	case s.queue <- line:
 	default:
 		atomic.AddUint64(&s.dropped, 1)
+		s.delivery.record(false)
 	}
 }
 
@@ -197,14 +203,22 @@ func (s *syslogEngine) dial(cfg SyslogConfig) (net.Conn, error) {
 }
 
 func (s *syslogEngine) deliver(line string) {
-	cfg := s.snapshotCfg()
-	if !cfg.Enabled {
-		return
-	}
 	s.mu.Lock()
+	cfg := s.snapshotCfg()
+	generation := s.delivery.current()
 	conn := s.conn
 	s.mu.Unlock()
-
+	if !cfg.Enabled {
+		atomic.AddUint64(&s.dropped, 1)
+		return
+	}
+	success := false
+	defer func() {
+		s.delivery.recordAt(generation, success)
+		if !success {
+			atomic.AddUint64(&s.dropped, 1)
+		}
+	}()
 	if conn == nil {
 		c, err := s.dial(cfg)
 		if err != nil {
@@ -212,6 +226,11 @@ func (s *syslogEngine) deliver(line string) {
 			return
 		}
 		s.mu.Lock()
+		if cfg != s.snapshotCfg() {
+			s.mu.Unlock()
+			c.Close()
+			return
+		}
 		s.conn = c
 		conn = c
 		s.mu.Unlock()
@@ -223,7 +242,11 @@ func (s *syslogEngine) deliver(line string) {
 		payload = line + "\n"
 	}
 	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	if _, err := conn.Write([]byte(payload)); err != nil {
+	n, err := conn.Write([]byte(payload))
+	if err == nil && n != len(payload) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
 		s.log.Warn("syslog write failed; will reconnect", "err", err)
 		s.mu.Lock()
 		if s.conn != nil {
@@ -231,7 +254,18 @@ func (s *syslogEngine) deliver(line string) {
 			s.conn = nil
 		}
 		s.mu.Unlock()
+		return
 	}
+	success = true
+}
+
+func (s *syslogEngine) deliveryStats() map[string]any {
+	if s == nil {
+		return map[string]any{"state": "disabled"}
+	}
+	stats := s.delivery.snapshot(s.snapshotCfg().Enabled, len(s.queue), cap(s.queue), atomic.LoadUint64(&s.dropped))
+	stats["receipt_verified"] = false
+	return stats
 }
 
 // ── message formatting ──────────────────────────────────────────────────

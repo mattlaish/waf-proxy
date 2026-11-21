@@ -3,6 +3,33 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { after, before, test } from 'node:test';
 
+test('security settings save explicit webhook exceptions and attack thresholds as a draft', async () => {
+  const s=await session();
+  try {
+    await tab(s.page,'setup');
+    await s.page.locator('#nt_allow_private').check();await s.page.locator('#nt_allow_http').check();
+    await s.page.locator('#nt_attack_threshold').fill('25');await s.page.locator('#nt_attack_window').fill('120');
+    await s.page.locator('#nt_attack_severity').selectOption('ERROR');await s.page.locator('#nt_save').click();
+    await s.page.locator('#ux_change_state').filter({hasText:'Draft saved'}).waitFor();
+    const save=writes(s.calls).find(c=>c.path==='/api/config?draft=1');
+    assert.equal(save.body.notify.webhook_allow_private,true);assert.equal(save.body.notify.webhook_allow_http,true);
+    assert.equal(save.body.notify.attack_threshold,25);assert.equal(save.body.notify.attack_window_seconds,120);assert.equal(save.body.notify.attack_min_severity,'ERROR');
+    assert.equal(writes(s.calls).some(c=>c.path==='/api/config'),false);
+    assert.deepEqual(s.errors,[]);
+  } finally {await s.close();}
+});
+
+test('delivery observations expose losses and never equate enabled with verified', async () => {
+  const s=await session();
+  try {
+    await s.page.route('**/api/status',route=>route.fulfill({json:{sites:[],webhook_delivery:{state:'unverified',enabled:true},syslog_delivery:{state:'degraded',enabled:true,failures:2,dropped:4,last_success:'2026-11-19T00:00:00Z'}}}));
+    await tab(s.page,'setup');
+    await s.page.locator('#nt_delivery').filter({hasText:'Not verified'}).waitFor();
+    await s.page.locator('#sl_delivery').filter({hasText:'failures 2 · dropped 4'}).waitFor();
+    assert.deepEqual(s.errors,[]);
+  } finally {await s.close();}
+});
+
 // Uses a locally provided Playwright installation; never downloads a browser.
 // All HTTP requests are intercepted. No running WAF, secrets or live writes.
 const require = createRequire(import.meta.url);

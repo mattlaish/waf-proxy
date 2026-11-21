@@ -1,5 +1,35 @@
 # Development Roadmap — WAF Proxy
 
+## 2026-11-19 — Rate limiter, alert delivery and webhook security
+
+Implemented IPv6-prefix/scoped-overflow limiting, thresholded attack
+notifications, HTTPS/DNS-pinned destination restrictions with explicit
+exceptions, and observable webhook/SIEM delivery health. This is backend,
+configuration and Console work, not a surface-only fix. See AI_HANDOFF.md and
+patch.md for configuration fields, migration, residual lockout/SSRF boundaries
+and exact evidence. SOC/ticketing reader code is absent: its auth/off-switch
+items remain open, not fixed.
+
+Validation on this host using verified portable Go 1.26.9 (windows/amd64):
+targeted Go security/L7/notification tests **23 PASS** (13 new security tests,
+including actual Coraza inline-rule request/response tests); Node console
+**23/23 PASS**, intercepted Edge/Playwright workflows **32/32 PASS**; Python
+source gates **18/18 PASS** plus Go-backed route gate **13 checks / 140 routes
+PASS**. Root tidy-diff clean, native Windows build/vet and Linux cross-build PASS.
+These are not Linux runtime/CRS/hardware qualification.
+
+Full `go test ./...` was actually attempted on Windows and **FAILED**, including
+Unix-only permissions/path/fsync, concurrent rename, release executable bits
+and unavailable Linux command checks; do not relabel that run PASS or skip
+those assertions. Race was attempted but **BLOCKED**: CGO=0 is unsupported;
+with CGO=1 gcc is absent. WSL is not installed, so Linux full tests/race,
+live VM/HA/webhook/SIEM/CRS/VectorScan/HSM acceptance remain pending.
+State: **IMPLEMENTED_TESTING_DEFERRED**. No deployment or new release ZIP.
+
+Next: run exact-source Go 1.26.9 tidy/build/vet/full tests/race on Linux,
+real CRS and VM saturation/HA/delivery acceptance; bring the missing SOC
+work into this same root before fixing its auth/off-switch semantics.
+
 ## Current maintenance — 2026-10-29 — Console change bar, API section navigation and dashboard call to action
 
 Console-only usability slice (`static/admin.html`); no backend, API or

@@ -50,19 +50,26 @@ func (w *observedCorazaWAF) wrap(tx types.Transaction, ctx context.Context) type
 		ctx = context.Background()
 	}
 	dc, _ := debugContextFrom(ctx)
-	return &observedCorazaTx{Transaction: tx, plan: w.plan, obs: vectoraccel.ObservationFromContext(ctx), debug: dc}
+	attack, _ := ctx.Value(attackSignalKey{}).(*attackSignals)
+	return &observedCorazaTx{Transaction: tx, plan: w.plan, obs: vectoraccel.ObservationFromContext(ctx), debug: dc, attack: attack}
 }
 
 type observedCorazaTx struct {
 	types.Transaction
-	plan  *vectoraccel.SitePlan
-	obs   *vectoraccel.Observation
-	debug debugRequestContext
-	once  sync.Once
+	plan   *vectoraccel.SitePlan
+	obs    *vectoraccel.Observation
+	debug  debugRequestContext
+	once   sync.Once
+	attack *attackSignals
 }
 
 func (t *observedCorazaTx) observe() {
 	t.once.Do(func() {
+		// Use the authoritative interruption, not response status: an application
+		// 403 is not a WAF block; response-phase denies count as well as requests.
+		if in := t.Transaction.Interruption(); in != nil && t.attack != nil && (in.Action == "deny" || in.Action == "drop") {
+			t.attack.blocked = true
+		}
 		matches := t.Transaction.MatchedRules()
 		ids := make([]int, 0, len(matches))
 		seen := make(map[int]struct{}, len(matches))

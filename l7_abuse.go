@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"net"
 	"net/http"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -21,6 +23,7 @@ type L7AbuseConfig struct {
 	WindowSeconds            int  `json:"window_seconds,omitempty"`
 	MaxConcurrentConnections int  `json:"max_concurrent_connections,omitempty"`
 	TLSHandshakePerWindow    int  `json:"tls_handshake_per_window,omitempty"`
+	IPv6PrefixLength         int  `json:"ipv6_prefix_length,omitempty"` // 0 = /64; /128 is an explicit per-address trade-off
 }
 
 const (
@@ -44,20 +47,21 @@ type abuseClientState struct {
 }
 
 type l7AbuseShard struct {
-	mu       sync.Mutex
-	clients  map[abuseClientKey]*abuseClientState
-	overflow abuseClientState
-	ops      uint64
+	mu      sync.Mutex
+	clients map[abuseClientKey]*abuseClientState
+	ops     uint64
 }
 
 type l7AbuseController struct {
-	cfg       L7AbuseConfig
-	shards    [l7AbuseShardCount]l7AbuseShard
-	tlsShards [l7AbuseShardCount]l7AbuseShard
+	cfg        L7AbuseConfig
+	shards     [l7AbuseShardCount]l7AbuseShard
+	tlsShards  [l7AbuseShardCount]l7AbuseShard
+	overflowMu sync.Mutex
+	overflows  map[abuseClientKey]*abuseClientState
 }
 
 func newL7AbuseController(cfg L7AbuseConfig) *l7AbuseController {
-	c := &l7AbuseController{cfg: cfg}
+	c := &l7AbuseController{cfg: cfg, overflows: make(map[abuseClientKey]*abuseClientState)}
 	for i := range c.shards {
 		c.shards[i].clients = make(map[abuseClientKey]*abuseClientState)
 		c.tlsShards[i].clients = make(map[abuseClientKey]*abuseClientState)
@@ -66,6 +70,9 @@ func newL7AbuseController(cfg L7AbuseConfig) *l7AbuseController {
 }
 
 func validateL7AbuseConfig(cfg L7AbuseConfig, accel tlsfront.AccelerationConfig) error {
+	if cfg.IPv6PrefixLength != 0 && (cfg.IPv6PrefixLength < 64 || cfg.IPv6PrefixLength > 128) {
+		return errors.New("l7_abuse.ipv6_prefix_length must be 0 (default /64) or 64..128")
+	}
 	if cfg.RequestsPerWindow < 0 || cfg.RequestsPerWindow > 10_000_000 {
 		return errors.New("l7_abuse.requests_per_window must be 0..10000000")
 	}
@@ -93,7 +100,7 @@ func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time
 	if c == nil || !c.cfg.Enabled || c.cfg.TLSHandshakePerWindow <= 0 {
 		return true
 	}
-	key := abuseClientKey{site: scope, identity: identity}
+	key := abuseClientKey{site: scope, identity: c.limiterIdentity(identity)}
 	shard := &c.tlsShards[l7AbuseShardIndex(key)]
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
@@ -113,7 +120,10 @@ func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time
 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
 			// Saturation must not turn the limiter off. Unknown identities share a
 			// bounded overflow bucket until an idle per-identity slot is available.
-			st = &shard.overflow
+			st = c.overflowState(scope, "tls")
+			if st == nil {
+				return false
+			}
 		} else {
 			st = &abuseClientState{tokens: float64(c.cfg.TLSHandshakePerWindow), lastRefill: now, lastSeen: now}
 			shard.clients[key] = st
@@ -170,7 +180,7 @@ func (c *l7AbuseController) wrap(site string, next http.Handler) http.Handler {
 }
 
 func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (*abuseClientState, bool) {
-	key := abuseClientKey{site: site, identity: identity}
+	key := abuseClientKey{site: site, identity: c.limiterIdentity(identity)}
 	shard := &c.shards[l7AbuseShardIndex(key)]
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
@@ -190,8 +200,11 @@ func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (*abus
 		}
 		if len(shard.clients) >= l7AbuseMaxEntriesPerShard {
 			// Bound memory without creating an attacker-controlled fail-open bypass.
-			// Saturated unknown identities share one conservative shard bucket.
-			st = &shard.overflow
+			// One bucket per configured site, shared across shards, not sites.
+			st = c.overflowState(site, "http")
+			if st == nil {
+				return nil, false
+			}
 		} else {
 			st = &abuseClientState{lastSeen: now}
 			if c.cfg.RequestsPerWindow > 0 {
@@ -297,6 +310,43 @@ func (c *l7AbuseController) windowDuration() time.Duration {
 	return window
 }
 
+// Scope comes from configured site/listener names, never Host or SNI input.
+// Never evict an overflow state to mint fresh tokens; cap even configured scopes.
+func (c *l7AbuseController) overflowState(scope, kind string) *abuseClientState {
+	c.overflowMu.Lock()
+	defer c.overflowMu.Unlock()
+	key := abuseClientKey{site: scope, identity: kind}
+	if st := c.overflows[key]; st != nil {
+		return st
+	}
+	if len(c.overflows) >= 8192 {
+		return nil
+	}
+	st := &abuseClientState{}
+	c.overflows[key] = st
+	return st
+}
+
+// Only limiter identity is aggregated; logs/ACLs retain the original client IP.
+func (c *l7AbuseController) limiterIdentity(identity string) string {
+	if host, _, err := net.SplitHostPort(identity); err == nil {
+		identity = host
+	}
+	ip, err := netip.ParseAddr(identity)
+	if err != nil {
+		return identity
+	}
+	ip = ip.Unmap().WithZone("")
+	if ip.Is4() {
+		return ip.String()
+	}
+	bits := c.cfg.IPv6PrefixLength
+	if bits == 0 {
+		bits = 64
+	}
+	return netip.PrefixFrom(ip, bits).Masked().String()
+}
+
 func (c *l7AbuseController) idleTTL() time.Duration {
 	window := c.windowDuration()
 	ttl := 2 * window
@@ -308,8 +358,8 @@ func (c *l7AbuseController) idleTTL() time.Duration {
 
 func l7AbuseShardIndex(key abuseClientKey) uint64 {
 	// Allocation-free FNV-1a over site and trusted identity. Keeping site in
-	// the key prevents activity on one virtual host from consuming another
-	// site's bucket while preserving even distribution across shards.
+	// the key separates normal per-client buckets. Table capacity is still
+	// globally bounded, while overflow allowances are isolated per site/listener.
 	const (
 		offset64 = uint64(14695981039346656037)
 		prime64  = uint64(1099511628211)

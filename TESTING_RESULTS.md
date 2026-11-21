@@ -1471,3 +1471,28 @@ is intercepted fixture evidence, not execution of the Go deletion handler.
 Historical Go PASS remains historical. Current state is
 IMPLEMENTED_TESTING_DEFERRED until exact-source Go and VM qualification.
 
+## 2026-11-19 — Security-report regression evidence
+
+- PASS: 23 targeted Go security/L7/notification tests (13 new security tests),
+  pinned Go 1.26.9 windows/amd64, real dependencies. Includes IPv6 rotation,
+  mapped IPv4, cross-shard/site/listener saturation and caps, HTTPS/literal/DNS
+  restrictions, mixed DNS rejection and numeric-IP pinning, no redirect delivery,
+  threshold/filter/window/caps, delivery reconfiguration generations, SIEM loss,
+  HA scope and actual Coraza inline-rule request/response interruption tests.
+- PASS: Node 23/23; intercepted headless Edge/Playwright 32/32; 18 Python source
+  gates plus Go-backed route-registration gate (13 checks, 140 patterns).
+- PASS: pinned tidy-diff clean, native Windows build/vet and Linux cross-build.
+- FAIL: complete Windows go test ./... attempted. Failures include Unix private
+  file permissions, Linux absolute paths, directory fsync, concurrent renames,
+  symlink privileges and executable release-script checks. Not skipped/relabeled.
+- BLOCKED: race attempted with CGO=0 (requires CGO) and CGO=1 (gcc unavailable).
+  WSL probe reports not installed; no Linux runtime/race result is claimed.
+- NOT_RUN: full CRS, native VectorScan/HSM and real VM/HA/SIEM/webhook acceptance,
+  release qualification and generated artifacts. SOC/ticketing source absent.
+
+The initial new Coraza fixture used an absolute URI with a path-prefix rule;
+it now uses a normal origin-form request, retaining the block assertions. Final
+code uses authoritative transaction interruption evidence, not HTTP status guesses,
+and covers response-phase blocks too. In-memory inline-rule Coraza PASS is not
+the full real-CRS qualification. State remains IMPLEMENTED_TESTING_DEFERRED.
+

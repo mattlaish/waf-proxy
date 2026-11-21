@@ -140,8 +140,8 @@ req('webhook_delivery' in admin and 'webhook_delivery||{}' in ui,'notification d
 req('http.StatusTooManyRequests' in notify and 'resp.StatusCode >= 500' in notify,'webhook retries 429/5xx only')
 
 # L7 saturation cannot be attacker-controlled fail-open.
-req('overflow abuseClientState' in l7,'L7 shard has bounded overflow bucket')
-req(l7.count('st = &shard.overflow') >= 2,'HTTP and TLS saturation use overflow bucket')
+req('len(c.overflows) >= 8192' in l7 and 'key := abuseClientKey{site: scope, identity: kind}' in l7,'L7 overflow scopes are bounded and isolated by configured site/listener and kind')
+req('st = c.overflowState(site, "http")' in l7 and 'st = c.overflowState(scope, "tls")' in l7,'HTTP and TLS saturation use scope-isolated overflow buckets')
 req('attacker-controlled fail-open' in l7,'source documents no fail-open saturation behavior')
 
 # Filesystem/update/deployment controls.

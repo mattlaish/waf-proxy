@@ -827,3 +827,27 @@ qualification does not qualify these changed bytes. State remains
 IMPLEMENTED_TESTING_DEFERRED. No Git operation, relocation, deployment, binary
 rebuild, release/archive generation, or new protection capability.
 
+## 2026-11-19 — Approved security report implementation
+
+Implemented IPv6 /64 default aggregation with explicit 64..128 prefix trade-off,
+bounded HTTP per-site / TLS per-listener overflow shared across shards, critical
+match and authoritative request/response WAF-block aggregation, webhook HTTPS and
+destination safety (all DNS answers checked, checked numeric IP dialled, redirects
+and environment proxies refused, separate internal/HTTP exceptions), and delivery
+observations/counters in existing Admin status and Console panels. Old endpoint
+completion cannot verify new configuration; syslog write/dial/queue losses are
+visible. Notify/Syslog HA scope is explained; stored hook URLs remain node-local.
+
+Added 13 security Go tests and four Console tests (two Node, two browser), updated
+the IPv6 saturation fixture to use distinct networks and the source gate to check
+bounded scope isolation rather than the obsolete shared bucket. No checks removed.
+Pinned portable Go 1.26.9 was downloaded to a temporary directory and verified
+against official SHA-256; no system install or project relocation. Targeted Go
+23 PASS; Node 23/23 and intercepted browser 32/32 PASS; 18 Python gates plus
+Go-backed 13-check/140-route gate PASS. Tidy clean; Windows build/vet and Linux
+cross-build PASS. Full Windows test run FAIL (Unix permissions/path/fsync/rename
+and release-script checks among failures); race BLOCKED without gcc. WSL absent.
+Linux runtime, real CRS/full hardware and VM/HA/SIEM acceptance remain pending.
+Missing SOC/ticketing source prevents closing its reader/auth/switch findings.
+No Git, deployment, release/package generation, or dependency change.
+

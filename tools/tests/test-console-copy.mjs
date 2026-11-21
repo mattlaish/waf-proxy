@@ -3,6 +3,24 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
+test('security notification settings round-trip and delivery states do not imply receipt', () => {
+  const { copy, element } = consoleHarness();
+  const settings = {webhook_allow_http:true,webhook_allow_private:true,on_attack:false,attack_threshold:20,attack_window_seconds:120,attack_min_severity:'ERROR'};
+  copy.fillNotify(settings);
+  const collected = copy.collectNotify();
+  for(const [key,value] of Object.entries(settings))assert.equal(collected[key],value);
+  assert.match(copy.deliveryText('SIEM',{enabled:true,state:'unverified'}),/Not verified/);
+  assert.match(copy.deliveryText('SIEM',{state:'last_send_succeeded',sent:2,failures:1,dropped:3,last_success:'today'}),/not a receipt/);
+  assert.match(copy.deliveryText('SIEM',{state:'degraded',failures:1,dropped:3}),/failures 1 · dropped 3/);
+  assert.equal(element('nt_allow_http').checked,true);
+});
+
+test('IPv6 limiter exceptions are serialized only when explicitly supplied', () => {
+  const {copy,element}=consoleHarness();
+  element('l7_ipv6_prefix').value='';assert.equal(copy.collectL7Abuse().ipv6_prefix_length,undefined);
+  element('l7_ipv6_prefix').value='128';assert.equal(copy.collectL7Abuse().ipv6_prefix_length,128);
+});
+
 const html = readFileSync(new URL('../../static/admin.html', import.meta.url), 'utf8');
 const script = html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/i)[1];
 
@@ -39,7 +57,7 @@ function consoleHarness(fixtures = {}) {
       policyCard, loadAPISecurity, loadDoctor, collectL7Abuse, collectCIDRPolicy,
       configChanges, changeTable, stableConfig, affectedSites, validListen,
       validBackend, buildWizardSite, pageContext, pageErrors, pageRecord,
-      attentionItems, api, loadIndependent, uxState };
+      attentionItems, api, loadIndependent, uxState, fillNotify, collectNotify, deliveryText };
   `;
   assert.equal((script.match(/  resume\(\);/g) || []).length, 1);
   vm.runInContext(script.replace('  resume();', exports + '\n  resume();'), context);

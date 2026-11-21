@@ -499,6 +499,8 @@ func (a *adminServer) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		"ha":                  a.srv.ha.status(),
 		"ha_token_set":        rt.cfg.HA.PeerToken != "",
 		"notify_unread":       a.srv.notify.unreadCount(),
+		"webhook_delivery":    a.srv.notify.webhookDeliveryStats(),
+		"syslog_delivery":     a.srv.syslog.deliveryStats(),
 	})
 }
 

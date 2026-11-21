@@ -102,8 +102,9 @@ func TestL7AbuseStateIsBoundedPerShard(t *testing.T) {
 	attempted := 0
 	admitted := 0
 	for n := 0; attempted < l7AbuseMaxEntriesPerShard+64; n++ {
-		identity := fmt.Sprintf("2001:db8::%x", n)
-		key := abuseClientKey{site: "site-a", identity: identity}
+		// Distinct /64 networks, not host rotations in one /64.
+		identity := fmt.Sprintf("2001:db8:%x:%x::1", n>>16, n&65535)
+		key := abuseClientKey{site: "site-a", identity: c.limiterIdentity(identity)}
 		if l7AbuseShardIndex(key) != targetShard {
 			continue
 		}

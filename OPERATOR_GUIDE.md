@@ -1,5 +1,42 @@
 # WAF console operating guide
 
+## 2026-11-19 — Traffic limits and delivery safety
+
+Traffic limits group IPv6 clients by /64 unless you explicitly enter another
+prefix in Policies (64..128). Users sharing that network also share an allowance;
+/128 restores separate addresses but allows address rotation. HTTP overflow
+allowances are isolated per site; TLS overflow is per public listener. This
+reduces cross-site interference, not all same-site lockout or distributed attacks.
+Normal client-table capacity is still shared and bounded. Saturation on one
+site can move new visitors on another site into that site's own aggregate
+overflow allowance, though the attack cannot consume that allowance directly.
+
+In Setup / AI, enable repeated-attack notifications, select a minimum rule-match
+severity, event threshold and period. The default is 10 events / 60 seconds /
+Critical. Each site gets at most one alert per period when either the match
+count or WAF-block count reaches the threshold. Matches are not unique requests
+or necessarily blocks. Applications'
+own error responses do not count as WAF blocks. Notifications can feed a webhook,
+but are not a durable ticketing queue and are reset on restart.
+
+Webhook URLs require HTTPS and public addresses. Internal destinations and HTTP
+each need their own explicit exception. Redirects are refused; DNS addresses
+are checked at connection time and the checked IP is used directly. Metadata,
+link-local and other special addresses remain blocked. Old HTTP/internal URLs
+need adjustment before starting/applying this version; exceptions are not granted
+automatically. HTTPS alone is not SSRF protection.
+
+Delivery panels show active transport observations, not draft settings: last
+success/failure, failures, drops and pending messages. Enabled is not verified;
+old observations become stale and changing settings clears endpoint verification.
+Successful UDP/TCP writes or webhook 2xx responses are not proof of SIEM indexing
+or ticket creation. Counters are process-lifetime; webhook failures count attempts,
+while its drops count queue saturation or obsolete jobs. Syslog drops additionally
+include failed writes/dials and queued entries discarded while disabled.
+
+Notification and syslog settings are shared with the HA peer; each node retains
+its own stored webhook URL. No SOC-reader off-switch was added in this update.
+
 Use the console to connect your sites to application servers, choose protection
 settings, and review security events. The console keeps its existing English
 language; labels describe the action or result you can expect.

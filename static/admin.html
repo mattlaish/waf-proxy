@@ -428,6 +428,8 @@
     <div class="grid2">
       <div>
         <div class="eyebrow">Request and connection limits</div>
+        <div class="field"><label>IPv6 clients share a limit by network prefix</label><input id="l7_ipv6_prefix" type="number" min="64" max="128" placeholder="64 (default)"></div>
+        <div class="hint">Default /64 groups rotating addresses but also shares limits between legitimate users on that network. /128 explicitly restores per-address limits and allows address rotation. Overflow is isolated per site (TLS per listener), not a guarantee against same-site lockout or distributed attacks.</div>
         <label class="check"><input type="checkbox" id="l7_enabled"> Enable L7 abuse controls</label>
         <div class="row">
           <div class="field"><label>Requests per client per period</label><input type="number" id="l7_requests" min="0" max="10000000"></div>
@@ -741,6 +743,17 @@
           <div class="eyebrow">Notifications</div>
           <div class="field"><label>Webhook URL (optional)</label><input type="text" id="nt_webhook_url" spellcheck="false" placeholder="https://hooks.slack.com/..."></div>
           <div class="field"><label>Webhook format</label><select id="nt_webhook_kind"><option value="slack">Slack / Teams text</option><option value="generic">Generic JSON</option></select></div>
+          <div class="field check"><input type="checkbox" id="nt_allow_private"><label for="nt_allow_private">Allow private-network / loopback webhook destinations (explicit exception)</label></div>
+          <div class="field check"><input type="checkbox" id="nt_allow_http"><label for="nt_allow_http">Allow unencrypted HTTP webhook delivery (insecure exception)</label></div>
+          <div class="hint">HTTPS and public destinations are required by default. DNS answers are checked when connecting; redirects are refused. Link-local/metadata addresses remain forbidden. Existing internal or HTTP hooks need explicit exceptions before Apply.</div>
+          <div class="field check"><input type="checkbox" id="nt_on_attack"><label for="nt_on_attack">Alert on repeated high-severity rule matches or WAF blocks</label></div>
+          <div class="row3">
+            <div class="field"><label>Events before an alert</label><input type="number" id="nt_attack_threshold" min="1" max="1000000"></div>
+            <div class="field"><label>Alert period (seconds)</label><input type="number" id="nt_attack_window" min="1" max="86400"></div>
+            <div class="field"><label>Minimum rule-match severity</label><select id="nt_attack_severity"><option>EMERGENCY</option><option>ALERT</option><option>CRITICAL</option><option>ERROR</option><option>WARNING</option><option>NOTICE</option><option>INFO</option><option>DEBUG</option></select></div>
+          </div>
+          <div class="hint">One alert per site per period, triggered when either the match count or WAF block count reaches the threshold. Matches are not unique requests or necessarily blocks. WAF blocks exclude application-generated errors. Settings are copied to the HA peer; stored webhook URLs remain node-local. Alerts are not a durable ticket queue.</div>
+          <div class="strip" id="nt_delivery" role="status">Webhook delivery: not checked</div>
           <div class="field check"><input type="checkbox" id="nt_on_suggestion"><label for="nt_on_suggestion" style="margin:0">Protection suggestions</label></div>
           <div class="field check"><input type="checkbox" id="nt_on_ai_block"><label for="nt_on_ai_block" style="margin:0">AI blocks</label></div>
           <div class="field check"><input type="checkbox" id="nt_on_member_down"><label for="nt_on_member_down" style="margin:0">Application server unavailable</label></div>
@@ -754,6 +767,8 @@
 
     <section>
       <div class="eyebrow">Syslog forwarding to SIEM</div>
+      <div class="strip" id="sl_delivery" role="status">SIEM delivery: not checked</div>
+      <div class="hint">Enabled means configured, not reachable. A successful send is only a transport observation, not proof that the SIEM received or indexed it. Settings are copied to the HA peer.</div>
       <div class="grid2" style="gap:20px">
         <div>
           <div class="field check"><input type="checkbox" id="sl_enabled"><label for="sl_enabled" style="margin:0">Enable syslog forwarding</label></div>
@@ -1192,7 +1207,7 @@
     if (v==="policies") renderPolicies();
     if (v==="api") loadAPISecurity();
     if (v==="logs") pollLogs();
-    if (v==="setup"){ pollAI(); pollTLSAcceleration(); loadUpdate(); }
+    if (v==="setup"){ pollAI(); pollTLSAcceleration(); loadUpdate(); loadDeliveryHealth(); }
     if (v==="system") loadSystem();
     if (v==="users"){ loadWhoami(); loadUsers(); loadAudit(); }
     if (mapActive) pollMap();
@@ -1678,9 +1693,10 @@
   function fillTrafficControls(l7={}, cidr={}){
     $("l7_enabled").checked=!!l7.enabled; $("l7_requests").value=Number(l7.requests_per_window)||0; $("l7_window").value=Number(l7.window_seconds)||0;
     $("l7_concurrent").value=Number(l7.max_concurrent_connections)||0; $("l7_tls_handshakes").value=Number(l7.tls_handshake_per_window)||0;
+    $("l7_ipv6_prefix").value=l7.ipv6_prefix_length?String(l7.ipv6_prefix_length):"";
     $("cidr_enabled").checked=!!cidr.enabled; renderCIDRRules();
   }
-  function collectL7Abuse(){return {enabled:$("l7_enabled").checked,requests_per_window:Number($("l7_requests").value)||0,window_seconds:Number($("l7_window").value)||0,max_concurrent_connections:Number($("l7_concurrent").value)||0,tls_handshake_per_window:Number($("l7_tls_handshakes").value)||0};}
+  function collectL7Abuse(){const value={enabled:$("l7_enabled").checked,requests_per_window:Number($("l7_requests").value)||0,window_seconds:Number($("l7_window").value)||0,max_concurrent_connections:Number($("l7_concurrent").value)||0,tls_handshake_per_window:Number($("l7_tls_handshakes").value)||0};if(Number($("l7_ipv6_prefix").value))value.ipv6_prefix_length=Number($("l7_ipv6_prefix").value);return value;}
   function collectCIDRPolicy(){syncCIDRRules();return {enabled:$("cidr_enabled").checked,rules:cidrRules.map(r=>({name:r.name||"",cidr:r.cidr||"",action:r.action||"deny",priority:Number(r.priority)||0,reason:r.reason||"",expires_at:r.expires_at||""}))};}
   function renderCIDRRules(){
     const body=$("cidr_rules"); if(!body)return;
@@ -2559,6 +2575,8 @@
     nt=nt||{};
     $("nt_webhook_url").value=nt.webhook_url||"";
     $("nt_webhook_kind").value=nt.webhook_kind||"slack";
+    $("nt_allow_private").checked=!!nt.webhook_allow_private;$("nt_allow_http").checked=!!nt.webhook_allow_http;
+    $("nt_on_attack").checked=nt.on_attack!==false;$("nt_attack_threshold").value=nt.attack_threshold||10;$("nt_attack_window").value=nt.attack_window_seconds||60;$("nt_attack_severity").value=nt.attack_min_severity||"CRITICAL";
     $("nt_on_suggestion").checked=nt.on_suggestion!==false;
     $("nt_on_ai_block").checked=nt.on_ai_block!==false;
     $("nt_on_member_down").checked=nt.on_member_down!==false;
@@ -2567,6 +2585,8 @@
   }
   function collectNotify(){
     return { webhook_url:$("nt_webhook_url").value.trim(), webhook_kind:$("nt_webhook_kind").value,
+      webhook_allow_http:$("nt_allow_http").checked,webhook_allow_private:$("nt_allow_private").checked,on_attack:$("nt_on_attack").checked,
+      attack_threshold:Number($("nt_attack_threshold").value)||10,attack_window_seconds:Number($("nt_attack_window").value)||60,attack_min_severity:$("nt_attack_severity").value,
       on_suggestion:$("nt_on_suggestion").checked, on_ai_block:$("nt_on_ai_block").checked,
       on_member_down:$("nt_on_member_down").checked, on_sync:$("nt_on_sync").checked, on_peer:$("nt_on_peer").checked };
   }
@@ -2585,6 +2605,15 @@
   document.addEventListener("click",(e)=>{ if(bellOpen && !$("bellpanel").contains(e.target) && e.target!==$("bell")){ bellOpen=false; $("bellpanel").hidden=true; } });
   $("bellread").onclick=async()=>{ await api("/api/notifications/read",{method:"POST",body:JSON.stringify({all:true})}); loadBell(); };
   $("bellclear").onclick=async()=>{ await api("/api/notifications/dismiss",{method:"POST",body:JSON.stringify({all:true})}); loadBell(); };
+  function deliveryText(label, stats){
+    if(!stats||!stats.state)return label+": unavailable — delivery not verified";
+    const states={disabled:"Off",unverified:"Not verified",degraded:"Delivery failures",last_send_succeeded:"Last send succeeded (not a receipt)",stale:"Previous result is stale"};
+    return label+": "+(states[stats.state]||"Unknown")+" · last successful send "+(stats.last_success||"none")+" · last failure "+(stats.last_failure||"none")+" · failures "+Number(stats.failures||0)+" · dropped "+Number(stats.dropped||0)+" · pending "+Number(stats.queue_depth||0)+"/"+Number(stats.queue_capacity||0);
+  }
+  async function loadDeliveryHealth(){
+    try{const status=await api("/api/status");$("nt_delivery").textContent=deliveryText("Webhook",status.webhook_delivery);$("sl_delivery").textContent=deliveryText("SIEM",status.syslog_delivery);}
+    catch(e){$("nt_delivery").textContent="Webhook health unavailable — "+e.message;$("sl_delivery").textContent="SIEM health unavailable — "+e.message;}
+  }
   async function loadBell(){
     try{
       const r=await api("/api/notifications?limit=100");
@@ -3656,7 +3685,7 @@
     if(uxState.timersStarted)return;
     uxState.timersStarted=true;setInterval(poll,5000);
     setInterval(()=>{if(document.querySelector('.tab[data-view="pools"]').classList.contains("sel"))pollPools();},3000);
-    setInterval(()=>{if(document.querySelector('.tab[data-view="setup"]').classList.contains("sel")){pollAI();pollTLSAcceleration();}},4000);
+    setInterval(()=>{if(document.querySelector('.tab[data-view="setup"]').classList.contains("sel")){pollAI();pollTLSAcceleration();loadDeliveryHealth();}},4000);
     setInterval(pollLogs,3000);setInterval(pollHome,4000);
   }
   async function resume(){

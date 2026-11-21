@@ -1,5 +1,88 @@
 # AI Development Handoff
 
+## 2026-11-19 — Rate limiter, alert delivery and webhook security
+
+Approved report-driven security changes in the fixed source root
+`C:\Users\mattlai\Projects\waf-proxy`; no Git operations, relocation,
+production changes, dependency edits, or archive regeneration.
+
+- L7 HTTP/TLS identities default to IPv6 /64 aggregation, canonicalize mapped
+  IPv4, and ignore host ports/zones for limiter keys only. Config
+  `l7_abuse.ipv6_prefix_length` accepts 0 (default /64) or 64..128. /128 is an
+  explicit rotation-vs-shared-network trade-off, not a recommended bypass fix.
+  Overflow is now one HTTP bucket per configured site / TLS bucket per listener
+  across all shards. Retained overflow states are capped at 8192; never evicted
+  to mint fresh tokens. Capacity exhaustion refuses new scopes. Known client
+  entries remain bounded and cannot be evicted while recently active.
+  Normal table capacity remains globally bounded: one site's saturation may
+  force another's new visitors into that site's aggregate overflow bucket.
+  Overflow allowance/concurrency isolation does not promise fair per-client
+  admission or eliminate this indirect shared-capacity pressure.
+- Notifications add `on_attack`, `attack_threshold` (0 defaults to 10),
+  `attack_window_seconds` (0 defaults to 60), and `attack_min_severity`
+  (default CRITICAL). Matching severity or higher is counted; WAF block events
+  have their own counter. Either threshold triggers one notification per site/period,
+  bounded 4096 aggregation states. Rules are event counts, not unique requests.
+  Coraza blocks use authoritative final transaction interruptions (including
+  response phases), not HTTP status; explicit WAF rejection helpers also mark
+  blocks. Application 403s are not blocks. TLS-handshake rejections have no
+  HTTP transaction and are not counted here. No request bodies, query strings,
+  client addresses or credentials enter the aggregate alert payload.
+- Webhooks require HTTPS and public destinations by default.
+  `notify.webhook_allow_http` and `notify.webhook_allow_private` are explicit,
+  separate insecure/internal exceptions. URL syntax, credentials/fragments and
+  literal addresses are checked at configuration validation and send time.
+  Every resolved DNS address is checked inside DialContext, then a validated
+  numeric address is dialled directly; environment proxies are disabled and
+  redirects are refused. Link-local/metadata, multicast, unspecified and
+  reserved/transition destinations remain forbidden even with private opt-in.
+  TLS certificate verification is unchanged. Invalid legacy HTTP/internal
+  webhook configs must be adjusted before startup/Apply; do not silently grant
+  exceptions during migration.
+- `GET /api/status` now exposes `syslog_delivery` and `webhook_delivery`;
+  notification API also retains webhook telemetry. Console Setup displays
+  last send/failure, failure count, queue depth/capacity and drops, with
+  disabled/unverified/degraded/stale/last-send-success states, never an
+  unqualified green "working" claim. Syslog drops include queue-full,
+  disabled queued entries and failed/short writes. Webhook failure counts are
+  per attempt; webhook dropped counts queue-full and obsolete queued jobs.
+  Endpoint/config changes invalidate observations and old in-flight completion
+  cannot verify a new endpoint. Counters are process-lifetime, not durable.
+  UDP/TCP send success does not prove SIEM receipt/indexing.
+- Current Notify/Syslog settings are HA-shared; webhook URL remains node-local.
+  Console explains this. No SOC/ticketing reader implementation was present in
+  this workspace: report-specific off-switch/auth ordering and SOC switch
+  isolation cannot be changed or claimed fixed. No replacement reader was
+  invented. Supply that work before closing report items 6–8.
+
+### Required residual-risk statements
+
+- **`/64`＋每站 overflow 不能完全消除 lockout**：能限制同 `/64` 輪換及跨站誤傷，但同站大量來源仍可能耗盡配額；也需處理同 `/64` 合法用戶共用額度的取捨。
+- **HTTPS 不等於防 SSRF**：目的地址、重新導向與 DNS 解析後的地址也要檢查；允許內部 webhook 應採明確例外。
+
+The underlying controls above implement the second statement; neither statement
+is a claim of zero exposure or complete distributed-DoS protection.
+
+Validation on this host using verified portable Go 1.26.9 (windows/amd64):
+targeted Go security/L7/notification tests **23 PASS** (13 new security tests,
+including actual Coraza inline-rule request/response tests); Node console
+**23/23 PASS**, intercepted Edge/Playwright workflows **32/32 PASS**; Python
+source gates **18/18 PASS** plus Go-backed route gate **13 checks / 140 routes
+PASS**. Root tidy-diff clean, native Windows build/vet and Linux cross-build PASS.
+These are not Linux runtime/CRS/hardware qualification.
+
+Full `go test ./...` was actually attempted on Windows and **FAILED**, including
+Unix-only permissions/path/fsync, concurrent rename, release executable bits
+and unavailable Linux command checks; do not relabel that run PASS or skip
+those assertions. Race was attempted but **BLOCKED**: CGO=0 is unsupported;
+with CGO=1 gcc is absent. WSL is not installed, so Linux full tests/race,
+live VM/HA/webhook/SIEM/CRS/VectorScan/HSM acceptance remain pending.
+State: **IMPLEMENTED_TESTING_DEFERRED**. No deployment or new release ZIP.
+
+Next: run exact-source Go 1.26.9 tidy/build/vet/full tests/race on Linux,
+real CRS and VM saturation/HA/delivery acceptance; bring the missing SOC
+work into this same root before fixing its auth/off-switch semantics.
+
 ## Current maintenance — 2026-10-29 — Console change bar, API section navigation and dashboard call to action
 
 Console-only usability slice (`static/admin.html`); no backend, API or

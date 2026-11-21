@@ -766,6 +766,9 @@ func (c Config) validate() error {
 	if err := c.Syslog.validate(); err != nil {
 		return err
 	}
+	if err := c.Notify.validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1684,7 +1687,11 @@ func (s *server) observeMatch(site, path string, ruleID int, client, severity st
 func (s *server) logWrap(siteName string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sw := &statusRecorder{ResponseWriter: w, code: 200}
+		r, signals := requestAttackSignals(r)
 		next.ServeHTTP(sw, r)
+		if signals.blocked {
+			s.notify.observeAttack(siteName, "block", "", time.Now().UTC())
+		}
 		// metrics: count the request, approximate in/out bytes
 		s.metrics.addReq()
 		if r.ContentLength > 0 {
@@ -1728,6 +1735,7 @@ func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode,
 				Data:     rule.Data(),
 			}
 			s.matches.add(rec)
+			s.notify.observeAttack(siteName, "match", rec.Severity, matchAt)
 			s.observeMatch(siteName, rec.URI, rec.RuleID, rec.Client, rec.Severity)
 			s.syslog.forwardMatch(rec)
 			if s.matchLogs != nil {

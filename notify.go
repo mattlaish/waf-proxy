@@ -25,8 +25,14 @@ import (
 )
 
 type NotifyConfig struct {
-	WebhookURL  string `json:"webhook_url,omitempty"`
-	WebhookKind string `json:"webhook_kind,omitempty"` // slack | generic
+	WebhookURL          string `json:"webhook_url,omitempty"`
+	WebhookKind         string `json:"webhook_kind,omitempty"` // slack | generic
+	WebhookAllowHTTP    bool   `json:"webhook_allow_http,omitempty"`
+	WebhookAllowPrivate bool   `json:"webhook_allow_private,omitempty"`
+	OnAttack            bool   `json:"on_attack"`
+	AttackThreshold     int    `json:"attack_threshold,omitempty"`
+	AttackWindowSeconds int    `json:"attack_window_seconds,omitempty"`
+	AttackMinSeverity   string `json:"attack_min_severity,omitempty"`
 	// event toggles
 	OnSuggestion bool `json:"on_suggestion"`
 	OnAIBlock    bool `json:"on_ai_block"`
@@ -53,7 +59,8 @@ func preserveNotifySecrets(cur Config, next *Config) {
 
 func defaultNotifyConfig() NotifyConfig {
 	return NotifyConfig{
-		WebhookKind:  "slack",
+		WebhookKind: "slack",
+		OnAttack:    true, AttackThreshold: 10, AttackWindowSeconds: 60, AttackMinSeverity: "CRITICAL",
 		OnSuggestion: true, OnAIBlock: true, OnMemberDown: true, OnSync: true, OnPeer: true,
 	}
 }
@@ -66,6 +73,7 @@ const (
 	notifySync       = "sync"
 	notifyPeer       = "peer"
 	notifyInfo       = "info"
+	notifyAttack     = "attack"
 )
 
 type notification struct {
@@ -81,9 +89,10 @@ type notification struct {
 }
 
 type webhookJob struct {
-	url  string
-	kind string
-	item notification
+	url    string
+	kind   string
+	item   notification
+	policy NotifyConfig
 }
 
 const notificationDedupeMax = 4096
@@ -94,10 +103,11 @@ type notifier struct {
 	items          []notification
 	nextID         int64
 	cap            int
-	client         *http.Client
 	log            *slog.Logger
 	webhookQ       chan webhookJob
 	webhookDropped uint64
+	delivery       deliveryHealth
+	attacks        map[string]*attackWindow
 
 	// dedupe map + optional external sink (e.g. syslog)
 	dedupe map[string]time.Time
@@ -108,10 +118,10 @@ func newNotifier(log *slog.Logger) *notifier {
 	n := &notifier{
 		cfg:      defaultNotifyConfig(),
 		cap:      200,
-		client:   &http.Client{Timeout: 6 * time.Second},
 		log:      log,
 		dedupe:   map[string]time.Time{},
 		webhookQ: make(chan webhookJob, 256),
+		attacks:  make(map[string]*attackWindow),
 	}
 	for i := 0; i < 2; i++ {
 		go n.webhookWorker()
@@ -122,6 +132,10 @@ func newNotifier(log *slog.Logger) *notifier {
 func (n *notifier) configure(c NotifyConfig) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if c != n.cfg {
+		n.delivery.invalidate()
+		n.attacks = make(map[string]*attackWindow)
+	}
 	n.cfg = c
 }
 
@@ -129,6 +143,8 @@ func (n *notifier) enabledFor(kind string) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	switch kind {
+	case notifyAttack:
+		return n.cfg.OnAttack
 	case notifySuggestion:
 		return n.cfg.OnSuggestion
 	case notifyAIBlock:
@@ -180,6 +196,7 @@ func (n *notifier) push(kind, level, title, body, dedupeKey string, action strin
 	}
 	hook := n.cfg.WebhookURL
 	kindHook := n.cfg.WebhookKind
+	policy := n.cfg
 	sink := n.sink
 	n.mu.Unlock()
 
@@ -188,9 +205,10 @@ func (n *notifier) push(kind, level, title, body, dedupeKey string, action strin
 	}
 	if hook != "" {
 		select {
-		case n.webhookQ <- webhookJob{url: hook, kind: kindHook, item: item}:
+		case n.webhookQ <- webhookJob{url: hook, kind: kindHook, item: item, policy: policy}:
 		default:
 			atomic.AddUint64(&n.webhookDropped, 1)
+			n.delivery.record(false)
 			n.log.Warn("notification webhook queue full; dropping delivery")
 		}
 	}
@@ -198,8 +216,23 @@ func (n *notifier) push(kind, level, title, body, dedupeKey string, action strin
 
 func (n *notifier) webhookWorker() {
 	for job := range n.webhookQ {
+		n.mu.Lock()
+		current := n.cfg == job.policy
+		generation := n.delivery.current()
+		n.mu.Unlock()
+		if !current {
+			atomic.AddUint64(&n.webhookDropped, 1)
+			continue
+		}
 		for attempt := 0; attempt < 3; attempt++ {
-			retry, err := n.sendWebhook(job.url, job.kind, job.item)
+			n.mu.Lock()
+			current = n.cfg == job.policy
+			n.mu.Unlock()
+			if !current {
+				atomic.AddUint64(&n.webhookDropped, 1)
+				break
+			}
+			retry, err := n.sendWebhook(job.url, job.kind, job.item, job.policy, generation)
 			if err == nil || !retry {
 				break
 			}
@@ -208,7 +241,16 @@ func (n *notifier) webhookWorker() {
 	}
 }
 
-func (n *notifier) sendWebhook(url, kind string, item notification) (bool, error) {
+func (n *notifier) sendWebhook(url, kind string, item notification, policy NotifyConfig, versions ...uint64) (bool, error) {
+	success := false
+	generation := n.delivery.current()
+	if len(versions) > 0 {
+		generation = versions[0]
+	}
+	defer func() { n.delivery.recordAt(generation, success) }()
+	if err := validateWebhookURL(url, policy); err != nil {
+		return false, err
+	}
 	var payload any
 	text := "[" + item.Level + "] " + item.Title + " — " + item.Body
 	if kind == "slack" {
@@ -227,13 +269,16 @@ func (n *notifier) sendWebhook(url, kind string, item notification) (bool, error
 		return false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := n.client.Do(req)
+	client, transport := webhookClient(policy)
+	defer transport.CloseIdleConnections()
+	resp, err := client.Do(req)
 	if err != nil {
-		n.log.Warn("notify webhook failed", "err", err)
+		n.log.Warn("notify webhook failed") // URL/query may contain credentials.
 		return true, err
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		success = true
 		return false, nil
 	}
 	err = fmt.Errorf("webhook HTTP %d", resp.StatusCode)
@@ -271,11 +316,10 @@ func (n *notifier) webhookDeliveryStats() map[string]any {
 	if n == nil || n.webhookQ == nil {
 		return map[string]any{"queue_depth": 0, "queue_capacity": 0, "dropped": uint64(0)}
 	}
-	return map[string]any{
-		"queue_depth":    len(n.webhookQ),
-		"queue_capacity": cap(n.webhookQ),
-		"dropped":        atomic.LoadUint64(&n.webhookDropped),
-	}
+	n.mu.Lock()
+	enabled := n.cfg.WebhookURL != ""
+	n.mu.Unlock()
+	return n.delivery.snapshot(enabled, len(n.webhookQ), cap(n.webhookQ), atomic.LoadUint64(&n.webhookDropped))
 }
 
 func (n *notifier) markRead(id int64, all bool) {

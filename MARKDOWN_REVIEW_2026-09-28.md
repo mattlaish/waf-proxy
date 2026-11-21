@@ -1,5 +1,15 @@
 # Markdown Review Ledger — 2026-09-28
 
+## 2026-11-19 security-report changes
+
+Synchronized current canonical handover, index, patch, operator/release/install
+and testing/roadmap/manifest documents for the approved limiter, alerts, SSRF and
+delivery-health changes. Appended results to DEVELOPMENT.md and TESTING_RESULTS.md;
+historical evidence remains unchanged. No new Markdown files. Explicitly retain
+the /64 shared-user / same-site lockout trade-off, internal-hook exceptions,
+missing SOC source, Windows full-suite FAIL, blocked race and pending Linux/live
+acceptance. Source/static/browser checks do not close those qualifications.
+
 ## 2026-10-24 console workflow follow-up
 
 Re-reviewed and synchronized AI_HANDOFF.md, patch.md, DOCUMENTATION_INDEX.md,
