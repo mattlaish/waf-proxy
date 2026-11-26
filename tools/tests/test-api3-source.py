@@ -78,9 +78,12 @@ require('matchedSites' in api3 and 'UNDECLARED_ENDPOINT' in api3, 'undeclared-en
 require('authObservationFamilies' in api3 and 'anonymous' in api3, 'OpenAPI auth OR/AND/anonymous semantics hardening missing')
 require('RequestMediaTypes' in api3 and 'observedContentTypeMatches' in api3, 'multi-content-type contract drift support missing')
 
-require('github.com/goccy/go-yaml v1.18.0' in gomod, 'OpenAPI YAML parser dependency missing from go.mod')
+# Any version: the parser must stay a direct dependency (checked below), but an
+# exact pin here would block security upgrades pulled in by Coraza.
+require(re.search(r'(?m)^\s*github\.com/goccy/go-yaml v1\.\d+\.\d+\s*$', gomod) is not None, 'OpenAPI YAML parser dependency missing from go.mod')
 # Direct dependency: it must appear before the second require block and must not be marked indirect.
-yaml_line = next((line for line in gomod.splitlines() if 'github.com/goccy/go-yaml v1.18.0' in line), '')
+yaml_line = next((line for line in gomod.splitlines() if 'github.com/goccy/go-yaml v' in line), '')
+require(yaml_line != '', 'goccy/go-yaml requirement line not found')
 require('// indirect' not in yaml_line, 'goccy/go-yaml is used directly but still marked indirect')
 
 # Security boundary: API-3 source must not invoke known blocking/enforcement entry points.

@@ -185,9 +185,20 @@ func TestSecurityBlockAlertsExcludeApplicationResponses(t *testing.T) {
 	if signals.blocked {
 		t.Fatal("application 403 misclassified")
 	}
+	// Rate limiting and IP allowlists are access controls, not attack evidence.
 	writeBlockResponse(httptest.NewRecorder(), r, 429, "l7_abuse_limit", true)
-	if !signals.blocked {
-		t.Fatal("explicit WAF block missed")
+	writeBlockResponse(httptest.NewRecorder(), r, 403, "cidr_policy_denied:office", false)
+	if blocked, _ := signals.snapshot(); blocked {
+		t.Fatal("rate limit or IP allowlist response counted as an attack block")
+	}
+	// An issuer/JWKS outage is operational, not attack evidence.
+	writeIdentityReject(httptest.NewRecorder(), r, http.StatusServiceUnavailable)
+	if blocked, _ := signals.snapshot(); blocked {
+		t.Fatal("identity issuer outage counted as an attack block")
+	}
+	writeIdentityReject(httptest.NewRecorder(), r, http.StatusForbidden)
+	if blocked, _ := signals.snapshot(); !blocked {
+		t.Fatal("API identity policy block missed")
 	}
 }
 

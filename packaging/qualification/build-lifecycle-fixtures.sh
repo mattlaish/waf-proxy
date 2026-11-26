@@ -31,7 +31,7 @@ make_tree(){
   python3 - "$bin/BUILD_PROVENANCE.json" "$version" <<'PY'
 import json, pathlib, sys
 out,version=sys.argv[1:]
-obj={"schema_version":2,"version":version,"artifact_type":"PORTABLE_BINARY","build_variant":"portable-coraza","go_version":"1.25.0","coraza_version":"v3.7.0","vectorscan_version":"not-linked","hsm_pkcs11_enabled":False,"binaries":[]}
+obj={"schema_version":2,"version":version,"artifact_type":"PORTABLE_BINARY","build_variant":"portable-coraza","go_version":"1.25.0","coraza_version":"v3.8.1","vectorscan_version":"not-linked","hsm_pkcs11_enabled":False,"binaries":[]}
 pathlib.Path(out).write_text(json.dumps(obj,sort_keys=True)+"\n")
 PY
   if [ "$changed" = 1 ]; then

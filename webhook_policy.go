@@ -33,6 +33,55 @@ func validateWebhookURL(raw string, policy NotifyConfig) error {
 	return nil
 }
 
+// validateWebhookProxyURL accepts an optional http(s) egress proxy address.
+// Credentials are refused so the value is never a secret.
+func validateWebhookProxyURL(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil ||
+		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("notify.webhook_proxy_url must be http:// or https:// host[:port] without credentials or path")
+	}
+	return nil
+}
+
+// checkWebhookDestination applies the destination address policy by resolving
+// the webhook host. It is used when a proxy dials on our behalf; the proxy
+// resolves the name again, so this narrows but cannot fully close that gap.
+func checkWebhookDestination(ctx context.Context, host string, policy NotifyConfig, lookup func(context.Context, string, string) ([]netip.Addr, error)) error {
+	if ip, err := netip.ParseAddr(host); err == nil {
+		if !webhookIPAllowed(ip, policy.WebhookAllowPrivate) {
+			return errors.New("webhook destination is not allowed")
+		}
+		return nil
+	}
+	ips, err := lookup(ctx, "ip", host)
+	if err != nil || len(ips) == 0 {
+		return errors.New("webhook DNS resolution failed")
+	}
+	for _, ip := range ips {
+		if !webhookIPAllowed(ip, policy.WebhookAllowPrivate) {
+			return errors.New("webhook DNS resolved to a forbidden address")
+		}
+	}
+	return nil
+}
+
+type webhookDestinationGuard struct {
+	next   http.RoundTripper
+	policy NotifyConfig
+	lookup func(context.Context, string, string) ([]netip.Addr, error)
+}
+
+func (g webhookDestinationGuard) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := checkWebhookDestination(req.Context(), req.URL.Hostname(), g.policy, g.lookup); err != nil {
+		return nil, err
+	}
+	return g.next.RoundTrip(req)
+}
+
 func webhookIPAllowed(ip netip.Addr, allowPrivate bool) bool {
 	ip = ip.Unmap()
 	if !ip.IsValid() || ip.Zone() != "" || !ip.IsGlobalUnicast() && !ip.IsLoopback() {
@@ -87,7 +136,15 @@ func webhookClientWithNetwork(policy NotifyConfig, lookup func(context.Context, 
 		}
 		return nil, errors.New("webhook connection failed")
 	}
-	client := &http.Client{Timeout: 6 * time.Second, Transport: transport,
+	var roundTripper http.RoundTripper = transport
+	if proxy, err := url.Parse(policy.WebhookProxyURL); policy.WebhookProxyURL != "" && err == nil {
+		// Through a proxy we dial only the operator-chosen proxy (which may be
+		// on a private network) and check the destination before each send.
+		transport.Proxy = http.ProxyURL(proxy)
+		transport.DialContext = dial
+		roundTripper = webhookDestinationGuard{next: transport, policy: policy, lookup: lookup}
+	}
+	client := &http.Client{Timeout: 6 * time.Second, Transport: roundTripper,
 		// Never forward alert bodies or credentials to a redirected destination.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}

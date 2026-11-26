@@ -1693,8 +1693,12 @@ func (s *server) logWrap(siteName string, next http.Handler) http.Handler {
 		sw := &statusRecorder{ResponseWriter: w, code: 200}
 		r, signals := requestAttackSignals(r)
 		next.ServeHTTP(sw, r)
-		if signals.blocked {
+		// One observation per request: blocked requests count as blocks, other
+		// requests by their highest matched rule severity.
+		if blocked, severity := signals.snapshot(); blocked {
 			s.notify.observeAttack(siteName, "block", "", time.Now().UTC())
+		} else if severity != "" {
+			s.notify.observeAttack(siteName, "match", severity, time.Now().UTC())
 		}
 		// metrics: count the request, approximate in/out bytes
 		s.metrics.addReq()
@@ -1740,7 +1744,6 @@ func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode,
 				Data:       rule.Data(),
 			}
 			s.matches.add(rec)
-			s.notify.observeAttack(siteName, "match", rec.Severity, matchAt)
 			s.observeMatch(siteName, rec.URI, rec.RuleID, rec.Client, rec.Severity)
 			s.syslog.forwardMatch(rec)
 			if s.matchLogs != nil {

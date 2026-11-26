@@ -23,7 +23,7 @@ cat > "$BIN/BUILD_PROVENANCE.json" <<'JSON'
   "artifact_type": "PORTABLE_BINARY",
   "build_variant": "portable-coraza",
   "go_version": "1.25.0",
-  "coraza_version": "v3.7.0",
+  "coraza_version": "v3.8.1",
   "vectorscan_version": "not-linked",
   "hsm_pkcs11_enabled": false,
   "binaries": []

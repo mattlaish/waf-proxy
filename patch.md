@@ -2016,3 +2016,1496 @@ index ed5b191..136f076 100644
  test('reviewer and viewer cannot discard the shared saved draft', async () => {
    for (const role of ['reviewer', 'viewer']) {
      const s = await session({ role });
+
+
+## Review fixes: CI, Coraza v3.8.1, attack alerts, delivery health — 2026-11-26
+
+Base `e371979`. See AI_HANDOFF.md (2026-11-26). Source/test/CI diff (documentation excluded):
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index a4acb29..51ffe8d 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -12,7 +12,7 @@ permissions:
+ jobs:
+   build-test:
+     name: build, vet, test (portable)
+-    runs-on: ubuntu-latest
++    runs-on: ubuntu-24.04
+     steps:
+       - uses: actions/checkout@v4
+ 
+@@ -28,16 +28,6 @@ jobs:
+       - name: Console startup, product wording, and unchanged setting values
+         run: node --test tools/tests/test-console-copy.mjs
+ 
+-      - name: Install pinned Playwright + Chromium for console workflow tests
+-        run: |
+-          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+-          npm init -y >/dev/null
+-          npm install --no-audit --no-fund playwright@1.56.1
+-          npx playwright install --with-deps chromium
+-
+-      - name: Console browser workflows (draft/apply, guided setup, permissions, keyboard)
+-        run: WAF_PLAYWRIGHT_MODULE="$RUNNER_TEMP/pw/node_modules/playwright" node --test tools/tests/test-console-workflows.mjs
+-
+       - name: dependency-free root source-shape gate
+         run: ./tools/tests/test-go-root-shape.sh
+ 
+@@ -105,9 +95,28 @@ jobs:
+       - name: real Coraza transaction truth gate
+         run: GOTOOLCHAIN=local CGO_ENABLED=1 go test -tags realcoraza -run 'TestRealCoraza' ./...
+ 
++  # Browser workflow tests run in their own job so a browser-install problem can
++  # never skip the Go build, test and source gates above.
++  console-browser:
++    name: console browser workflows
++    runs-on: ubuntu-24.04
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: '22'
++      - name: Install pinned Playwright + Chromium
++        run: |
++          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
++          npm init -y >/dev/null
++          npm install --no-audit --no-fund playwright@1.56.1
++          npx playwright install --with-deps chromium
++      - name: Console browser workflows (draft/apply, guided setup, permissions, keyboard)
++        run: WAF_PLAYWRIGHT_MODULE="$RUNNER_TEMP/pw/node_modules/playwright" node --test tools/tests/test-console-workflows.mjs
++
+   govulncheck:
+     name: dependency vulnerabilities
+-    runs-on: ubuntu-latest
++    runs-on: ubuntu-24.04
+     steps:
+       - uses: actions/checkout@v4
+       - uses: actions/setup-go@v5
+diff --git a/admin.go b/admin.go
+index 171ed02..7b0e0e4 100644
+--- a/admin.go
++++ b/admin.go
+@@ -506,6 +506,7 @@ func (a *adminServer) handleStatus(w http.ResponseWriter, _ *http.Request) {
+ 		"notify_unread":       a.srv.notify.unreadCount(),
+ 		"webhook_delivery":    a.srv.notify.webhookDeliveryStats(),
+ 		"syslog_delivery":     a.srv.syslog.deliveryStats(),
++		"l7_saturation":       rt.l7Abuse.saturationStats(),
+ 	})
+ }
+ 
+diff --git a/attack_alerts.go b/attack_alerts.go
+index d3d2750..c315eb2 100644
+--- a/attack_alerts.go
++++ b/attack_alerts.go
+@@ -6,32 +6,73 @@ import (
+ 	"fmt"
+ 	"net/http"
+ 	"strings"
++	"sync"
+ 	"time"
+ )
+ 
+ type attackSignalKey struct{}
++
++// attackSignals is per-request evidence gathered while the request is served:
++// whether a security control blocked it, and the highest severity of the WAF
++// rules it matched. It lets the alert engine count requests, not rule hits.
+ type attackSignals struct {
+-	blocked bool
++	mu       sync.Mutex
++	blocked  bool
++	severity string // highest matched rule severity; "" when nothing matched
+ }
+ 
++// markAttackBlock records a block by a security control (WAF interruption or
++// API schema/identity/GraphQL enforcement). Rate limiting and IP allowlists are
++// access controls and deliberately do not call this.
+ func markAttackBlock(r *http.Request) {
++	if r == nil {
++		return
++	}
+ 	if signals, ok := r.Context().Value(attackSignalKey{}).(*attackSignals); ok {
++		signals.mu.Lock()
+ 		signals.blocked = true
++		signals.mu.Unlock()
++	}
++}
++
++func (a *attackSignals) noteSeverity(severity string) {
++	rank := severityRank(severity)
++	if a == nil || rank < 0 {
++		return
++	}
++	a.mu.Lock()
++	defer a.mu.Unlock()
++	if current := severityRank(a.severity); current < 0 || rank < current {
++		a.severity = strings.ToUpper(severity)
+ 	}
+ }
+ 
++func (a *attackSignals) snapshot() (blocked bool, severity string) {
++	a.mu.Lock()
++	defer a.mu.Unlock()
++	return a.blocked, a.severity
++}
++
+ func requestAttackSignals(r *http.Request) (*http.Request, *attackSignals) {
+ 	signals := &attackSignals{}
+ 	return r.WithContext(context.WithValue(r.Context(), attackSignalKey{}, signals)), signals
+ }
+ 
++// attackWindow tracks one site. Requests are counted inside a window; once an
++// alert fires, the site is in an incident until activity stops for one full
++// window, with at most one follow-up per attackReminderInterval while it lasts.
+ type attackWindow struct {
+-	start   time.Time
+-	matches int
+-	blocks  int
+-	emitted bool
++	start         time.Time
++	requests      int
++	blocks        int
++	lastEvent     time.Time
++	incidentStart time.Time
++	alertedAt     time.Time
++	incidentTotal int
+ }
+ 
++const attackReminderInterval = time.Hour
++
+ func severityRank(value string) int {
+ 	switch strings.ToUpper(value) {
+ 	case "EMERGENCY":
+@@ -58,6 +99,9 @@ func (c NotifyConfig) validate() error {
+ 	if err := validateWebhookURL(c.WebhookURL, c); err != nil {
+ 		return err
+ 	}
++	if err := validateWebhookProxyURL(c.WebhookProxyURL); err != nil {
++		return err
++	}
+ 	if c.AttackThreshold < 0 || c.AttackThreshold > 1000000 {
+ 		return errors.New("notify.attack_threshold must be 0..1000000 (0 defaults to 10)")
+ 	}
+@@ -70,18 +114,20 @@ func (c NotifyConfig) validate() error {
+ 	return nil
+ }
+ 
+-// Counts matches and blocks independently, with one emitted alert per site/window.
+-// There are no client/URL/rule-ID keys, raw request values or network calls here.
++// observeAttack records one suspicious request for a site: kind "block" when
++// a security control blocked it, or "match" with the request's highest matched
++// rule severity. It is called at most once per request, so the threshold
++// counts requests, not rule hits. No client, URL, rule ID or request content
++// is kept, and nothing here makes network calls.
+ func (n *notifier) observeAttack(site, kind, severity string, now time.Time) {
+-	if n == nil {
++	if n == nil || !n.attackOn.Load() {
+ 		return
+ 	}
+-	n.mu.Lock()
+-	cfg := n.cfg
+-	if !cfg.OnAttack {
+-		n.mu.Unlock()
++	if kind != "match" && kind != "block" {
+ 		return
+ 	}
++	n.mu.Lock()
++	cfg := n.cfg
+ 	minimum := cfg.AttackMinSeverity
+ 	if minimum == "" {
+ 		minimum = "CRITICAL"
+@@ -90,10 +136,6 @@ func (n *notifier) observeAttack(site, kind, severity string, now time.Time) {
+ 		n.mu.Unlock()
+ 		return
+ 	}
+-	if kind != "match" && kind != "block" {
+-		n.mu.Unlock()
+-		return
+-	}
+ 	window := time.Duration(cfg.AttackWindowSeconds) * time.Second
+ 	if window == 0 {
+ 		window = time.Minute
+@@ -105,11 +147,10 @@ func (n *notifier) observeAttack(site, kind, severity string, now time.Time) {
+ 	if n.attacks == nil {
+ 		n.attacks = make(map[string]*attackWindow)
+ 	}
+-	key := site
+-	state := n.attacks[key]
++	state := n.attacks[site]
+ 	if state == nil {
+ 		for k, old := range n.attacks {
+-			if !now.Before(old.start.Add(window)) {
++			if !now.Before(old.lastEvent.Add(window)) {
+ 				delete(n.attacks, k)
+ 			}
+ 		}
+@@ -117,34 +158,60 @@ func (n *notifier) observeAttack(site, kind, severity string, now time.Time) {
+ 			n.mu.Unlock()
+ 			return
+ 		}
+-		state = &attackWindow{start: now}
+-		n.attacks[key] = state
+-	}
+-	if !now.Before(state.start.Add(window)) {
+-		*state = attackWindow{start: now}
++		state = &attackWindow{start: now, lastEvent: now}
++		n.attacks[site] = state
+ 	}
+-	if state.emitted {
++
++	// An open incident ends after one full window without suspicious requests.
++	if !state.alertedAt.IsZero() && !now.Before(state.lastEvent.Add(window)) {
++		*state = attackWindow{start: now, lastEvent: now}
++	}
++	if !state.alertedAt.IsZero() {
++		state.lastEvent = now
++		state.incidentTotal++
++		if kind == "block" {
++			state.blocks++
++		}
++		if now.Sub(state.alertedAt) < attackReminderInterval {
++			n.mu.Unlock()
++			return
++		}
++		state.alertedAt = now
++		total, blocks, startedAt := state.incidentTotal, state.blocks, state.incidentStart
+ 		n.mu.Unlock()
++		n.pushContext(notifyAttack, "alert", "WAF activity still ongoing",
++			fmt.Sprintf("Site %s: %d suspicious requests (%d blocked) since this incident started; matches at or above %s. Matches are not necessarily blocked requests.", site, total, blocks, minimum), "", "", nil,
++			&notificationContext{Site: site, Kind: attackContextKind(blocks), StartedAt: startedAt.UTC(), EndedAt: now.UTC()})
+ 		return
+ 	}
+-	count := 0
+-	if kind == "match" {
+-		state.matches++
+-		count = state.matches
+-	} else {
++
++	if !now.Before(state.start.Add(window)) {
++		*state = attackWindow{start: now}
++	}
++	state.lastEvent = now
++	state.requests++
++	if kind == "block" {
+ 		state.blocks++
+-		count = state.blocks
+ 	}
+-	if count < threshold {
++	if state.requests < threshold {
+ 		n.mu.Unlock()
+ 		return
+ 	}
+-	state.emitted = true
+-	startedAt := state.start
++	state.alertedAt = now
++	state.incidentStart = state.start
++	state.incidentTotal = state.requests
++	requests, blocks, startedAt := state.requests, state.blocks, state.start
+ 	n.mu.Unlock()
+-	// Window-level suppression above is authoritative; do not use the generic
+-	// dedupe map which can shorten a deliberately configured alert window.
++	// Incident-level suppression above is authoritative; do not use the generic
++	// dedupe map, which could shorten a deliberately configured window.
+ 	n.pushContext(notifyAttack, "alert", "WAF activity threshold reached",
+-		fmt.Sprintf("Site %s: %d %s events in %ds; minimum match severity %s. Matches are not necessarily blocked requests.", site, count, kind, int(window.Seconds()), minimum), "", "", nil,
+-		&notificationContext{Site: site, Kind: kind, StartedAt: startedAt.UTC(), EndedAt: now.UTC()})
++		fmt.Sprintf("Site %s: %d suspicious requests in %ds (%d blocked); matches at or above %s. One alert per incident; a follow-up is sent hourly while it continues. Matches are not necessarily blocked requests.", site, requests, int(window.Seconds()), blocks, minimum), "", "", nil,
++		&notificationContext{Site: site, Kind: attackContextKind(blocks), StartedAt: startedAt.UTC(), EndedAt: now.UTC()})
++}
++
++func attackContextKind(blocks int) string {
++	if blocks > 0 {
++		return "block"
++	}
++	return "match"
+ }
+diff --git a/block_response.go b/block_response.go
+index 1c8130f..9460395 100644
+--- a/block_response.go
++++ b/block_response.go
+@@ -35,9 +35,6 @@ func acceptsHTML(r *http.Request) bool {
+ }
+ 
+ func writeBlockResponse(w http.ResponseWriter, r *http.Request, status int, reason string, jsonMode bool) {
+-	if status >= 400 && status < 500 {
+-		markAttackBlock(r)
+-	}
+ 	id := requestCorrelationID(r)
+ 	if id != "" {
+ 		w.Header().Set("X-Request-ID", id)
+diff --git a/build.sh b/build.sh
+index 8ac5307..6aae7f1 100755
+--- a/build.sh
++++ b/build.sh
+@@ -163,7 +163,7 @@ links=[]
+ if "vectorscan" in variant: links.append("DYNAMIC_LIBHS_REQUIRED_AT_RUNTIME")
+ else: links.append("NO_LIBHS_LINK")
+ if hsm == "enabled": links.append("PKCS11_DLOPEN_RUNTIME_WHEN_CONFIGURED")
+-obj={"schema_version":2,"version":version,"commit":commit,"artifact_type":artifact_type,"build_variant":variant,"go_version":gov,"coraza_version":"v3.7.0","vectorscan_version":vs,"hsm_pkcs11_enabled":hsm=="enabled","linkage_expectation":";".join(links),"binaries":files}
++obj={"schema_version":2,"version":version,"commit":commit,"artifact_type":artifact_type,"build_variant":variant,"go_version":gov,"coraza_version":"v3.8.1","vectorscan_version":vs,"hsm_pkcs11_enabled":hsm=="enabled","linkage_expectation":";".join(links),"binaries":files}
+ pathlib.Path("BUILD_PROVENANCE.json").write_text(json.dumps(obj,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+ pathlib.Path("BUILD_SHA256SUMS.txt").write_text("".join(f"{x['sha256']}  {x['name']}\n" for x in files),encoding="utf-8")
+ PY2
+diff --git a/coraza_observer.go b/coraza_observer.go
+index 8c729d5..257bec8 100644
+--- a/coraza_observer.go
++++ b/coraza_observer.go
+@@ -68,9 +68,16 @@ func (t *observedCorazaTx) observe() {
+ 		// Use the authoritative interruption, not response status: an application
+ 		// 403 is not a WAF block; response-phase denies count as well as requests.
+ 		if in := t.Transaction.Interruption(); in != nil && t.attack != nil && (in.Action == "deny" || in.Action == "drop") {
++			t.attack.mu.Lock()
+ 			t.attack.blocked = true
++			t.attack.mu.Unlock()
+ 		}
+ 		matches := t.Transaction.MatchedRules()
++		if t.attack != nil {
++			for _, m := range matches {
++				t.attack.noteSeverity(m.Rule().Severity().String())
++			}
++		}
+ 		ids := make([]int, 0, len(matches))
+ 		seen := make(map[int]struct{}, len(matches))
+ 		for _, m := range matches {
+diff --git a/delivery_health.go b/delivery_health.go
+index e045ccf..6f68bca 100644
+--- a/delivery_health.go
++++ b/delivery_health.go
+@@ -3,11 +3,18 @@ package main
+ import (
+ 	"crypto/rand"
+ 	"encoding/hex"
++	"errors"
++	"net/url"
+ 	"strconv"
++	"strings"
+ 	"sync"
+ 	"time"
+ )
+ 
++// recentDropWindow is how long a dropped message keeps the delivery flagged
++// for review. A brief outage stops warning on its own once it is over.
++const recentDropWindow = time.Hour
++
+ // Transport observations, not a promise that a SIEM received/indexed a message.
+ type deliveryHealth struct {
+ 	mu          sync.Mutex
+@@ -15,10 +22,50 @@ type deliveryHealth struct {
+ 	failed      uint64
+ 	lastSuccess time.Time
+ 	lastFailure time.Time
++	lastError   string
++	lastDrop    time.Time
+ 	generation  uint64
+ 	epoch       string
+ }
+ 
++// deliveryErrorReason turns a delivery error into a short reason that is safe
++// to show and store: URL wrappers are removed because a webhook URL or its
++// query can carry credentials.
++func deliveryErrorReason(err error) string {
++	if err == nil {
++		return ""
++	}
++	var ue *url.Error
++	if errors.As(err, &ue) {
++		err = ue.Err
++	}
++	reason := err.Error()
++	if strings.Contains(reason, "://") {
++		reason = "request failed"
++	}
++	if len(reason) > 160 {
++		reason = reason[:160]
++	}
++	return reason
++}
++
++// fail records a failed delivery attempt with its reason.
++func (h *deliveryHealth) fail(generation uint64, err error) {
++	h.recordAt(generation, false)
++	h.mu.Lock()
++	defer h.mu.Unlock()
++	if generation == h.generation {
++		h.lastError = deliveryErrorReason(err)
++	}
++}
++
++// noteDrop records that a message was dropped (queue full, backoff, failure).
++func (h *deliveryHealth) noteDrop() {
++	h.mu.Lock()
++	defer h.mu.Unlock()
++	h.lastDrop = time.Now().UTC()
++}
++
+ // A process-specific nonce prevents a stale confirmation from matching another
+ // node/restart that happens to have the same numeric configuration generation.
+ func (h *deliveryHealth) configToken() string {
+@@ -50,6 +97,8 @@ func (h *deliveryHealth) invalidate() {
+ 	h.generation++
+ 	h.lastSuccess = time.Time{}
+ 	h.lastFailure = time.Time{}
++	h.lastError = ""
++	h.lastDrop = time.Time{}
+ }
+ 
+ func (h *deliveryHealth) recordAt(generation uint64, success bool) {
+@@ -59,6 +108,7 @@ func (h *deliveryHealth) recordAt(generation uint64, success bool) {
+ 		h.sent++
+ 		if generation == h.generation {
+ 			h.lastSuccess = time.Now().UTC()
++			h.lastError = ""
+ 		}
+ 	} else {
+ 		h.failed++
+@@ -77,10 +127,9 @@ func (h *deliveryHealth) snapshot(enabled bool, depth, capacity int, dropped uin
+ 	} else if h.lastFailure.After(h.lastSuccess) {
+ 		state = "degraded"
+ 	} else if !h.lastSuccess.IsZero() {
++		// No age-based "stale" state: a healthy integration with nothing to
++		// send is not a fault. The last_success timestamp shows its age.
+ 		state = "last_send_succeeded"
+-		if time.Since(h.lastSuccess) > 5*time.Minute {
+-			state = "stale"
+-		}
+ 	}
+ 	stamp := func(t time.Time) string {
+ 		if t.IsZero() {
+@@ -88,7 +137,9 @@ func (h *deliveryHealth) snapshot(enabled bool, depth, capacity int, dropped uin
+ 		}
+ 		return t.Format(time.RFC3339Nano)
+ 	}
++	recentDrops := !h.lastDrop.IsZero() && time.Since(h.lastDrop) < recentDropWindow
+ 	return map[string]any{"enabled": enabled, "state": state, "sent": h.sent, "failures": h.failed,
+-		"last_success": stamp(h.lastSuccess), "last_failure": stamp(h.lastFailure),
++		"last_success": stamp(h.lastSuccess), "last_failure": stamp(h.lastFailure), "last_error": h.lastError,
++		"last_drop": stamp(h.lastDrop), "recent_drops": recentDrops,
+ 		"queue_depth": depth, "queue_capacity": capacity, "dropped": dropped}
+ }
+diff --git a/go.mod b/go.mod
+index b4c9ecb..fd2d65d 100644
+--- a/go.mod
++++ b/go.mod
+@@ -5,13 +5,13 @@ go 1.26.0
+ toolchain go1.26.9
+ 
+ require (
+-	github.com/corazawaf/coraza/v3 v3.7.0
+-	github.com/goccy/go-yaml v1.18.0
++	github.com/corazawaf/coraza/v3 v3.8.1
++	github.com/goccy/go-yaml v1.19.2
+ 	github.com/kaptinlin/jsonschema v0.4.6
+ )
+ 
+ require (
+-	github.com/corazawaf/libinjection-go v0.3.2 // indirect
++	github.com/corazawaf/libinjection-go v0.3.3 // indirect
+ 	github.com/goccy/go-json v0.10.5 // indirect
+ 	github.com/gotnospirit/makeplural v0.0.0-20180622080156-a5f48d94d976 // indirect
+ 	github.com/gotnospirit/messageformat v0.0.0-20221001023931-dfe49f1eb092 // indirect
+diff --git a/graphql_api8.go b/graphql_api8.go
+index 95c8238..0f6440d 100644
+--- a/graphql_api8.go
++++ b/graphql_api8.go
+@@ -2132,6 +2132,7 @@ func (s *graphqlStore) wrap(site string, next http.Handler) http.Handler {
+ 		w.Header().Set("Content-Type", "application/json")
+ 		w.Header().Set("Cache-Control", "no-store")
+ 		w.Header().Set("X-Content-Type-Options", "nosniff")
++		markAttackBlock(r)
+ 		w.WriteHeader(status)
+ 		_, _ = w.Write([]byte(`{"errors":[{"message":"request rejected by GraphQL security policy"}]}`))
+ 	})
+diff --git a/identity_api5.go b/identity_api5.go
+index fbeca0b..61dfe3e 100644
+--- a/identity_api5.go
++++ b/identity_api5.go
+@@ -1316,10 +1316,15 @@ func identityAction(mode string) string {
+ 	return "detect"
+ }
+ 
+-func writeIdentityReject(w http.ResponseWriter, status int) {
++func writeIdentityReject(w http.ResponseWriter, r *http.Request, status int) {
+ 	if status != http.StatusUnauthorized && status != http.StatusForbidden && status != http.StatusServiceUnavailable {
+ 		status = http.StatusForbidden
+ 	}
++	// A policy rejection is security enforcement. 503 means the issuer or key
++	// set is unreachable: an operational fault, not attack evidence.
++	if status != http.StatusServiceUnavailable {
++		markAttackBlock(r)
++	}
+ 	w.Header().Set("Content-Type", "application/json")
+ 	w.Header().Set("Cache-Control", "no-store")
+ 	w.Header().Set("X-Content-Type-Options", "nosniff")
+@@ -1356,7 +1361,7 @@ func (s *apiIdentityStore) wrap(site string, next http.Handler) http.Handler {
+ 			v := APIIdentityViolation{OperationID: opID, Mode: rp.Policy.Mode, Action: identityAction(rp.Policy.Mode), Type: vType, IssuerID: rp.Policy.IssuerID, Expected: "cryptographically verified Bearer JWT", Observed: observed}
+ 			s.recordViolation(v)
+ 			if rp.Policy.Mode == apiIdentityModeEnforce {
+-				writeIdentityReject(w, rp.Policy.UnauthorizedCode)
++				writeIdentityReject(w, r, rp.Policy.UnauthorizedCode)
+ 				return
+ 			}
+ 			next.ServeHTTP(w, r)
+@@ -1365,7 +1370,7 @@ func (s *apiIdentityStore) wrap(site string, next http.Handler) http.Handler {
+ 		if rp.Issuer == nil {
+ 			s.recordViolation(APIIdentityViolation{OperationID: opID, Mode: rp.Policy.Mode, Action: identityAction(rp.Policy.Mode), Type: "JWT_ISSUER_UNAVAILABLE", IssuerID: rp.Policy.IssuerID, Expected: "enabled trusted issuer runtime", Observed: "issuer configuration unavailable"})
+ 			if rp.Policy.Mode == apiIdentityModeEnforce {
+-				writeIdentityReject(w, http.StatusServiceUnavailable)
++				writeIdentityReject(w, r, http.StatusServiceUnavailable)
+ 				return
+ 			}
+ 			next.ServeHTTP(w, r)
+@@ -1383,7 +1388,7 @@ func (s *apiIdentityStore) wrap(site string, next http.Handler) http.Handler {
+ 				if code == "JWKS_UNAVAILABLE" {
+ 					status = http.StatusServiceUnavailable
+ 				}
+-				writeIdentityReject(w, status)
++				writeIdentityReject(w, r, status)
+ 				return
+ 			}
+ 			next.ServeHTTP(w, r)
+@@ -1394,7 +1399,7 @@ func (s *apiIdentityStore) wrap(site string, next http.Handler) http.Handler {
+ 		if typ, expected, observed := evaluateIdentityRequirements(rp.Policy, id); typ != "" {
+ 			s.recordViolation(APIIdentityViolation{OperationID: opID, Mode: rp.Policy.Mode, Action: identityAction(rp.Policy.Mode), Type: typ, IssuerID: rp.Policy.IssuerID, SubjectHash: identitySubjectHash(id), Expected: expected, Observed: observed})
+ 			if rp.Policy.Mode == apiIdentityModeEnforce {
+-				writeIdentityReject(w, rp.Policy.ForbiddenCode)
++				writeIdentityReject(w, r, rp.Policy.ForbiddenCode)
+ 				return
+ 			}
+ 		}
+diff --git a/internal/vectoraccel/engine.go b/internal/vectoraccel/engine.go
+index ed55094..0684e6a 100644
+--- a/internal/vectoraccel/engine.go
++++ b/internal/vectoraccel/engine.go
+@@ -112,7 +112,7 @@ func NewManager(cfg Config) (*Manager, error) {
+ func (m *Manager) NativeAvailable() bool { return m.native }
+ func (m *Manager) NativeVersion() string { return m.version }
+ 
+-const corazaLearningSemanticVersion = "coraza-v3.7.0-matchedrules-v1"
++const corazaLearningSemanticVersion = "coraza-v3.8.1-matchedrules-v1"
+ 
+ func groupRuntimeFingerprint(ruleFingerprint, nativeVersion string) string {
+ 	h := sha256.Sum256([]byte(ruleFingerprint + "|" + nativeVersion + "|" + corazaLearningSemanticVersion))
+diff --git a/l7_abuse.go b/l7_abuse.go
+index f629788..6501cd7 100644
+--- a/l7_abuse.go
++++ b/l7_abuse.go
+@@ -6,6 +6,7 @@ import (
+ 	"net/http"
+ 	"net/netip"
+ 	"sync"
++	"sync/atomic"
+ 	"time"
+ 
+ 	"waf-proxy/internal/tlsfront"
+@@ -58,6 +59,38 @@ type l7AbuseController struct {
+ 	tlsShards  [l7AbuseShardCount]l7AbuseShard
+ 	overflowMu sync.Mutex
+ 	overflows  map[abuseClientKey]*abuseClientState
++
++	// Saturation telemetry: while the client table is full, new identities
++	// share a per-site overflow allowance. Operators need to see that.
++	overflowAdmitted atomic.Uint64
++	overflowRefused  atomic.Uint64
++	lastOverflow     atomic.Int64 // unix nanoseconds
++}
++
++func (c *l7AbuseController) noteOverflow(allowed bool) {
++	c.lastOverflow.Store(time.Now().UnixNano())
++	if allowed {
++		c.overflowAdmitted.Add(1)
++	} else {
++		c.overflowRefused.Add(1)
++	}
++}
++
++// saturationStats reports overflow use. "active" means overflow was used in
++// the last ten minutes, i.e. new clients are currently sharing an allowance.
++func (c *l7AbuseController) saturationStats() map[string]any {
++	if c == nil || !c.cfg.Enabled {
++		return map[string]any{"enabled": false, "active": false}
++	}
++	last := c.lastOverflow.Load()
++	stamp := ""
++	if last != 0 {
++		stamp = time.Unix(0, last).UTC().Format(time.RFC3339)
++	}
++	return map[string]any{"enabled": true,
++		"active":            last != 0 && time.Since(time.Unix(0, last)) < 10*time.Minute,
++		"overflow_admitted": c.overflowAdmitted.Load(), "overflow_refused": c.overflowRefused.Load(),
++		"last_overflow": stamp}
+ }
+ 
+ func newL7AbuseController(cfg L7AbuseConfig) *l7AbuseController {
+@@ -96,10 +129,16 @@ func validateL7AbuseConfig(cfg L7AbuseConfig, accel tlsfront.AccelerationConfig)
+ // because no HTTP forwarding metadata exists before the TLS handshake. The
+ // scope is the public listener rather than SNI so rotating hostnames cannot
+ // evade the bucket.
+-func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time.Time) bool {
++func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time.Time) (allowed bool) {
+ 	if c == nil || !c.cfg.Enabled || c.cfg.TLSHandshakePerWindow <= 0 {
+ 		return true
+ 	}
++	overflow := false
++	defer func() {
++		if overflow {
++			c.noteOverflow(allowed)
++		}
++	}()
+ 	key := abuseClientKey{site: scope, identity: c.limiterIdentity(identity)}
+ 	shard := &c.tlsShards[l7AbuseShardIndex(key)]
+ 	shard.mu.Lock()
+@@ -121,6 +160,7 @@ func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time
+ 			// Saturation must not turn the limiter off. Unknown identities share a
+ 			// bounded overflow bucket until an idle per-identity slot is available.
+ 			st = c.overflowState(scope, "tls")
++			overflow = true
+ 			if st == nil {
+ 				return false
+ 			}
+@@ -179,7 +219,13 @@ func (c *l7AbuseController) wrap(site string, next http.Handler) http.Handler {
+ 	})
+ }
+ 
+-func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (*abuseClientState, bool) {
++func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (state *abuseClientState, allowed bool) {
++	overflow := false
++	defer func() {
++		if overflow {
++			c.noteOverflow(allowed)
++		}
++	}()
+ 	key := abuseClientKey{site: site, identity: c.limiterIdentity(identity)}
+ 	shard := &c.shards[l7AbuseShardIndex(key)]
+ 	shard.mu.Lock()
+@@ -202,6 +248,7 @@ func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (*abus
+ 			// Bound memory without creating an attacker-controlled fail-open bypass.
+ 			// One bucket per configured site, shared across shards, not sites.
+ 			st = c.overflowState(site, "http")
++			overflow = true
+ 			if st == nil {
+ 				return nil, false
+ 			}
+diff --git a/main.go b/main.go
+index 5bf3674..ba870c5 100644
+--- a/main.go
++++ b/main.go
+@@ -1693,8 +1693,12 @@ func (s *server) logWrap(siteName string, next http.Handler) http.Handler {
+ 		sw := &statusRecorder{ResponseWriter: w, code: 200}
+ 		r, signals := requestAttackSignals(r)
+ 		next.ServeHTTP(sw, r)
+-		if signals.blocked {
++		// One observation per request: blocked requests count as blocks, other
++		// requests by their highest matched rule severity.
++		if blocked, severity := signals.snapshot(); blocked {
+ 			s.notify.observeAttack(siteName, "block", "", time.Now().UTC())
++		} else if severity != "" {
++			s.notify.observeAttack(siteName, "match", severity, time.Now().UTC())
+ 		}
+ 		// metrics: count the request, approximate in/out bytes
+ 		s.metrics.addReq()
+@@ -1740,7 +1744,6 @@ func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode,
+ 				Data:       rule.Data(),
+ 			}
+ 			s.matches.add(rec)
+-			s.notify.observeAttack(siteName, "match", rec.Severity, matchAt)
+ 			s.observeMatch(siteName, rec.URI, rec.RuleID, rec.Client, rec.Severity)
+ 			s.syslog.forwardMatch(rec)
+ 			if s.matchLogs != nil {
+diff --git a/notify.go b/notify.go
+index 6babab8..fdecc45 100644
+--- a/notify.go
++++ b/notify.go
+@@ -15,6 +15,7 @@ import (
+ 	"bytes"
+ 	"context"
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
+ 	"log/slog"
+ 	"net/http"
+@@ -30,6 +31,10 @@ type NotifyConfig struct {
+ 	ClearWebhook        bool   `json:"clear_webhook,omitempty"` // draft intent, consumed on Apply; never HA-shared
+ 	WebhookAllowHTTP    bool   `json:"webhook_allow_http,omitempty"`
+ 	WebhookAllowPrivate bool   `json:"webhook_allow_private,omitempty"`
++	// WebhookProxyURL is an optional egress proxy (http:// or https://, no
++	// credentials) for networks that reach chat or ticketing services only
++	// through a proxy. Environment proxy variables are never used.
++	WebhookProxyURL     string `json:"webhook_proxy_url,omitempty"`
+ 	OnAttack            bool   `json:"on_attack"`
+ 	AttackThreshold     int    `json:"attack_threshold,omitempty"`
+ 	AttackWindowSeconds int    `json:"attack_window_seconds,omitempty"`
+@@ -115,6 +120,7 @@ type notifier struct {
+ 	webhookDropped uint64
+ 	delivery       deliveryHealth
+ 	attacks        map[string]*attackWindow
++	attackOn       atomic.Bool // fast path: skip the notifier lock when attack alerts are off
+ 
+ 	// dedupe map + optional external sink (e.g. syslog)
+ 	dedupe map[string]time.Time
+@@ -143,6 +149,7 @@ func (n *notifier) configure(c NotifyConfig) {
+ 		n.delivery.invalidate()
+ 		n.attacks = make(map[string]*attackWindow)
+ 	}
++	n.attackOn.Store(c.OnAttack)
+ 	n.cfg = c
+ }
+ 
+@@ -227,7 +234,8 @@ func (n *notifier) pushContext(kind, level, title, body, dedupeKey string, actio
+ 		case n.webhookQ <- webhookJob{url: hook, kind: kindHook, item: item, policy: policy}:
+ 		default:
+ 			atomic.AddUint64(&n.webhookDropped, 1)
+-			n.delivery.record(false)
++			n.delivery.fail(n.delivery.current(), errors.New("delivery queue full"))
++			n.delivery.noteDrop()
+ 			n.log.Warn("notification webhook queue full; dropping delivery")
+ 		}
+ 	}
+@@ -240,6 +248,8 @@ func (n *notifier) webhookWorker() {
+ 		generation := n.delivery.current()
+ 		n.mu.Unlock()
+ 		if !current {
++			// Queued under settings that have since changed: discarded on purpose,
++			// counted, but not flagged against the new settings.
+ 			atomic.AddUint64(&n.webhookDropped, 1)
+ 			continue
+ 		}
+@@ -260,13 +270,18 @@ func (n *notifier) webhookWorker() {
+ 	}
+ }
+ 
+-func (n *notifier) sendWebhook(url, kind string, item notification, policy NotifyConfig, versions ...uint64) (bool, error) {
+-	success := false
++func (n *notifier) sendWebhook(url, kind string, item notification, policy NotifyConfig, versions ...uint64) (retry bool, err error) {
+ 	generation := n.delivery.current()
+ 	if len(versions) > 0 {
+ 		generation = versions[0]
+ 	}
+-	defer func() { n.delivery.recordAt(generation, success) }()
++	defer func() {
++		if err == nil {
++			n.delivery.recordAt(generation, true)
++		} else {
++			n.delivery.fail(generation, err)
++		}
++	}()
+ 	if err := validateWebhookURL(url, policy); err != nil {
+ 		return false, err
+ 	}
+@@ -297,7 +312,6 @@ func (n *notifier) sendWebhook(url, kind string, item notification, policy Notif
+ 	}
+ 	_ = resp.Body.Close()
+ 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+-		success = true
+ 		return false, nil
+ 	}
+ 	err = fmt.Errorf("webhook HTTP %d", resp.StatusCode)
+diff --git a/packaging/deb/tests/test-deb-packaging.sh b/packaging/deb/tests/test-deb-packaging.sh
+index 9892d7a..802b40a 100755
+--- a/packaging/deb/tests/test-deb-packaging.sh
++++ b/packaging/deb/tests/test-deb-packaging.sh
+@@ -25,7 +25,7 @@ cat > "$BIN/BUILD_PROVENANCE.json" <<'EOF2'
+   "artifact_type": "PORTABLE_BINARY",
+   "build_variant": "portable-coraza",
+   "go_version": "1.25.0",
+-  "coraza_version": "v3.7.0",
++  "coraza_version": "v3.8.1",
+   "vectorscan_version": "not-linked",
+   "hsm_pkcs11_enabled": false,
+   "binaries": []
+diff --git a/packaging/qualification/build-lifecycle-fixtures.sh b/packaging/qualification/build-lifecycle-fixtures.sh
+index 8d3dad4..0082feb 100755
+--- a/packaging/qualification/build-lifecycle-fixtures.sh
++++ b/packaging/qualification/build-lifecycle-fixtures.sh
+@@ -31,7 +31,7 @@ make_tree(){
+   python3 - "$bin/BUILD_PROVENANCE.json" "$version" <<'PY'
+ import json, pathlib, sys
+ out,version=sys.argv[1:]
+-obj={"schema_version":2,"version":version,"artifact_type":"PORTABLE_BINARY","build_variant":"portable-coraza","go_version":"1.25.0","coraza_version":"v3.7.0","vectorscan_version":"not-linked","hsm_pkcs11_enabled":False,"binaries":[]}
++obj={"schema_version":2,"version":version,"artifact_type":"PORTABLE_BINARY","build_variant":"portable-coraza","go_version":"1.25.0","coraza_version":"v3.8.1","vectorscan_version":"not-linked","hsm_pkcs11_enabled":False,"binaries":[]}
+ pathlib.Path(out).write_text(json.dumps(obj,sort_keys=True)+"\n")
+ PY
+   if [ "$changed" = 1 ]; then
+diff --git a/packaging/rpm/tests/test-rpm-packaging.sh b/packaging/rpm/tests/test-rpm-packaging.sh
+index 3eb775c..455769a 100755
+--- a/packaging/rpm/tests/test-rpm-packaging.sh
++++ b/packaging/rpm/tests/test-rpm-packaging.sh
+@@ -23,7 +23,7 @@ cat > "$BIN/BUILD_PROVENANCE.json" <<'JSON'
+   "artifact_type": "PORTABLE_BINARY",
+   "build_variant": "portable-coraza",
+   "go_version": "1.25.0",
+-  "coraza_version": "v3.7.0",
++  "coraza_version": "v3.8.1",
+   "vectorscan_version": "not-linked",
+   "hsm_pkcs11_enabled": false,
+   "binaries": []
+diff --git a/positive_schema_api4.go b/positive_schema_api4.go
+index 49080cd..b802cab 100644
+--- a/positive_schema_api4.go
++++ b/positive_schema_api4.go
+@@ -821,6 +821,7 @@ func (s *positiveSchemaStore) wrap(site string, next http.Handler) http.Handler
+ 		w.Header().Set("Content-Type", "application/json")
+ 		w.Header().Set("Cache-Control", "no-store")
+ 		w.Header().Set("X-Content-Type-Options", "nosniff")
++		markAttackBlock(r)
+ 		w.WriteHeader(status)
+ 		_, _ = w.Write([]byte(`{"error":"request rejected by API schema policy"}`))
+ 	})
+diff --git a/qualify-release-host.sh b/qualify-release-host.sh
+index 9d28e9e..dcd542a 100755
+--- a/qualify-release-host.sh
++++ b/qualify-release-host.sh
+@@ -73,10 +73,11 @@ if grep -Eq '^go 1\.26\.0$' go.mod; then
+ else
+   fail "go.mod no longer pins Go 1.26.0"
+ fi
+-if grep -Eq '^require[[:space:]]+github\.com/corazawaf/coraza/v3[[:space:]]+v3\.7\.0[[:space:]]*$' go.mod; then
+-  pass "go.mod pins Coraza v3.7.0"
++# Accept both the single-line form and the usual require ( ... ) block form.
++if grep -Eq '^(require[[:space:]]+)?[[:space:]]*github\.com/corazawaf/coraza/v3[[:space:]]+v3\.8\.1[[:space:]]*$' go.mod; then
++  pass "go.mod pins Coraza v3.8.1"
+ else
+-  fail "go.mod no longer pins Coraza v3.7.0"
++  fail "go.mod no longer pins Coraza v3.8.1"
+ fi
+ 
+ if ! command -v pkg-config >/dev/null 2>&1; then
+diff --git a/review_fixes_test.go b/review_fixes_test.go
+new file mode 100644
+index 0000000..cb4ac26
+--- /dev/null
++++ b/review_fixes_test.go
+@@ -0,0 +1,273 @@
++package main
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"io"
++	"log/slog"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"net/netip"
++	"net/url"
++	"strings"
++	"sync/atomic"
++	"testing"
++	"time"
++)
++
++func quietNotifier(cfg NotifyConfig) *notifier {
++	n := newNotifier(slog.New(slog.NewTextHandler(io.Discard, nil)))
++	n.configure(cfg)
++	return n
++}
++
++func attackAlerts(n *notifier) []notification {
++	var out []notification
++	for _, it := range n.list(1000) {
++		if it.Kind == notifyAttack {
++			out = append(out, it)
++		}
++	}
++	return out
++}
++
++func TestReviewRateLimitAndAllowlistResponsesDoNotRaiseAttackAlerts(t *testing.T) {
++	n := quietNotifier(NotifyConfig{OnAttack: true, AttackThreshold: 3, AttackWindowSeconds: 60})
++	s := &server{notify: n, metrics: newMetrics(), access: newAccessRing(16), syslog: newSyslogEngine(nil)}
++	l7 := newL7AbuseController(L7AbuseConfig{Enabled: true, RequestsPerWindow: 1, WindowSeconds: 60})
++	h := s.logWrap("shop", l7.wrap("shop", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
++	for i := 0; i < 10; i++ { // one ordinary client bursting: 1 allowed, 9 rate-limited
++		req := httptest.NewRequest(http.MethodGet, "http://shop/", nil)
++		req.RemoteAddr = "198.51.100.7:1000"
++		h.ServeHTTP(httptest.NewRecorder(), req)
++	}
++	if got := attackAlerts(n); len(got) != 0 {
++		t.Fatalf("rate limiting raised an attack alert: %+v", got)
++	}
++}
++
++func TestReviewAlertThresholdCountsRequestsNotRuleHits(t *testing.T) {
++	n := quietNotifier(NotifyConfig{OnAttack: true, AttackThreshold: 3, AttackWindowSeconds: 60, AttackMinSeverity: "CRITICAL"})
++	s := &server{notify: n, metrics: newMetrics(), access: newAccessRing(16), syslog: newSyslogEngine(nil)}
++	// Each request matches five critical rules, as a typical attack request does.
++	h := s.logWrap("shop", http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
++		signals := r.Context().Value(attackSignalKey{}).(*attackSignals)
++		for i := 0; i < 5; i++ {
++			signals.noteSeverity("CRITICAL")
++		}
++		signals.noteSeverity("WARNING")
++	}))
++	serve := func() { h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "http://shop/", nil)) }
++	serve()
++	serve()
++	if got := attackAlerts(n); len(got) != 0 {
++		t.Fatalf("2 requests (10 rule hits) crossed a 3-request threshold: %+v", got)
++	}
++	serve()
++	got := attackAlerts(n)
++	if len(got) != 1 || !strings.Contains(got[0].Body, "3 suspicious requests") {
++		t.Fatalf("third request should raise exactly one alert: %+v", got)
++	}
++}
++
++func TestReviewOneAlertPerIncidentWithHourlyFollowUp(t *testing.T) {
++	n := quietNotifier(NotifyConfig{OnAttack: true, AttackThreshold: 2, AttackWindowSeconds: 60})
++	start := time.Now()
++	n.observeAttack("shop", "block", "", start)
++	n.observeAttack("shop", "block", "", start)
++	if len(attackAlerts(n)) != 1 {
++		t.Fatal("first alert missing")
++	}
++	// A sustained attack: one request every 30s for 90 minutes, never quiet.
++	at := start
++	for i := 0; i < 180; i++ {
++		at = at.Add(30 * time.Second)
++		n.observeAttack("shop", "block", "", at)
++	}
++	alerts := attackAlerts(n)
++	if len(alerts) != 2 || alerts[0].Title != "WAF activity still ongoing" {
++		t.Fatalf("sustained attack should give the alert plus one hourly follow-up, got %d: %+v", len(alerts), alerts)
++	}
++	// Quiet for a full window ends the incident; the next burst is a new alert.
++	at = at.Add(2 * time.Minute)
++	n.observeAttack("shop", "block", "", at)
++	n.observeAttack("shop", "block", "", at)
++	if got := attackAlerts(n); len(got) != 3 || got[0].Title != "WAF activity threshold reached" {
++		t.Fatalf("new incident after a quiet window should alert again: %+v", got)
++	}
++}
++
++func TestReviewQuietIntegrationIsNotStaleAndDropsAgeOut(t *testing.T) {
++	var h deliveryHealth
++	h.record(true)
++	h.lastSuccess = time.Now().Add(-6 * time.Hour) // healthy, simply nothing to send
++	if got := h.snapshot(true, 0, 256, 0)["state"]; got != "last_send_succeeded" {
++		t.Fatalf("quiet healthy integration flagged: %v", got)
++	}
++	h.noteDrop()
++	if h.snapshot(true, 0, 256, 1)["recent_drops"] != true {
++		t.Fatal("a fresh drop should be flagged")
++	}
++	h.lastDrop = time.Now().Add(-2 * recentDropWindow)
++	if h.snapshot(true, 0, 256, 1)["recent_drops"] != false {
++		t.Fatal("an old drop should stop flagging after the recent-drop window")
++	}
++	h.noteDrop()
++	h.invalidate()
++	if h.snapshot(true, 0, 256, 1)["recent_drops"] != false {
++		t.Fatal("a configuration change should clear the drop flag")
++	}
++}
++
++func TestReviewFailureReasonIsRecordedWithoutURL(t *testing.T) {
++	var h deliveryHealth
++	secret := &url.Error{Op: "Post", URL: "https://hooks.example.test/services/T000/SECRET?token=abc", Err: errors.New("dial tcp 203.0.113.9:443: connect: connection refused")}
++	h.fail(h.current(), secret)
++	got := h.snapshot(true, 0, 1, 0)
++	reason, _ := got["last_error"].(string)
++	if !strings.Contains(reason, "connection refused") || strings.Contains(reason, "SECRET") || strings.Contains(reason, "token=") {
++		t.Fatalf("reason=%q", reason)
++	}
++	h.record(true)
++	if h.snapshot(true, 0, 1, 0)["last_error"] != "" {
++		t.Fatal("a successful send should clear the last error")
++	}
++}
++
++func TestReviewSyslogBacksOffWhileSIEMIsDown(t *testing.T) {
++	ln, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	port := ln.Addr().(*net.TCPAddr).Port
++	ln.Close() // nothing listens: every dial is refused
++	s := newSyslogEngine(slog.New(slog.NewTextHandler(io.Discard, nil)))
++	cfg := defaultSyslogConfig()
++	cfg.Enabled, cfg.Protocol, cfg.Host, cfg.Port = true, "tcp", "127.0.0.1", port
++	s.storeConfig(cfg)
++	s.deliver("first")
++	s.mu.Lock()
++	failures, retryAt := s.dialFailures, s.retryAt
++	s.mu.Unlock()
++	if failures != 1 || !retryAt.After(time.Now()) {
++		t.Fatalf("first failure should start a backoff: failures=%d retryAt=%v", failures, retryAt)
++	}
++	for i := 0; i < 50; i++ {
++		s.deliver("during backoff")
++	}
++	s.mu.Lock()
++	failures = s.dialFailures
++	s.mu.Unlock()
++	stats := s.deliveryStats()
++	if failures != 1 {
++		t.Fatalf("lines during backoff must not re-dial: dial failures=%d", failures)
++	}
++	if stats["dropped"] != uint64(51) || stats["recent_drops"] != true || !strings.Contains(fmt.Sprint(stats["last_error"]), "refused") {
++		t.Fatalf("backoff drops must be counted and keep the real reason: %v", stats)
++	}
++	if stats["failures"] != uint64(1) {
++		t.Fatalf("backoff drops are not new delivery attempts: %v", stats["failures"])
++	}
++}
++
++func TestReviewUDPSyslogIsReportedUnconfirmed(t *testing.T) {
++	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer pc.Close()
++	s := newSyslogEngine(slog.New(slog.NewTextHandler(io.Discard, nil)))
++	cfg := defaultSyslogConfig()
++	cfg.Enabled, cfg.Protocol, cfg.Host, cfg.Port = true, "udp", "127.0.0.1", pc.LocalAddr().(*net.UDPAddr).Port
++	s.storeConfig(cfg)
++	s.deliver("hello")
++	if got := s.deliveryStats()["state"]; got != "sent_unconfirmed" {
++		t.Fatalf("UDP state=%v", got)
++	}
++}
++
++func TestReviewWebhookProxyValidation(t *testing.T) {
++	for _, bad := range []string{"ftp://proxy:21", "http://user:pass@proxy:3128", "http://proxy:3128/path", "http://proxy:3128?x=1", "proxy:3128"} {
++		if validateWebhookProxyURL(bad) == nil {
++			t.Fatalf("accepted %q", bad)
++		}
++	}
++	for _, good := range []string{"", "http://proxy.internal:3128", "https://10.0.0.5:8443/"} {
++		if err := validateWebhookProxyURL(good); err != nil {
++			t.Fatalf("rejected %q: %v", good, err)
++		}
++	}
++}
++
++func TestReviewWebhookProxyIsUsedAndDestinationStillChecked(t *testing.T) {
++	var proxied atomic.Int32
++	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		// A forward proxy receives the absolute destination URL.
++		if r.URL.Host == "hooks.example.test" {
++			proxied.Add(1)
++		}
++		w.WriteHeader(http.StatusNoContent)
++	}))
++	defer proxy.Close()
++	public := func(context.Context, string, string) ([]netip.Addr, error) {
++		return []netip.Addr{netip.MustParseAddr("8.8.8.8")}, nil
++	}
++	internal := func(context.Context, string, string) ([]netip.Addr, error) {
++		return []netip.Addr{netip.MustParseAddr("10.1.2.3")}, nil
++	}
++	var dialer net.Dialer
++	policy := NotifyConfig{WebhookProxyURL: proxy.URL, WebhookAllowHTTP: true}
++	send := func(lookup func(context.Context, string, string) ([]netip.Addr, error)) error {
++		client, transport := webhookClientWithNetwork(policy, lookup, dialer.DialContext)
++		defer transport.CloseIdleConnections()
++		req, _ := http.NewRequest(http.MethodPost, "http://hooks.example.test/notify", strings.NewReader("{}"))
++		resp, err := client.Do(req)
++		if err == nil {
++			resp.Body.Close()
++		}
++		return err
++	}
++	if err := send(public); err != nil || proxied.Load() != 1 {
++		t.Fatalf("delivery through the proxy failed: err=%v proxied=%d", err, proxied.Load())
++	}
++	if err := send(internal); err == nil || proxied.Load() != 1 {
++		t.Fatalf("a destination resolving to a private address must be refused before the proxy: err=%v proxied=%d", err, proxied.Load())
++	}
++}
++
++func TestReviewRateLimiterSaturationIsVisible(t *testing.T) {
++	c := newL7AbuseController(L7AbuseConfig{Enabled: true, RequestsPerWindow: 1, WindowSeconds: 60})
++	if c.saturationStats()["active"] != false {
++		t.Fatal("fresh limiter reported saturation")
++	}
++	now := time.Now()
++	const target = uint64(0)
++	filled := 0
++	for n := 0; filled < l7AbuseMaxEntriesPerShard; n++ {
++		id := fmt.Sprintf("198.51.%d.%d", n/256, n%256)
++		if l7AbuseShardIndex(abuseClientKey{site: "shop", identity: c.limiterIdentity(id)}) != target {
++			continue
++		}
++		if st, ok := c.allowAt("shop", id, now); ok {
++			c.releaseState(st)
++		}
++		filled++
++	}
++	tried := 0
++	for n := 0; tried < 3; n++ {
++		id := fmt.Sprintf("203.0.%d.%d", n/256, n%256)
++		if l7AbuseShardIndex(abuseClientKey{site: "shop", identity: c.limiterIdentity(id)}) != target {
++			continue
++		}
++		if st, ok := c.allowAt("shop", id, now); ok {
++			c.releaseState(st)
++		}
++		tried++
++	}
++	stats := c.saturationStats()
++	if stats["active"] != true || stats["overflow_admitted"] != uint64(1) || stats["overflow_refused"] != uint64(2) {
++		t.Fatalf("saturation not visible: %v", stats)
++	}
++}
+diff --git a/security_report_test.go b/security_report_test.go
+index 8e58402..3a8c267 100644
+--- a/security_report_test.go
++++ b/security_report_test.go
+@@ -185,9 +185,20 @@ func TestSecurityBlockAlertsExcludeApplicationResponses(t *testing.T) {
+ 	if signals.blocked {
+ 		t.Fatal("application 403 misclassified")
+ 	}
++	// Rate limiting and IP allowlists are access controls, not attack evidence.
+ 	writeBlockResponse(httptest.NewRecorder(), r, 429, "l7_abuse_limit", true)
+-	if !signals.blocked {
+-		t.Fatal("explicit WAF block missed")
++	writeBlockResponse(httptest.NewRecorder(), r, 403, "cidr_policy_denied:office", false)
++	if blocked, _ := signals.snapshot(); blocked {
++		t.Fatal("rate limit or IP allowlist response counted as an attack block")
++	}
++	// An issuer/JWKS outage is operational, not attack evidence.
++	writeIdentityReject(httptest.NewRecorder(), r, http.StatusServiceUnavailable)
++	if blocked, _ := signals.snapshot(); blocked {
++		t.Fatal("identity issuer outage counted as an attack block")
++	}
++	writeIdentityReject(httptest.NewRecorder(), r, http.StatusForbidden)
++	if blocked, _ := signals.snapshot(); !blocked {
++		t.Fatal("API identity policy block missed")
+ 	}
+ }
+ 
+diff --git a/static/admin.html b/static/admin.html
+index c6ebf61..6fa2a01 100644
+--- a/static/admin.html
++++ b/static/admin.html
+@@ -757,6 +757,7 @@
+           <div class="eyebrow">Notifications</div>
+           <div class="field"><label>Webhook URL (optional)</label><input type="text" id="nt_webhook_url" spellcheck="false" placeholder="https://hooks.slack.com/..."></div>
+           <div class="field"><label>Webhook format</label><select id="nt_webhook_kind"><option value="slack">Slack / Teams text</option><option value="generic">Generic JSON</option></select></div>
++          <div class="field"><label for="nt_proxy_url">Outbound proxy (optional)</label><input type="text" id="nt_proxy_url" spellcheck="false" placeholder="http://proxy.internal:3128"><div class="hint">Use when this server reaches chat or ticketing services only through a proxy. No user name or password in the address. The webhook address is still checked before each send.</div></div>
+           <div class="field check"><input type="checkbox" id="nt_allow_private"><label for="nt_allow_private">Allow private-network / loopback webhook destinations (explicit exception)</label></div>
+           <div class="field check"><input type="checkbox" id="nt_allow_http"><label for="nt_allow_http">Allow unencrypted HTTP webhook delivery (insecure exception)</label></div>
+           <div class="hint">HTTPS and public destinations are required by default. DNS answers are checked when connecting; redirects are refused. Link-local/metadata addresses remain forbidden. Existing internal or HTTP hooks need explicit exceptions before Apply.</div>
+@@ -2619,6 +2620,7 @@
+     notifyClearPending=!!nt.clear_webhook;notifyClearPrevious="";
+     $("nt_webhook_url").value=nt.webhook_url||"";
+     $("nt_webhook_kind").value=nt.webhook_kind||"slack";
++    $("nt_proxy_url").value=nt.webhook_proxy_url||"";
+     $("nt_allow_private").checked=!!nt.webhook_allow_private;$("nt_allow_http").checked=!!nt.webhook_allow_http;
+     $("nt_on_attack").checked=nt.on_attack!==false;$("nt_attack_threshold").value=nt.attack_threshold||10;$("nt_attack_window").value=nt.attack_window_seconds||60;$("nt_attack_severity").value=nt.attack_min_severity||"CRITICAL";
+     $("nt_on_suggestion").checked=nt.on_suggestion!==false;
+@@ -2631,7 +2633,7 @@
+   function collectNotify(){
+     return { webhook_url:$("nt_webhook_url").value.trim(), webhook_kind:$("nt_webhook_kind").value,
+       ...(notifyClearPending?{clear_webhook:true}:{}),
+-      webhook_allow_http:$("nt_allow_http").checked,webhook_allow_private:$("nt_allow_private").checked,on_attack:$("nt_on_attack").checked,
++      webhook_proxy_url:$("nt_proxy_url").value.trim(),webhook_allow_http:$("nt_allow_http").checked,webhook_allow_private:$("nt_allow_private").checked,on_attack:$("nt_on_attack").checked,
+       attack_threshold:Number($("nt_attack_threshold").value)||10,attack_window_seconds:Number($("nt_attack_window").value)||60,attack_min_severity:$("nt_attack_severity").value,
+       on_suggestion:$("nt_on_suggestion").checked, on_ai_block:$("nt_on_ai_block").checked,
+       on_member_down:$("nt_on_member_down").checked, on_sync:$("nt_on_sync").checked, on_peer:$("nt_on_peer").checked };
+@@ -2660,8 +2662,8 @@
+   $("bellclear").onclick=async()=>{ await api("/api/notifications/dismiss",{method:"POST",body:JSON.stringify({all:true})}); loadBell(); };
+   function deliveryText(label, stats){
+     if(!stats||!stats.state)return label+": unavailable — delivery not verified";
+-    const states={disabled:"Off",unverified:"Not verified",degraded:"Delivery failures",last_send_succeeded:"Last send succeeded (not a receipt)",stale:"Previous result is stale"};
+-    return label+": "+(states[stats.state]||"Unknown")+" · last successful send "+(stats.last_success||"none")+" · last failure "+(stats.last_failure||"none")+" · failures "+Number(stats.failures||0)+" · dropped "+Number(stats.dropped||0)+" · pending "+Number(stats.queue_depth||0)+"/"+Number(stats.queue_capacity||0);
++    const states={disabled:"Off",unverified:"Not verified",degraded:"Delivery failures",last_send_succeeded:"Last send succeeded (not a receipt)",sent_unconfirmed:"Sent over UDP — delivery cannot be confirmed",stale:"Previous result is stale"};
++    return label+": "+(states[stats.state]||"Unknown")+(stats.last_error?" · last error: "+stats.last_error:"")+" · last successful send "+(stats.last_success||"none")+" · last failure "+(stats.last_failure||"none")+" · failures "+Number(stats.failures||0)+" · dropped "+Number(stats.dropped||0)+" · pending "+Number(stats.queue_depth||0)+"/"+Number(stats.queue_capacity||0);
+   }
+   async function loadDeliveryHealth(){
+     try{const status=await api("/api/status");$("nt_delivery").textContent=deliveryText("Webhook",status.webhook_delivery);$("sl_delivery").textContent=deliveryText("SIEM",status.syslog_delivery);}
+@@ -3608,7 +3610,8 @@
+   }
+   function attentionItems(st,poolRows,matches,access,candidates){
+     const out=[],add=(text,view)=>out.push({text,view});
+-    for(const [key,label] of [["syslog_delivery","SIEM"],["webhook_delivery","Webhook"]]){const state=st[key];if(state?.enabled&&(state.state==="degraded"||state.state==="stale"||Number(state.dropped)>0))add(label+" delivery needs review: "+state.state+"; "+Number(state.failures||0)+" failures, "+Number(state.dropped||0)+" dropped.","setup");}
++    for(const [key,label] of [["syslog_delivery","SIEM"],["webhook_delivery","Webhook"]]){const state=st[key];if(state?.enabled&&(state.state==="degraded"||state.recent_drops))add(label+" delivery needs review"+(state.last_error?": "+state.last_error:"")+" ("+Number(state.failures||0)+" failures, "+Number(state.dropped||0)+" dropped in total).","setup");}
++    const sat=st.l7_saturation;if(sat?.active)add("Rate limiter is at capacity: new clients share a small per-site allowance ("+Number(sat.overflow_refused||0)+" refused). This usually means a distributed flood; check Logs and the limits under Policies.","policies");
+     for(const p of poolRows)for(const m of p.members||[])if(!m.healthy)add("Application server unavailable: "+m.node+" in "+p.name,"pools");
+     const failures=access.filter(r=>r.status>=500).length,rejections=access.filter(r=>r.status===403||r.status===429).length;
+     if(failures)add(failures+" server-error responses in the latest "+access.length+" stored requests.","logs");
+diff --git a/syslog.go b/syslog.go
+index dbfdab4..fd68403 100644
+--- a/syslog.go
++++ b/syslog.go
+@@ -16,6 +16,7 @@ package main
+ 
+ import (
+ 	"crypto/tls"
++	"errors"
+ 	"fmt"
+ 	"io"
+ 	"log/slog"
+@@ -112,6 +113,11 @@ type syslogEngine struct {
+ 	cancel   chan struct{}
+ 	dropped  uint64
+ 	delivery deliveryHealth
++
++	// Reconnect backoff while the SIEM is unreachable (guarded by mu): lines
++	// are dropped without dialling until retryAt, and the outage is logged once.
++	dialFailures int
++	retryAt      time.Time
+ }
+ 
+ func newSyslogEngine(log *slog.Logger) *syslogEngine {
+@@ -147,6 +153,7 @@ func (s *syslogEngine) configure(c SyslogConfig) {
+ 	// Publish the immutable snapshot while the connection is serialized, then
+ 	// force a reconnect so the next background delivery uses the new endpoint.
+ 	s.storeConfig(c)
++	s.dialFailures, s.retryAt = 0, time.Time{}
+ 	if s.conn != nil {
+ 		s.conn.Close()
+ 		s.conn = nil
+@@ -171,7 +178,8 @@ func (s *syslogEngine) enqueue(line string) {
+ 	case s.queue <- line:
+ 	default:
+ 		atomic.AddUint64(&s.dropped, 1)
+-		s.delivery.record(false)
++		s.delivery.fail(s.delivery.current(), errors.New("delivery queue full"))
++		s.delivery.noteDrop()
+ 	}
+ }
+ 
+@@ -212,17 +220,48 @@ func (s *syslogEngine) deliver(line string) {
+ 		atomic.AddUint64(&s.dropped, 1)
+ 		return
+ 	}
+-	success := false
++	var failure error
++	backingOff := false
+ 	defer func() {
+-		s.delivery.recordAt(generation, success)
+-		if !success {
++		switch {
++		case backingOff:
++			// Dropped without an attempt: counted, but neither a success nor a
++			// new failure, so the last real failure reason stays visible.
++			atomic.AddUint64(&s.dropped, 1)
++			s.delivery.noteDrop()
++		case failure == nil:
++			s.delivery.recordAt(generation, true)
++		default:
++			s.delivery.fail(generation, failure)
++			s.delivery.noteDrop()
+ 			atomic.AddUint64(&s.dropped, 1)
+ 		}
+ 	}()
+ 	if conn == nil {
++		s.mu.Lock()
++		waiting := time.Now().Before(s.retryAt)
++		s.mu.Unlock()
++		if waiting {
++			// Still backing off: drop without dialling (fail-open) and without
++			// logging every line.
++			backingOff = true
++			return
++		}
+ 		c, err := s.dial(cfg)
+ 		if err != nil {
+-			s.log.Warn("syslog dial failed", "err", err) // fail-open: drop this line
++			failure = err
++			s.mu.Lock()
++			s.dialFailures++
++			delay := time.Second << min(s.dialFailures-1, 6)
++			if delay > time.Minute {
++				delay = time.Minute
++			}
++			s.retryAt = time.Now().Add(delay)
++			first := s.dialFailures == 1
++			s.mu.Unlock()
++			if first {
++				s.log.Warn("syslog dial failed; backing off and dropping lines until the SIEM is reachable", "err", err)
++			}
+ 			return
+ 		}
+ 		s.mu.Lock()
+@@ -231,6 +270,10 @@ func (s *syslogEngine) deliver(line string) {
+ 			c.Close()
+ 			return
+ 		}
++		if s.dialFailures > 0 {
++			s.log.Info("syslog connection restored", "failed_attempts", s.dialFailures)
++		}
++		s.dialFailures, s.retryAt = 0, time.Time{}
+ 		s.conn = c
+ 		conn = c
+ 		s.mu.Unlock()
+@@ -247,6 +290,7 @@ func (s *syslogEngine) deliver(line string) {
+ 		err = io.ErrShortWrite
+ 	}
+ 	if err != nil {
++		failure = err
+ 		s.log.Warn("syslog write failed; will reconnect", "err", err)
+ 		s.mu.Lock()
+ 		if s.conn != nil {
+@@ -256,7 +300,6 @@ func (s *syslogEngine) deliver(line string) {
+ 		s.mu.Unlock()
+ 		return
+ 	}
+-	success = true
+ }
+ 
+ func (s *syslogEngine) deliveryStats() map[string]any {
+@@ -267,6 +310,10 @@ func (s *syslogEngine) deliveryStats() map[string]any {
+ 	defer s.mu.Unlock()
+ 	stats := s.delivery.snapshot(s.snapshotCfg().Enabled, len(s.queue), cap(s.queue), atomic.LoadUint64(&s.dropped))
+ 	stats["receipt_verified"] = false
++	// UDP has no transport acknowledgement: a send never proves delivery.
++	if s.snapshotCfg().Protocol == "udp" && stats["state"] == "last_send_succeeded" {
++		stats["state"] = "sent_unconfirmed"
++	}
+ 	stats["config_generation"] = s.delivery.current()
+ 	stats["config_token"] = s.delivery.configToken()
+ 	cfg := s.snapshotCfg()
+@@ -450,10 +497,17 @@ func (s *syslogEngine) testForTarget(expected *uint64, token string) error {
+ 	if !cfg.Enabled {
+ 		return fmt.Errorf("syslog is disabled — enable and Apply first")
+ 	}
+-	success := false
+-	defer func() { s.delivery.recordAt(generation, success) }()
++	var failure error
++	defer func() {
++		if failure == nil {
++			s.delivery.recordAt(generation, true)
++		} else {
++			s.delivery.fail(generation, failure)
++		}
++	}()
+ 	conn, err := s.dial(cfg)
+ 	if err != nil {
++		failure = err
+ 		return err
+ 	}
+ 	defer conn.Close()
+@@ -476,6 +530,6 @@ func (s *syslogEngine) testForTarget(expected *uint64, token string) error {
+ 	if err == nil && n != len(line) {
+ 		err = io.ErrShortWrite
+ 	}
+-	success = err == nil
++	failure = err
+ 	return err
+ }
+diff --git a/tools/tests/test-api3-source.py b/tools/tests/test-api3-source.py
+index 3b9e547..3dcb5e6 100644
+--- a/tools/tests/test-api3-source.py
++++ b/tools/tests/test-api3-source.py
+@@ -78,9 +78,12 @@ require('matchedSites' in api3 and 'UNDECLARED_ENDPOINT' in api3, 'undeclared-en
+ require('authObservationFamilies' in api3 and 'anonymous' in api3, 'OpenAPI auth OR/AND/anonymous semantics hardening missing')
+ require('RequestMediaTypes' in api3 and 'observedContentTypeMatches' in api3, 'multi-content-type contract drift support missing')
+ 
+-require('github.com/goccy/go-yaml v1.18.0' in gomod, 'OpenAPI YAML parser dependency missing from go.mod')
++# Any version: the parser must stay a direct dependency (checked below), but an
++# exact pin here would block security upgrades pulled in by Coraza.
++require(re.search(r'(?m)^\s*github\.com/goccy/go-yaml v1\.\d+\.\d+\s*$', gomod) is not None, 'OpenAPI YAML parser dependency missing from go.mod')
+ # Direct dependency: it must appear before the second require block and must not be marked indirect.
+-yaml_line = next((line for line in gomod.splitlines() if 'github.com/goccy/go-yaml v1.18.0' in line), '')
++yaml_line = next((line for line in gomod.splitlines() if 'github.com/goccy/go-yaml v' in line), '')
++require(yaml_line != '', 'goccy/go-yaml requirement line not found')
+ require('// indirect' not in yaml_line, 'goccy/go-yaml is used directly but still marked indirect')
+ 
+ # Security boundary: API-3 source must not invoke known blocking/enforcement entry points.
+diff --git a/tools/tests/test_waf_package_builder.py b/tools/tests/test_waf_package_builder.py
+index ff64c45..c4cef83 100644
+--- a/tools/tests/test_waf_package_builder.py
++++ b/tools/tests/test_waf_package_builder.py
+@@ -27,7 +27,7 @@ class BuilderTests(unittest.TestCase):
+     def test_project_pins(self):
+         go, coraza = mod.read_project_requirements(ROOT)
+         self.assertEqual(go, "1.26.0")
+-        self.assertEqual(coraza, "v3.7.0")
++        self.assertEqual(coraza, "v3.8.1")
+ 
+     def test_fingerprint_is_stable_and_ignores_dist(self):
+         with tempfile.TemporaryDirectory() as td:
+diff --git a/tools/waf_package_builder.py b/tools/waf_package_builder.py
+index 43287ba..ed0dbd6 100644
+--- a/tools/waf_package_builder.py
++++ b/tools/waf_package_builder.py
+@@ -306,7 +306,7 @@ def load_provenance(root: Path) -> dict:
+     if not p.is_file():
+         raise BuildError("canonical build did not produce BUILD_PROVENANCE.json")
+     obj = json.loads(p.read_text(encoding="utf-8"))
+-    if obj.get("coraza_version") != "v3.7.0":
++    if obj.get("coraza_version") != "v3.8.1":
+         raise BuildError(f"unexpected built Coraza version: {obj.get('coraza_version')!r}")
+     return obj
+ 
+diff --git a/webhook_policy.go b/webhook_policy.go
+index b12af82..f8e75f0 100644
+--- a/webhook_policy.go
++++ b/webhook_policy.go
+@@ -33,6 +33,55 @@ func validateWebhookURL(raw string, policy NotifyConfig) error {
+ 	return nil
+ }
+ 
++// validateWebhookProxyURL accepts an optional http(s) egress proxy address.
++// Credentials are refused so the value is never a secret.
++func validateWebhookProxyURL(raw string) error {
++	if raw == "" {
++		return nil
++	}
++	u, err := url.Parse(raw)
++	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil ||
++		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
++		return errors.New("notify.webhook_proxy_url must be http:// or https:// host[:port] without credentials or path")
++	}
++	return nil
++}
++
++// checkWebhookDestination applies the destination address policy by resolving
++// the webhook host. It is used when a proxy dials on our behalf; the proxy
++// resolves the name again, so this narrows but cannot fully close that gap.
++func checkWebhookDestination(ctx context.Context, host string, policy NotifyConfig, lookup func(context.Context, string, string) ([]netip.Addr, error)) error {
++	if ip, err := netip.ParseAddr(host); err == nil {
++		if !webhookIPAllowed(ip, policy.WebhookAllowPrivate) {
++			return errors.New("webhook destination is not allowed")
++		}
++		return nil
++	}
++	ips, err := lookup(ctx, "ip", host)
++	if err != nil || len(ips) == 0 {
++		return errors.New("webhook DNS resolution failed")
++	}
++	for _, ip := range ips {
++		if !webhookIPAllowed(ip, policy.WebhookAllowPrivate) {
++			return errors.New("webhook DNS resolved to a forbidden address")
++		}
++	}
++	return nil
++}
++
++type webhookDestinationGuard struct {
++	next   http.RoundTripper
++	policy NotifyConfig
++	lookup func(context.Context, string, string) ([]netip.Addr, error)
++}
++
++func (g webhookDestinationGuard) RoundTrip(req *http.Request) (*http.Response, error) {
++	if err := checkWebhookDestination(req.Context(), req.URL.Hostname(), g.policy, g.lookup); err != nil {
++		return nil, err
++	}
++	return g.next.RoundTrip(req)
++}
++
+ func webhookIPAllowed(ip netip.Addr, allowPrivate bool) bool {
+ 	ip = ip.Unmap()
+ 	if !ip.IsValid() || ip.Zone() != "" || !ip.IsGlobalUnicast() && !ip.IsLoopback() {
+@@ -87,7 +136,15 @@ func webhookClientWithNetwork(policy NotifyConfig, lookup func(context.Context,
+ 		}
+ 		return nil, errors.New("webhook connection failed")
+ 	}
+-	client := &http.Client{Timeout: 6 * time.Second, Transport: transport,
++	var roundTripper http.RoundTripper = transport
++	if proxy, err := url.Parse(policy.WebhookProxyURL); policy.WebhookProxyURL != "" && err == nil {
++		// Through a proxy we dial only the operator-chosen proxy (which may be
++		// on a private network) and check the destination before each send.
++		transport.Proxy = http.ProxyURL(proxy)
++		transport.DialContext = dial
++		roundTripper = webhookDestinationGuard{next: transport, policy: policy, lookup: lookup}
++	}
++	client := &http.Client{Timeout: 6 * time.Second, Transport: roundTripper,
+ 		// Never forward alert bodies or credentials to a redirected destination.
+ 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+ 	}

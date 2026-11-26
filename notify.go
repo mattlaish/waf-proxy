@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -30,6 +31,10 @@ type NotifyConfig struct {
 	ClearWebhook        bool   `json:"clear_webhook,omitempty"` // draft intent, consumed on Apply; never HA-shared
 	WebhookAllowHTTP    bool   `json:"webhook_allow_http,omitempty"`
 	WebhookAllowPrivate bool   `json:"webhook_allow_private,omitempty"`
+	// WebhookProxyURL is an optional egress proxy (http:// or https://, no
+	// credentials) for networks that reach chat or ticketing services only
+	// through a proxy. Environment proxy variables are never used.
+	WebhookProxyURL     string `json:"webhook_proxy_url,omitempty"`
 	OnAttack            bool   `json:"on_attack"`
 	AttackThreshold     int    `json:"attack_threshold,omitempty"`
 	AttackWindowSeconds int    `json:"attack_window_seconds,omitempty"`
@@ -115,6 +120,7 @@ type notifier struct {
 	webhookDropped uint64
 	delivery       deliveryHealth
 	attacks        map[string]*attackWindow
+	attackOn       atomic.Bool // fast path: skip the notifier lock when attack alerts are off
 
 	// dedupe map + optional external sink (e.g. syslog)
 	dedupe map[string]time.Time
@@ -143,6 +149,7 @@ func (n *notifier) configure(c NotifyConfig) {
 		n.delivery.invalidate()
 		n.attacks = make(map[string]*attackWindow)
 	}
+	n.attackOn.Store(c.OnAttack)
 	n.cfg = c
 }
 
@@ -227,7 +234,8 @@ func (n *notifier) pushContext(kind, level, title, body, dedupeKey string, actio
 		case n.webhookQ <- webhookJob{url: hook, kind: kindHook, item: item, policy: policy}:
 		default:
 			atomic.AddUint64(&n.webhookDropped, 1)
-			n.delivery.record(false)
+			n.delivery.fail(n.delivery.current(), errors.New("delivery queue full"))
+			n.delivery.noteDrop()
 			n.log.Warn("notification webhook queue full; dropping delivery")
 		}
 	}
@@ -240,6 +248,8 @@ func (n *notifier) webhookWorker() {
 		generation := n.delivery.current()
 		n.mu.Unlock()
 		if !current {
+			// Queued under settings that have since changed: discarded on purpose,
+			// counted, but not flagged against the new settings.
 			atomic.AddUint64(&n.webhookDropped, 1)
 			continue
 		}
@@ -260,13 +270,18 @@ func (n *notifier) webhookWorker() {
 	}
 }
 
-func (n *notifier) sendWebhook(url, kind string, item notification, policy NotifyConfig, versions ...uint64) (bool, error) {
-	success := false
+func (n *notifier) sendWebhook(url, kind string, item notification, policy NotifyConfig, versions ...uint64) (retry bool, err error) {
 	generation := n.delivery.current()
 	if len(versions) > 0 {
 		generation = versions[0]
 	}
-	defer func() { n.delivery.recordAt(generation, success) }()
+	defer func() {
+		if err == nil {
+			n.delivery.recordAt(generation, true)
+		} else {
+			n.delivery.fail(generation, err)
+		}
+	}()
 	if err := validateWebhookURL(url, policy); err != nil {
 		return false, err
 	}
@@ -297,7 +312,6 @@ func (n *notifier) sendWebhook(url, kind string, item notification, policy Notif
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		success = true
 		return false, nil
 	}
 	err = fmt.Errorf("webhook HTTP %d", resp.StatusCode)

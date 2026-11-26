@@ -757,6 +757,7 @@
           <div class="eyebrow">Notifications</div>
           <div class="field"><label>Webhook URL (optional)</label><input type="text" id="nt_webhook_url" spellcheck="false" placeholder="https://hooks.slack.com/..."></div>
           <div class="field"><label>Webhook format</label><select id="nt_webhook_kind"><option value="slack">Slack / Teams text</option><option value="generic">Generic JSON</option></select></div>
+          <div class="field"><label for="nt_proxy_url">Outbound proxy (optional)</label><input type="text" id="nt_proxy_url" spellcheck="false" placeholder="http://proxy.internal:3128"><div class="hint">Use when this server reaches chat or ticketing services only through a proxy. No user name or password in the address. The webhook address is still checked before each send.</div></div>
           <div class="field check"><input type="checkbox" id="nt_allow_private"><label for="nt_allow_private">Allow private-network / loopback webhook destinations (explicit exception)</label></div>
           <div class="field check"><input type="checkbox" id="nt_allow_http"><label for="nt_allow_http">Allow unencrypted HTTP webhook delivery (insecure exception)</label></div>
           <div class="hint">HTTPS and public destinations are required by default. DNS answers are checked when connecting; redirects are refused. Link-local/metadata addresses remain forbidden. Existing internal or HTTP hooks need explicit exceptions before Apply.</div>
@@ -2619,6 +2620,7 @@
     notifyClearPending=!!nt.clear_webhook;notifyClearPrevious="";
     $("nt_webhook_url").value=nt.webhook_url||"";
     $("nt_webhook_kind").value=nt.webhook_kind||"slack";
+    $("nt_proxy_url").value=nt.webhook_proxy_url||"";
     $("nt_allow_private").checked=!!nt.webhook_allow_private;$("nt_allow_http").checked=!!nt.webhook_allow_http;
     $("nt_on_attack").checked=nt.on_attack!==false;$("nt_attack_threshold").value=nt.attack_threshold||10;$("nt_attack_window").value=nt.attack_window_seconds||60;$("nt_attack_severity").value=nt.attack_min_severity||"CRITICAL";
     $("nt_on_suggestion").checked=nt.on_suggestion!==false;
@@ -2631,7 +2633,7 @@
   function collectNotify(){
     return { webhook_url:$("nt_webhook_url").value.trim(), webhook_kind:$("nt_webhook_kind").value,
       ...(notifyClearPending?{clear_webhook:true}:{}),
-      webhook_allow_http:$("nt_allow_http").checked,webhook_allow_private:$("nt_allow_private").checked,on_attack:$("nt_on_attack").checked,
+      webhook_proxy_url:$("nt_proxy_url").value.trim(),webhook_allow_http:$("nt_allow_http").checked,webhook_allow_private:$("nt_allow_private").checked,on_attack:$("nt_on_attack").checked,
       attack_threshold:Number($("nt_attack_threshold").value)||10,attack_window_seconds:Number($("nt_attack_window").value)||60,attack_min_severity:$("nt_attack_severity").value,
       on_suggestion:$("nt_on_suggestion").checked, on_ai_block:$("nt_on_ai_block").checked,
       on_member_down:$("nt_on_member_down").checked, on_sync:$("nt_on_sync").checked, on_peer:$("nt_on_peer").checked };
@@ -2660,8 +2662,8 @@
   $("bellclear").onclick=async()=>{ await api("/api/notifications/dismiss",{method:"POST",body:JSON.stringify({all:true})}); loadBell(); };
   function deliveryText(label, stats){
     if(!stats||!stats.state)return label+": unavailable — delivery not verified";
-    const states={disabled:"Off",unverified:"Not verified",degraded:"Delivery failures",last_send_succeeded:"Last send succeeded (not a receipt)",stale:"Previous result is stale"};
-    return label+": "+(states[stats.state]||"Unknown")+" · last successful send "+(stats.last_success||"none")+" · last failure "+(stats.last_failure||"none")+" · failures "+Number(stats.failures||0)+" · dropped "+Number(stats.dropped||0)+" · pending "+Number(stats.queue_depth||0)+"/"+Number(stats.queue_capacity||0);
+    const states={disabled:"Off",unverified:"Not verified",degraded:"Delivery failures",last_send_succeeded:"Last send succeeded (not a receipt)",sent_unconfirmed:"Sent over UDP — delivery cannot be confirmed",stale:"Previous result is stale"};
+    return label+": "+(states[stats.state]||"Unknown")+(stats.last_error?" · last error: "+stats.last_error:"")+" · last successful send "+(stats.last_success||"none")+" · last failure "+(stats.last_failure||"none")+" · failures "+Number(stats.failures||0)+" · dropped "+Number(stats.dropped||0)+" · pending "+Number(stats.queue_depth||0)+"/"+Number(stats.queue_capacity||0);
   }
   async function loadDeliveryHealth(){
     try{const status=await api("/api/status");$("nt_delivery").textContent=deliveryText("Webhook",status.webhook_delivery);$("sl_delivery").textContent=deliveryText("SIEM",status.syslog_delivery);}
@@ -3608,7 +3610,8 @@
   }
   function attentionItems(st,poolRows,matches,access,candidates){
     const out=[],add=(text,view)=>out.push({text,view});
-    for(const [key,label] of [["syslog_delivery","SIEM"],["webhook_delivery","Webhook"]]){const state=st[key];if(state?.enabled&&(state.state==="degraded"||state.state==="stale"||Number(state.dropped)>0))add(label+" delivery needs review: "+state.state+"; "+Number(state.failures||0)+" failures, "+Number(state.dropped||0)+" dropped.","setup");}
+    for(const [key,label] of [["syslog_delivery","SIEM"],["webhook_delivery","Webhook"]]){const state=st[key];if(state?.enabled&&(state.state==="degraded"||state.recent_drops))add(label+" delivery needs review"+(state.last_error?": "+state.last_error:"")+" ("+Number(state.failures||0)+" failures, "+Number(state.dropped||0)+" dropped in total).","setup");}
+    const sat=st.l7_saturation;if(sat?.active)add("Rate limiter is at capacity: new clients share a small per-site allowance ("+Number(sat.overflow_refused||0)+" refused). This usually means a distributed flood; check Logs and the limits under Policies.","policies");
     for(const p of poolRows)for(const m of p.members||[])if(!m.healthy)add("Application server unavailable: "+m.node+" in "+p.name,"pools");
     const failures=access.filter(r=>r.status>=500).length,rejections=access.filter(r=>r.status===403||r.status===429).length;
     if(failures)add(failures+" server-error responses in the latest "+access.length+" stored requests.","logs");
