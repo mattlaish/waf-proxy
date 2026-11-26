@@ -196,12 +196,14 @@ func sharedConfigForPeer(cfg Config) Config {
 	out = redactAISecrets(out)
 	out = redactHSMSecretRefs(out)
 	out = redactNotifySecrets(out)
+	out.Notify.ClearWebhook = false
 	return out
 }
 
 func mergePeerConfig(local, incoming Config) Config {
 	incoming.HA = local.HA
 	incoming.Users = local.Users
+	incoming.Notify.ClearWebhook = false
 	preserveAISecrets(local, &incoming)
 	preserveNotifySecrets(local, &incoming)
 	preserveHSMSecretRefs(local, &incoming)

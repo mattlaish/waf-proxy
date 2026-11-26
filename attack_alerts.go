@@ -140,9 +140,11 @@ func (n *notifier) observeAttack(site, kind, severity string, now time.Time) {
 		return
 	}
 	state.emitted = true
+	startedAt := state.start
 	n.mu.Unlock()
 	// Window-level suppression above is authoritative; do not use the generic
 	// dedupe map which can shorten a deliberately configured alert window.
-	n.push(notifyAttack, "alert", "WAF activity threshold reached",
-		fmt.Sprintf("Site %s: %d %s events in %ds; minimum match severity %s. Matches are not necessarily blocked requests.", site, count, kind, int(window.Seconds()), minimum), "", "", nil)
+	n.pushContext(notifyAttack, "alert", "WAF activity threshold reached",
+		fmt.Sprintf("Site %s: %d %s events in %ds; minimum match severity %s. Matches are not necessarily blocked requests.", site, count, kind, int(window.Seconds()), minimum), "", "", nil,
+		&notificationContext{Site: site, Kind: kind, StartedAt: startedAt.UTC(), EndedAt: now.UTC()})
 }

@@ -1264,6 +1264,10 @@ func (s *server) applyPersisted(cfg Config, fromSync bool) error {
 // lock across stage -> live reconcile -> rename -> HA enqueue prevents a second
 // mutation from rolling back or publishing across the first transaction.
 func (s *server) applyPersistedLocked(cfg Config, fromSync bool) error {
+	if cfg.Notify.ClearWebhook {
+		cfg.Notify.WebhookURL = ""
+		cfg.Notify.ClearWebhook = false
+	}
 	if err := cfg.validate(); err != nil {
 		return err
 	}
@@ -1724,15 +1728,16 @@ func (s *server) buildWAF(policy PolicyConfig, pages []PagePolicy, mode, aiMode,
 		WithErrorCallback(func(rule types.MatchedRule) {
 			matchAt := time.Now().UTC()
 			rec := matchRec{
-				Time:     matchAt.Format("15:04:05"),
-				Site:     siteName,
-				RuleID:   rule.Rule().ID(),
-				Severity: rule.Rule().Severity().String(),
-				Phase:    int(rule.Rule().Phase()),
-				Client:   rule.ClientIPAddress(),
-				URI:      rule.URI(),
-				Msg:      rule.Message(),
-				Data:     rule.Data(),
+				OccurredAt: matchAt.Format(time.RFC3339Nano),
+				Time:       matchAt.Format("15:04:05"),
+				Site:       siteName,
+				RuleID:     rule.Rule().ID(),
+				Severity:   rule.Rule().Severity().String(),
+				Phase:      int(rule.Rule().Phase()),
+				Client:     rule.ClientIPAddress(),
+				URI:        rule.URI(),
+				Msg:        rule.Message(),
+				Data:       rule.Data(),
 			}
 			s.matches.add(rec)
 			s.notify.observeAttack(siteName, "match", rec.Severity, matchAt)

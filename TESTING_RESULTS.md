@@ -1496,3 +1496,28 @@ code uses authoritative transaction interruption evidence, not HTTP status guess
 and covers response-phase blocks too. In-memory inline-rule Coraza PASS is not
 the full real-CRS qualification. State remains IMPLEMENTED_TESTING_DEFERRED.
 
+## 2026-11-25 — Complete operator-workflow pass
+
+- PASS: 32 targeted Go tests under pinned portable Go 1.26.9, including seven
+  new workflow regressions: staged clear/blank-secret behavior/HA isolation,
+  independent read versus handled state, actual local-fixture TCP and webhook
+  tests with health updates, role denial, generation/process-token mismatch,
+  structured notification context and precise access timestamps.
+- PASS: 26/26 actual-script Node checks; 40/40 intercepted headless-browser
+  workflows, adding eight cases for all new operating paths. Existing per-field,
+  concurrency, permission, mobile and cancellation assertions retained.
+- PASS: root tidy-diff clean, native Windows build/vet, Linux cross-build,
+  19/19 source/document gates; Go ServeMux gate checks 142 patterns. Desktop and
+  390px layouts visually inspected with fixture-only screenshots in temporary
+  storage, not product output directories.
+- FAIL: full Windows go test ./... was attempted; failures remain in root/HSM/
+  secretref/TLS frontend with Unix path/mode/fsync/rename/shell/execute-bit issues.
+  No new workflow/security test failed. No assertions were skipped or weakened.
+- BLOCKED: race attempted with CGO enabled, gcc unavailable; WSL not installed.
+  Linux full tests/race and live VM/HA/delivery/real-CRS/hardware acceptance NOT_RUN.
+
+Expanded tests found a real site-selector redraw race and unwanted optional
+monitor defaults on read/navigation; both corrected. The new delivery-confirm
+test now waits for its asynchronous dialog before asserting exact destination.
+State remains IMPLEMENTED_TESTING_DEFERRED; no deployment/Git/release artifacts.
+

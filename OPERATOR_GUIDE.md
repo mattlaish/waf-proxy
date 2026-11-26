@@ -1,5 +1,50 @@
 # WAF console operating guide
 
+## 2026-11-25 — Site-centered tasks and safe changes
+
+Choose a **Site workspace** to open that site's existing settings, application
+server group, policy, discovered pages, field protection or logs. Shared groups
+and policies can affect other sites. Unsaved edits must be resolved before
+switching context. **Back to previous task** retains selections, log filters,
+severity/mode and scroll in memory (up to 20 tasks). Closing a page editor returns
+to its source position. The workspace's actions start collapsed on phones.
+
+For fields, select an observed page or enter its exact submission path. The page
+editor identifies site, path and configured fields. Search candidates and select
+only wanted fields, then **Review selected fields**. Confirming adds them to the
+page draft; the existing page preview and Apply still control activation. There
+is no automatic selection or rule addition for other fields.
+
+After guided setup, save the draft, review/Apply and use **Check readiness**.
+It reads current active config, backend health and recent stored requests; it
+does not send an application request. **Record manual verification** is only
+for a request you independently sent and checked. That session-local note is
+bound to active settings and stops matching when those settings change.
+
+**Clear stored webhook** now stages removal, with confirmation and undo, rather
+than altering live settings. Save the draft and Apply to execute it. A blank URL
+without staged removal still keeps the stored address. Other edits are preserved;
+the removal intent is local to this node and is not applied to the HA peer.
+The legacy direct API deletion remains immediate for API-client compatibility.
+
+**Test active SIEM / Test active webhook** confirms the active target, not the
+current form or draft. One synthetic test updates delivery observations. If
+configuration/node identity changed since confirmation, refresh and retry after
+reviewing the target. Success proves transport sending only, not indexing or
+ticket creation. SIEM Facility 0 is retained as a valid value.
+
+Opening the bell does not mark everything read. Use **Mark read**, **Mark handled**
+or **Dismiss** explicitly. Attack **View related logs** uses structured site/time
+context without changing policy. Logs are bounded recent samples; legacy records
+without full timestamps cannot be confined to the selected period, and access
+statuses alone are not proof of WAF blocking. Delivery failures/drops/stale status
+also appear in Dashboard Needs attention; intentionally off integrations do not.
+
+Setup task navigation expands the existing advanced TLS/AI/HA/update sections.
+Moving between these sections does not throw away entered settings. No second
+settings copy, automatic application test, or automatic protection exception is
+created by these navigation improvements.
+
 ## 2026-11-19 — Traffic limits and delivery safety
 
 Traffic limits group IPv6 clients by /64 unless you explicitly enter another

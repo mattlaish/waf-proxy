@@ -263,8 +263,14 @@ func (s *syslogEngine) deliveryStats() map[string]any {
 	if s == nil {
 		return map[string]any{"state": "disabled"}
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	stats := s.delivery.snapshot(s.snapshotCfg().Enabled, len(s.queue), cap(s.queue), atomic.LoadUint64(&s.dropped))
 	stats["receipt_verified"] = false
+	stats["config_generation"] = s.delivery.current()
+	stats["config_token"] = s.delivery.configToken()
+	cfg := s.snapshotCfg()
+	stats["target"] = fmt.Sprintf("%s://%s", cfg.Protocol, net.JoinHostPort(cfg.Host, fmt.Sprint(cfg.Port)))
 	return stats
 }
 
@@ -422,10 +428,30 @@ func (s *syslogEngine) forwardNotify(level, kind, title, body string) {
 
 // test sends a single message immediately (synchronously) to validate config.
 func (s *syslogEngine) test() error {
+	return s.testForGeneration(nil)
+}
+
+func (s *syslogEngine) testForGeneration(expected *uint64) error {
+	return s.testForTarget(expected, "")
+}
+
+func (s *syslogEngine) testForTarget(expected *uint64, token string) error {
+	s.mu.Lock()
 	cfg := s.snapshotCfg()
-	if !cfg.Enabled {
-		return fmt.Errorf("syslog is disabled — enable and save first")
+	generation := s.delivery.current()
+	currentToken := s.delivery.configToken()
+	s.mu.Unlock()
+	if token != "" && token != currentToken {
+		return errDeliveryConfigChanged
 	}
+	if expected != nil && *expected != generation {
+		return errDeliveryConfigChanged
+	}
+	if !cfg.Enabled {
+		return fmt.Errorf("syslog is disabled — enable and Apply first")
+	}
+	success := false
+	defer func() { s.delivery.recordAt(generation, success) }()
 	conn, err := s.dial(cfg)
 	if err != nil {
 		return err
@@ -446,6 +472,10 @@ func (s *syslogEngine) test() error {
 		line += "\n"
 	}
 	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	_, err = conn.Write([]byte(line))
+	n, err := conn.Write([]byte(line))
+	if err == nil && n != len(line) {
+		err = io.ErrShortWrite
+	}
+	success = err == nil
 	return err
 }

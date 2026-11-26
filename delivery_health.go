@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -13,6 +16,22 @@ type deliveryHealth struct {
 	lastSuccess time.Time
 	lastFailure time.Time
 	generation  uint64
+	epoch       string
+}
+
+// A process-specific nonce prevents a stale confirmation from matching another
+// node/restart that happens to have the same numeric configuration generation.
+func (h *deliveryHealth) configToken() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.epoch == "" {
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return ""
+		}
+		h.epoch = hex.EncodeToString(b[:])
+	}
+	return h.epoch + ":" + strconv.FormatUint(h.generation, 10)
 }
 
 func (h *deliveryHealth) record(success bool) {

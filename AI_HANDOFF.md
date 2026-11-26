@@ -1,5 +1,119 @@
 # AI Development Handoff
 
+## 2026-11-25 — Complete operator-workflow pass
+
+Approved implementation of the 2026-11-24 workflow backlog and all six
+additional operator-experience proposals. Active source remains
+`C:\Users\mattlai\Projects\waf-proxy`; no Git operations or relocation.
+This entry supersedes the earlier NOT IMPLEMENTED UI backlog, not historical
+security qualification or the still-missing SOC reader.
+
+- Webhook clear is a cancellable/undoable draft intent
+  `notify.clear_webhook`, saved with the draft and resolved on reviewed Apply.
+  Blank URL without that intent still preserves the stored secret. Live config
+  is not touched by the UI clear button; unrelated edits survive. The intent is
+  consumed before live persistence and stripped/ignored across HA. The legacy
+  DELETE endpoint remains immediate for compatibility; UI no longer calls it.
+- Syslog Facility 0 is serialized as 0, not 16. Opening a group no longer
+  materializes optional monitor defaults and invents unsaved edits.
+- Delivery tests confirm the active destination, explicitly distinguish pending
+  edits/drafts and send only a fixed synthetic message. Test results update
+  transport observations, including failures/short writes. New operator-only
+  `POST /api/notifications/test`; existing `POST /api/syslog/test` retained.
+  Status exposes configuration generation plus an opaque per-process/config
+  token; new UI sends `expected_generation` and `expected_token`, with 409 on
+  mismatches. This prevents stale/different-node confirmations. Older API
+  clients may omit these fields for compatibility. Tokens are not credentials
+  or endpoint hashes. A successful send is not receipt/indexing/ticket proof.
+- New Reviewer-gated/audited `POST /api/notifications/handle` separates handled
+  from read. Opening the bell is read-only; explicit mark-read/all-read remains.
+  Attack notifications carry structured site/kind/start/end context, with a
+  read-only related-logs shortcut. Match/access JSON includes `occurred_at`.
+  Logs apply site/period scope and label sampling/legacy timestamp limitations;
+  access status alone does not prove a WAF block. Alerts never auto-edit policy.
+- Dashboard Needs attention includes enabled webhook/SIEM delivery failure,
+  drop and stale observations, linking to Setup. Intentional disable is not an
+  outage. Counts remain process-lifetime observations.
+- Site workspace links to existing site/group/policy/map/log editors; no second
+  config authority or duplicate editors. Site context and shared-resource impact
+  are shown. Unsaved/page edits guard context changes. Bounded memory-only task
+  history (20 entries) retains selections, log mode/filter/severity and scroll;
+  page close also restores the originating log position. No persisted secrets.
+- Field workflow identifies site/submission URL/configured fields and supports
+  observed/manual paths. Discovery remains opt-in: searchable multi-selection,
+  explicit selected-rule preview, then existing page review/Apply; no default
+  selection, no sibling-field activation or enforcement/method semantics change.
+- Guided setup leads to draft review, Apply, readiness and actual-request
+  verification. Readiness re-reads active config, health and recent access data
+  without sending an application request. Operator manual verification is a
+  session-local note bound to the active-config signature, invalidated by
+  changes; it is never presented as an automated test or full application proof.
+- Setup task navigation opens existing TLS/AI/HA/update advanced groups without
+  losing inputs. Notifications/SIEM stay directly available. On phones the site
+  action panel defaults collapsed and honors explicit user expansion.
+
+Source scope: `static/admin.html`, `notify.go`, `attack_alerts.go`,
+`admin.go`, `syslog.go`, `delivery_health.go`, `ha.go`, `main.go`;
+new `console_workflow.go` and `console_workflow_test.go`; both Console suites
+expanded. No dependency, package, deployment or WAF enforcement-engine change.
+
+Verification: pinned portable Go 1.26.9, real dependencies. **32 targeted Go
+workflow/security/L7/HA/notification tests PASS** (7 new workflow tests);
+**26/26 Node Console**, **40/40 intercepted Edge/Playwright workflows** PASS
+(3 new Node, 8 new browser tests). Desktop/390px rendering inspected with
+synthetic fixtures. Tidy-diff clean; native Windows build/vet and Linux
+cross-build PASS. **19/19 Python source/document gates PASS**, including the
+Go-backed route gate; Admin/update inventory is **142** patterns.
+
+The complete Windows `go test ./...` was attempted and **FAILED**, including
+Unix private modes, directory fsync, Unix paths/shell/executable bits and
+concurrent-rename checks; no new workflow/security test failure was observed.
+Race attempt is BLOCKED because gcc is absent; WSL is not installed. Linux
+full test/race, VM/HA, real SIEM/webhook/provider/CRS and hardware acceptance
+remain NOT_RUN. State remains **IMPLEMENTED_TESTING_DEFERRED**; no release
+promotion, generated artifact, deployment or Git action.
+
+Initial browser expansion found a real selector/input redraw race and phantom
+monitor-default edits; both were fixed. A test also read the confirmation before
+its async status fetch completed; it now waits for the visible dialog without
+weakening destination assertions. No tests were skipped to claim success.
+
+## 2026-11-24 — UI workflow audit backlog (recorded, NOT implemented)
+
+User approved recording these findings only. No source/API/UI implementation or
+Git operation is authorized by this entry; obtain explicit approval before fixes.
+The 2026-11-19 implementation/qualification status below is unchanged.
+
+1. High: Clear stored webhook immediately mutates live configuration, clears a
+   newly entered draft URL, and does not refresh the editor baselines. Prefer a
+   staged clear through review/Apply; if retaining immediate deletion, guard
+   unsaved work and reconcile active/draft state without losing unrelated edits.
+2. High: collectSyslog serializes legal Facility 0 as 16 via a truthy fallback.
+   Preserve numeric zero and add request-payload round-trip regression coverage.
+3. Medium: Send test uses active settings, not the current form; its result does
+   not update delivery observations. Make test target/config source explicit,
+   handle pending drafts, and join test results to transport health without
+   claiming SIEM receipt/indexing. Setup's existing active-settings hint is not
+   a replacement for an explicit test workflow.
+4. Medium: Attack notifications expose only Dismiss, with no investigation
+   shortcut; opening the bell marks all notifications read. Add structured
+   site/time/event context for safe log navigation and distinguish read from
+   handled; never auto-create exceptions or change enforcement from an alert.
+5. Medium: Dashboard Needs attention ignores failed webhook/SIEM delivery.
+   Include failed/dropped/stale observations with links to the relevant settings;
+   intentionally disabled integrations must not be labelled broken.
+6. Navigation proposal: group the long Setup / AI page by task (TLS, AI, HA,
+   notifications, SIEM, updates) with section navigation. Proposal, not a verified
+   functional bug or approved implementation.
+
+Evidence from the read-only audit: two isolated in-memory browser cases confirmed
+draft URL loss/direct DELETE and Dismiss-only attack actions; two executions of
+the actual console JavaScript reproduced Facility 0 -> 16 and an empty attention
+list when delivery alone is degraded. Other findings were confirmed by source
+inspection. No full suite or live WAF/VM acceptance was performed for this audit.
+This documentation update does not fix or qualify these pending findings.
+
+
 ## 2026-11-19 — Rate limiter, alert delivery and webhook security
 
 Approved report-driven security changes in the fixed source root

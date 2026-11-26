@@ -851,3 +851,21 @@ Linux runtime, real CRS/full hardware and VM/HA/SIEM acceptance remain pending.
 Missing SOC/ticketing source prevents closing its reader/auth/switch findings.
 No Git, deployment, release/package generation, or dependency change.
 
+## 2026-11-25 — Approved complete operator-workflow implementation
+
+Implemented staged webhook removal (draft intent/Apply/HA isolation), Facility
+zero preservation, active-target delivery tests with generation/process-token
+confirmation and health updates, structured attack investigation/read/handled,
+delivery attention summaries, shared site workspace and task-position return,
+guided readiness/manual verification, opt-in searchable batch field approval,
+and grouped advanced settings. Underlying config/API state is updated with UI.
+New console_workflow.go and console_workflow_test.go add seven backend tests;
+Console suites add three Node and eight browser cases. Admin/update routes 142.
+
+PASS: pinned Go 1.26.9 tidy, Windows build/vet, Linux cross-build; 32 targeted Go,
+26 Node, 40 mocked-browser tests and 19 Python/source gates. Desktop and phone
+rendering checked on synthetic fixtures. Full Windows suite FAIL remains due to
+Unix/platform checks; race cannot build without gcc, WSL absent. Linux full
+suite/race and VM/HA/SIEM/webhook/CRS/hardware qualification remain pending.
+No source relocation, Git, dependency change, deployment or artifact generation.
+

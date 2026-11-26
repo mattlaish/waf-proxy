@@ -1,5 +1,15 @@
 # Markdown Review Ledger — 2026-09-28
 
+## 2026-11-25 operator-workflow pass
+
+Updated current handover/index/patch, roadmap, operating/install/release/testing
+guidance and manifest; appended development/test evidence without rewriting
+historical results. No new Markdown files. Current workflow backlog is implemented
+but Linux runtime/race/live qualification remains pending; current Windows full
+suite FAIL is retained. New API/config intents, role boundaries, HA isolation,
+synthetic-test observations, bounded context/history and manual-verification
+limitations are documented. See newest AI_HANDOFF.md and patch.md entries.
+
 ## 2026-11-19 security-report changes
 
 Synchronized current canonical handover, index, patch, operator/release/install

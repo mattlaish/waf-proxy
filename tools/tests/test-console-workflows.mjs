@@ -3,6 +3,83 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { after, before, test } from 'node:test';
 
+test('webhook removal is cancellable, undoable and draft-only until reviewed Apply',async()=>{
+ const s=await session();try{
+  await tab(s.page,'setup');await s.page.locator('#nt_webhook_url').fill('https://new.example/hook');await s.page.locator('#nt_attack_threshold').fill('25');
+  await s.page.locator('#nt_clear_webhook').click();await choice(s.page,'cancel');assert.equal(await s.page.locator('#nt_webhook_url').inputValue(),'https://new.example/hook');
+  await s.page.locator('#nt_clear_webhook').click();await choice(s.page,'stage');assert.equal(writes(s.calls).length,0);
+  await s.page.locator('#nt_clear_webhook').click();assert.equal(await s.page.locator('#nt_webhook_url').inputValue(),'https://new.example/hook');
+  await s.page.locator('#nt_clear_webhook').click();await choice(s.page,'stage');await s.page.locator('#nt_save').click();await s.page.locator('#ux_change_state').filter({hasText:'Draft saved'}).waitFor();
+  const saved=writes(s.calls).find(c=>c.path==='/api/config?draft=1').body;assert.equal(saved.notify.clear_webhook,true);assert.equal(saved.notify.attack_threshold,25);assert.equal(saved.notify.webhook_url,'');
+  assert.equal(writes(s.calls).some(c=>c.method==='DELETE'),false);
+  await s.page.locator('#ux_review').click();await choice(s.page,'apply');await s.page.locator('#ux_change_state').filter({hasText:'matches active settings'}).waitFor();
+  assert.equal(s.active.notify.webhook_url,'');assert.equal(s.active.notify.clear_webhook,undefined);assert.equal(s.active.notify.attack_threshold,25);assert.deepEqual(s.errors,[]);
+ }finally{await s.close();}
+});
+
+test('Facility zero is retained in the actual saved draft payload',async()=>{
+ const s=await session();try{await tab(s.page,'setup');await s.page.locator('#sl_facility').fill('0');await s.page.locator('#sl_save').click();await s.page.locator('#ux_change_state').filter({hasText:'Draft saved'}).waitFor();assert.equal(writes(s.calls).at(-1).body.syslog.facility,0);assert.deepEqual(s.errors,[]);}finally{await s.close();}
+});
+
+test('delivery test confirms active target and generation despite pending form edits',async()=>{
+ const s=await session();let sent=false;const requests=[];try{
+  await s.page.route('**/api/status',route=>route.fulfill({json:{sites:[],syslog_delivery:{enabled:true,state:sent?'last_send_succeeded':'unverified',config_generation:7,config_token:'node-test:7',target:'tls://active.example:6514',sent:sent?1:0}}}));
+  await s.page.route('**/api/syslog/test',route=>{requests.push(route.request().postDataJSON());sent=true;return route.fulfill({json:{ok:true,source:'active',receipt_verified:false}});});
+  await tab(s.page,'setup');await s.page.locator('#sl_host').fill('pending.example');await s.page.locator('#sl_test').click();await s.page.locator('#ux_dialog:not([hidden])').waitFor();assert.match(await s.page.locator('#ux_dialog_body').innerText(),/active.example:6514/);assert.match(await s.page.locator('#ux_dialog_body').innerText(),/not active/);await choice(s.page,'cancel');assert.equal(requests.length,0);
+  await s.page.locator('#sl_test').click();await choice(s.page,'test');await s.page.locator('#sl_delivery').filter({hasText:'Last send succeeded'}).waitFor();assert.deepEqual(requests,[{expected_generation:7,expected_token:'node-test:7'}]);assert.equal(await s.page.locator('#sl_host').inputValue(),'pending.example');assert.equal(writes(s.calls).some(c=>c.path==='/api/config'),false);assert.deepEqual(s.errors,[]);
+ }finally{await s.close();}
+});
+
+test('attack review carries structured log scope without marking all read or handled',async()=>{
+ const s=await session();let handled=false;try{
+  const item=()=>({id:1,kind:'attack',level:'alert',title:'Attack threshold',time:'10:00:00',body:'Review site activity',handled,context:{site:'shop',kind:'match',started_at:'2026-11-25T00:00:00Z',ended_at:'2026-11-25T01:00:00Z'}});
+  await s.page.route('**/api/notifications?**',route=>route.fulfill({json:{unread:1,items:[item()]}}));
+  await s.page.locator('#bell').click();await s.page.locator('[data-investigate]').waitFor();assert.equal(writes(s.calls).some(c=>c.path==='/api/notifications/read'),false);
+  await s.page.locator('[data-investigate]').click();await s.page.locator('#view-logs.sel').waitFor();await s.page.locator('#log_scope').filter({hasText:'shop'}).waitFor();assert.match(await s.page.locator('#log_scope').innerText(),/2026-11-25/);
+  await s.page.route('**/api/notifications/handle',route=>{handled=true;return route.fulfill({json:{ok:true}});});
+  await s.page.locator('#bell').click();await s.page.locator('[data-bell-handle]').click();await s.page.locator('#belllist').filter({hasText:'Handled'}).waitFor();assert.deepEqual(s.errors,[]);
+ }finally{await s.close();}
+});
+
+test('site workspace links resolve existing editors and preserve log task state on return',async()=>{
+ const s=await session();try{
+  await s.page.locator('#workspace_site').selectOption('shop');await s.page.locator('[data-workspace="logs"]').click();await s.page.locator('#view-logs.sel').waitFor();
+  await s.page.locator('#logfilter').fill('login');await s.page.locator('#logsev').selectOption('WARNING');
+  await s.page.locator('[data-workspace="pools"]').click();await s.page.locator('#view-pools.sel').waitFor();assert.ok(await s.page.locator('#pools input').count()>0);
+  await s.page.locator('#workspace_back').click();await s.page.locator('#view-logs.sel').waitFor();assert.equal(await s.page.locator('#logfilter').inputValue(),'login');assert.equal(await s.page.locator('#logsev').inputValue(),'WARNING');
+  await s.page.locator('[data-event]').first().click();await choice(s.page,'page');await s.page.locator('#pp:not([hidden])').waitFor();assert.match(await s.page.locator('#pp_workflow').innerText(),/Site shop/);
+  await s.page.locator('#ppclose').click();await s.page.locator('#pp[hidden]').waitFor({state:'attached'});assert.equal(await s.page.locator('#logfilter').inputValue(),'login');assert.equal(await s.page.locator('#logsev').inputValue(),'WARNING');assert.deepEqual(s.errors,[]);
+ }finally{await s.close();}
+});
+
+test('workspace opens submission policy and selected candidate rules require explicit review',async()=>{
+ const s=await session();try{
+  await s.page.route('**/api/forms?**',route=>route.fulfill({json:[{name:'username',method:'POST',action:'/login',type:'text'},{name:'password',method:'POST',action:'/login',type:'password'}]}));
+  await s.page.locator('#workspace_site').selectOption('shop');await s.page.locator('[data-workspace="fields"]').click();await s.page.locator('#ux_input_known').selectOption('/login');await submit(s.page);
+  await s.page.locator('[data-candidate-pick]').first().waitFor();assert.equal(await s.page.locator('[data-candidate-pick]:checked').count(),0);assert.equal(await s.page.locator('#pp_fields .fpolicy').count(),0);
+  await s.page.locator('[data-candidate-pick]').first().check();await s.page.locator('[data-candidate-pick]').nth(1).check();await s.page.locator('[data-candidate-search]').fill('password');
+  await s.page.locator('[data-add-selected]').click();await choice(s.page,'cancel');assert.equal(await s.page.locator('#pp_fields .fpolicy').count(),0);
+  await s.page.locator('[data-add-selected]').click();await choice(s.page,'add');assert.equal(await s.page.locator('#pp_fields .fpolicy').count(),2);assert.equal(writes(s.calls).length,0);
+  await s.page.locator('#pp_save').click();await choice(s.page,'apply');await s.page.locator('#pp[hidden]').waitFor({state:'attached'});assert.deepEqual(s.active.sites[0].page_policies[0].fields.map(f=>f.name),['username','password']);assert.deepEqual(s.errors,[]);
+ }finally{await s.close();}
+});
+
+test('readiness is a read-only checklist and manual verification is explicit',async()=>{
+ const s=await session();try{
+  await s.page.locator('#workspace_site').selectOption('shop');await s.page.locator('#workspace_check').click();await s.page.locator('#workspace_checklist').filter({hasText:'not yet verified'}).waitFor();assert.equal(writes(s.calls).length,0);
+  await s.page.locator('[data-check-manual]').click();await choice(s.page,'cancel');assert.match(await s.page.locator('#workspace_checklist').innerText(),/not yet verified/);
+  await s.page.locator('[data-check-manual]').click();await choice(s.page,'verified');await s.page.locator('#workspace_checklist').filter({hasText:'operator recorded manual verification'}).waitFor();assert.equal(writes(s.calls).length,0);assert.deepEqual(s.errors,[]);
+ }finally{await s.close();}
+});
+
+test('setup section navigation opens advanced editors without losing input',async()=>{
+ const s=await session();try{
+  await tab(s.page,'setup');assert.equal(await s.page.locator('#ai_model').isHidden(),true);
+  await s.page.locator('[data-setup-target="ai_model"]').click();await s.page.locator('#ai_model').fill('chosen-model');
+  await s.page.locator('[data-setup-target="sl_enabled"]').click();assert.equal(await s.page.locator('#ai_model').inputValue(),'chosen-model');assert.equal(writes(s.calls).length,0);assert.deepEqual(s.errors,[]);
+ }finally{await s.close();}
+});
+
 test('security settings save explicit webhook exceptions and attack thresholds as a draft', async () => {
   const s=await session();
   try {
@@ -84,7 +161,7 @@ async function session({ failures = {}, holds = {}, role = 'admin', pagePolicies
       }
       if (method === 'PUT') {
         if (url.searchParams.has('draft')) draft = clone(body);
-        else { Object.assign(active, clone(body)); draft = null; }
+        else { const applied=clone(body);if(applied.notify?.clear_webhook){applied.notify.webhook_url='';delete applied.notify.clear_webhook;}Object.assign(active, applied);draft = null;return send({config:clone(active),applied:true,apply_ready:true}); }
         return send({ config: clone(body), draft: url.searchParams.has('draft'), applied: !url.searchParams.has('draft'), apply_ready: true });
       }
       return send(clone(url.searchParams.has('draft') ? (draft || active) : active));

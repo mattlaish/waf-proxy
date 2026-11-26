@@ -1,5 +1,35 @@
 # New Chat Handover Prompt
 
+## 2026-11-25 — Complete operator-workflow pass
+
+Implemented the approved five workflow fixes plus site-centered navigation,
+field workflow/batch review, task-position retention, post-setup readiness and
+progressive settings groups. Staged webhook removal, explicit active-target
+testing and structured notification handling change underlying config/API state,
+not only labels. Read AI_HANDOFF.md and patch.md for fields, API/HA compatibility,
+safety boundaries, source scope and exact next qualification.
+
+Verification: pinned portable Go 1.26.9, real dependencies. **32 targeted Go
+workflow/security/L7/HA/notification tests PASS** (7 new workflow tests);
+**26/26 Node Console**, **40/40 intercepted Edge/Playwright workflows** PASS
+(3 new Node, 8 new browser tests). Desktop/390px rendering inspected with
+synthetic fixtures. Tidy-diff clean; native Windows build/vet and Linux
+cross-build PASS. **19/19 Python source/document gates PASS**, including the
+Go-backed route gate; Admin/update inventory is **142** patterns.
+
+The complete Windows `go test ./...` was attempted and **FAILED**, including
+Unix private modes, directory fsync, Unix paths/shell/executable bits and
+concurrent-rename checks; no new workflow/security test failure was observed.
+Race attempt is BLOCKED because gcc is absent; WSL is not installed. Linux
+full test/race, VM/HA, real SIEM/webhook/provider/CRS and hardware acceptance
+remain NOT_RUN. State remains **IMPLEMENTED_TESTING_DEFERRED**; no release
+promotion, generated artifact, deployment or Git action.
+
+Initial browser expansion found a real selector/input redraw race and phantom
+monitor-default edits; both were fixed. A test also read the confirmation before
+its async status fetch completed; it now waits for the visible dialog without
+weakening destination assertions. No tests were skipped to claim success.
+
 ## 2026-11-19 — Rate limiter, alert delivery and webhook security
 
 Implemented IPv6-prefix/scoped-overflow limiting, thresholded attack

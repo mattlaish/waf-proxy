@@ -158,7 +158,10 @@
   .workbar .btn[hidden]{display:none}
   /* The API section jump stays reachable below the pinned change bar while scrolling. */
   .api-jump{position:sticky;top:var(--sticky-top,0px);z-index:30;background:var(--bg);padding:8px 0}
+  .setup-group{border:1px solid var(--line);border-radius:8px;margin:10px 0;min-width:0}.setup-group>summary{cursor:pointer;padding:12px;font-weight:600}.setup-group>section{border:0;margin:0}.setup-task-nav{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}#workspace{margin-top:12px}#workspace .actions{flex-wrap:wrap}#workspace_checklist:empty{display:none}#pp_workflow{margin:8px 0}
   #view-api section{scroll-margin-top:calc(var(--sticky-top,0px) + 96px)}
+  #workspace>.row{grid-template-columns:minmax(0,1fr) auto;align-items:end}#workspace_more>summary{cursor:pointer;font-weight:600;padding:8px 0}#workspace_more .hint{margin:8px 0}
+  @media(max-width:600px){#workspace>.row{grid-template-columns:1fr}#workspace .btn{font-size:11px}#workspace_context{line-height:1.5}}
   @media(max-width:600px){
     /* With nothing to save or apply, the change bar scrolls away and shows only
        its status and remaining actions; it pins again once there are edits. */
@@ -308,6 +311,15 @@
     <button class="tab" data-view="users">USERS</button>
     <button class="tab" data-view="map">SITE&nbsp;MAP</button>
   </nav>
+
+  <section id="workspace" aria-label="Site workspace">
+    <div class="row"><div class="field"><label for="workspace_site">Site workspace</label><select id="workspace_site"><option value="">All sites — choose a site for guided actions</option></select></div><button class="btn sm" id="workspace_back">Back to previous task</button></div>
+    <details id="workspace_more" open><summary>Site tasks and readiness</summary>
+    <div id="workspace_context" class="hint"></div>
+    <div class="actions" id="workspace_actions" hidden><button class="btn sm" data-workspace="sites">Site settings</button><button class="btn sm" data-workspace="pools">Application servers</button><button class="btn sm" data-workspace="policies">Protection policy</button><button class="btn sm" data-workspace="fields">Page / field protection</button><button class="btn sm" data-workspace="map">Discovered pages</button><button class="btn sm" data-workspace="logs">Site logs</button><button class="btn sm" id="workspace_check">Check readiness</button></div>
+    <div id="workspace_checklist" class="hint" role="status"></div>
+    </details>
+  </section>
 
   <!-- ══ CONFIG ══ -->
   <div id="view-config" class="view sel">
@@ -651,6 +663,7 @@
         <div class="count" id="logcount"></div>
       </div>
       <div style="overflow-x:auto">
+        <div id="log_scope" class="hint" role="status"></div><button class="btn sm" id="log_clear_scope">Clear investigation period / site filter</button>
         <table id="logtable"><thead id="loghead"></thead><tbody id="logbody"></tbody></table>
         <div class="empty" id="log-empty">No log entries yet. Entries appear as requests pass through the WAF.</div>
       </div>
@@ -659,6 +672,7 @@
 
   <!-- ══ SETUP / AI ══ -->
   <div id="view-setup" class="view">
+    <nav id="setup_task_nav" class="setup-task-nav" aria-label="Setup tasks"><button class="btn sm" data-setup-target="tls_accel_mode">TLS</button><button class="btn sm" data-setup-target="ai_model">AI connection</button><button class="btn sm" data-setup-target="ai_only_on_match">AI policy</button><button class="btn sm" data-setup-target="ha_enabled">HA</button><button class="btn sm" data-setup-target="nt_webhook_url">Notifications</button><button class="btn sm" data-setup-target="sl_enabled">SIEM</button><button class="btn sm" data-setup-target="upd_status">Updates</button></nav>
     <div class="hint" style="margin-bottom:14px">Save draft keeps changes without activating them. To activate saved AI, synchronization, notification, or log-delivery settings, open Sites and choose Apply. Connection tests use the active settings.</div>
     <section>
       <div class="feedhead"><div><div class="eyebrow">TLS acceleration</div><h3 style="margin:2px 0 0">TLS service settings</h3></div><div class="count" id="tls_accel_state"></div></div>
@@ -759,8 +773,9 @@
           <div class="field check"><input type="checkbox" id="nt_on_member_down"><label for="nt_on_member_down" style="margin:0">Application server unavailable</label></div>
           <div class="field check"><input type="checkbox" id="nt_on_sync"><label for="nt_on_sync" style="margin:0">Config sync results</label></div>
           <div class="field check"><input type="checkbox" id="nt_on_peer"><label for="nt_on_peer" style="margin:0">HA peer up/down</label></div>
-          <div class="actions"><button class="btn primary" id="nt_save">Save draft</button><button class="btn danger" id="nt_clear_webhook">Clear stored webhook</button></div>
-          <div class="hint">Notifications always appear under the bell. A webhook also sends them to another service. A saved webhook address is hidden; leave this field blank to keep it, or use <b>Clear stored webhook</b> to remove it explicitly. Suggestions never auto-apply.</div>
+          <div class="actions"><button class="btn primary" id="nt_save">Save draft</button><button class="btn danger" id="nt_clear_webhook">Clear stored webhook</button><button class="btn" id="nt_test">Test active webhook</button></div>
+          <div class="hint" id="nt_clear_status" role="status"></div>
+          <div class="hint">Notifications always appear under the bell. A webhook also sends them to another service. A saved webhook address is hidden; leave this field blank to keep it. Clear stored webhook stages removal for review and Apply; it never clears live settings immediately. Suggestions never auto-apply.</div>
         </div>
       </div>
     </section>
@@ -794,7 +809,7 @@
           <div class="field check"><input type="checkbox" id="sl_notify"><label for="sl_notify" style="margin:0">Notifications (AI blocks, HA, member down)</label></div>
           <div class="eyebrow" style="margin-top:10px">Privacy</div>
           <div class="field check"><input type="checkbox" id="sl_matchdata"><label for="sl_matchdata" style="margin:0">Include matching request content <span style="color:var(--red)">(may contain personal data)</span></label></div>
-          <div class="actions"><button class="btn primary" id="sl_save">Save draft</button><button class="btn" id="sl_test">Send test</button></div>
+          <div class="actions"><button class="btn primary" id="sl_save">Save draft</button><button class="btn" id="sl_test">Test active SIEM</button></div>
         </div>
       </div>
       <div class="hint"><b style="color:var(--amber)">Note:</b> Log delivery runs in the background. If the SIEM is slow or unavailable, requests continue and some log messages may not be delivered. Logs can include URLs, client IPs, and parts of submitted data. Use <b>TCP+TLS</b> when sending logs to another device. Submitted data is excluded unless you enable it above.</div>
@@ -1010,6 +1025,7 @@
       </div>
       <div class="field"><label>Note</label><input type="text" id="pp_note" spellcheck="false"></div>
       <div class="field-context" id="ux_page_context"></div>
+      <div class="field-context" id="pp_workflow" role="status"></div>
       <div class="error-summary" id="ux_page_errors" role="alert"></div>
       <div class="hint" id="pp_hint">These settings apply to this page. Page-level sensitivity affects request-body inspection; use the site policy for header-inspection sensitivity. <b>Block page</b> prevents requests from reaching the application even when the site is in Monitor mode. A URL prefix such as /login also matches /login2, not just subpages. Rule exceptions apply to all methods; the method list controls field validation only.</div>
       <div class="actions">
@@ -1107,6 +1123,8 @@
   }
   const globalFields = ["read_timeout_sec","idle_timeout_sec","backend_timeout_sec"];
   let cfg=null, engineMode="DetectionOnly", sites=[], nodes=[], pools=[], policies=[], interfaces=[], cidrRules=[];
+  let notifyClearPending=false, notifyClearPrevious="";
+  const workflow={site:"",history:[],logSite:"",logStart:"",logEnd:"",pageReturn:null,restoring:false,requestVerified:new Map()};
 
   // ── auth ──
   function getToken(){ return sessionStorage.getItem("waf_token")||""; }
@@ -1116,7 +1134,7 @@
     if(["GET","HEAD","OPTIONS"].includes(method)) return "";
     if(path==="/api/login" || path==="/api/logout" || path==="/api/users/password") return "";
     if(path.startsWith("/api/users/") || path.startsWith("/api/update/")) return "manage";
-    if(path.startsWith("/api/config") || path==="/api/reload" || path.startsWith("/api/ai/") || path.startsWith("/api/syslog/") || path.startsWith("/api/ha/") || path==="/api/crawl" || path.startsWith("/api/debug/capture") || path==="/api/notifications/webhook" || path==="/api/security/contracts/import") return "edit";
+    if(path.startsWith("/api/config") || path==="/api/reload" || path.startsWith("/api/ai/") || path.startsWith("/api/syslog/") || path.startsWith("/api/ha/") || path==="/api/crawl" || path.startsWith("/api/debug/capture") || path==="/api/notifications/webhook" || path==="/api/notifications/test" || path==="/api/security/contracts/import") return "edit";
     return "review";
   }
   function hasCapability(cap){
@@ -1127,7 +1145,7 @@
     return false;
   }
   const roleControlIDs={
-    edit:["ux_wizard","ux_wizard_sites","ux_save","addsite","save","applybtn","reload","addnode","nodes_save","addpool","pools_save","pools_apply","addpolicy","pol_save","pol_apply","cidr_add","traffic_save","traffic_apply","api_contract_import","tls_accel_save","ai_test","ai_save","ha_save","ha_syncnow","nt_save","nt_clear_webhook","sl_save","sl_test","debug_start","debug_stop","hsm_save","hsm_apply","vector_save","vector_apply"],
+    edit:["ux_wizard","ux_wizard_sites","ux_save","addsite","save","applybtn","reload","addnode","nodes_save","addpool","pools_save","pools_apply","addpolicy","pol_save","pol_apply","cidr_add","traffic_save","traffic_apply","api_contract_import","tls_accel_save","ai_test","ai_save","ha_save","ha_syncnow","nt_save","nt_clear_webhook","nt_test","sl_save","sl_test","debug_start","debug_stop","hsm_save","hsm_apply","vector_save","vector_apply"],
     review:["ux_page_undo","bellread","bellclear","api_idp_save","api_sequence_mode_apply","api_sequence_relearn","api_sequence_exception_create","api_object_override_save","api_bola_policy_save","api_graphql_contract_import","api_graphql_policy_save","vector_reset","pp_save","pp_delete"],
     manage:["upd_stage","upd_catalog","upd_install","upd_discard","upd_rollback","upd_restart","nu_add"]
   };
@@ -1532,6 +1550,8 @@
       p.monitor=p.monitor||{};
       card.querySelectorAll("[data-fm]").forEach(el=>{
         const f=el.dataset.fm;
+        // Showing an optional default must not create an edit on navigation.
+        if((f==="path"||f==="expect_status")&&el.value===el.defaultValue)return;
         p.monitor[f] = (el.type==="number") ? Number(el.value||0) : el.value.trim();
       });
       p.transport=p.transport||{};
@@ -2357,6 +2377,7 @@
     </div>`;
   }
   function renderPPFields(){
+    $("pp_workflow").textContent="Site "+(ppSite||"—")+" · submission URL "+($("pp_path").value||"—")+" · configured fields: "+(ppFields.map(f=>f.name).filter(Boolean).join(', ')||"none")+" · changes require review and Apply; discovery alone is not approval.";
     $("pp_fields").innerHTML=ppFields.length?ppFields.map(fieldPolicyRow).join(""):`<div class="empty">No field rules yet. Scan linked pages, submit a real form, or add a field manually.</div>`;
     $("pp_fields").querySelectorAll("[data-fdel]").forEach(b=>b.onclick=()=>{ syncPPFields(); ppFields.splice(+b.dataset.fdel,1); renderPPFields();seedDiscoveredAction($("pp_formaction").value||$("pp_path").value); });
   }
@@ -2395,6 +2416,27 @@
     const candidates=ppDiscovered.filter(f=>f.method!=="GET"&&resolvedFormAction(f.action,ppSourcePath)===action);
     const rows=[...new Map(candidates.map(f=>[f.name,f])).values()];
     $("pp_candidates").innerHTML=rows.length?'<b>Discovered fields — not applied automatically</b><p class="hint">Add a suggested rule only for fields you want to configure. Existing field rules stay unchanged.</p>'+rows.map((f,i)=>'<div class="actions"><span>'+esc(f.name)+' · '+esc(uiLabel(suggestedFieldProfile(f)))+'</span><button type="button" class="btn sm" data-add-discovered="'+i+'" data-required-capability="review" '+(known.has("ARGS_POST:"+f.name)||action!==$("pp_path").value||!hasCapability("review")?'disabled':'')+'>'+ (known.has("ARGS_POST:"+f.name)?'Already configured':'Add suggested rule')+'</button></div>').join(''):'';
+    if(rows.length){
+      const controls=document.createElement('div');controls.className='actions';
+      controls.innerHTML='<input type="search" data-candidate-search aria-label="Search discovered fields" placeholder="Search field names"><button class="btn sm" type="button" data-add-selected data-required-capability="review">Review selected fields</button>';
+      $("pp_candidates").prepend(controls);
+      $("pp_candidates").querySelectorAll('[data-add-discovered]').forEach(b=>{const pick=document.createElement('input');pick.type='checkbox';pick.dataset.candidatePick=b.dataset.addDiscovered;pick.disabled=b.disabled;pick.setAttribute('aria-label','Select '+rows[+b.dataset.addDiscovered].name);b.parentElement.prepend(pick);});
+      controls.querySelector('[data-candidate-search]').oninput=e=>$("pp_candidates").querySelectorAll('[data-add-discovered]').forEach(b=>b.parentElement.hidden=!rows[+b.dataset.addDiscovered].name.toLowerCase().includes(e.target.value.toLowerCase()));
+      const bulk=controls.querySelector('[data-add-selected]');bulk.disabled=action!==$("pp_path").value||!hasCapability('review');bulk.dataset.unavailable=bulk.disabled?'1':'0';
+      bulk.onclick=async()=>{
+        if(!hasCapability('review')||action!==$("pp_path").value)return;
+        const selected=[...$("pp_candidates").querySelectorAll('[data-candidate-pick]:checked')].filter(b=>!b.disabled).map(b=>rows[+b.dataset.candidatePick]);
+        if(!selected.length){toast('Select the fields you want to configure. Nothing is selected automatically.','warn');return;}
+        const baseline=configText(readPagePolicy()),site=ppSite;
+        const body='<p>Add only these selected rules to this page draft, not directly to live protection:</p><ul>'+selected.map(f=>'<li>'+esc(f.name)+' · '+esc(uiLabel(suggestedFieldProfile(f)))+' · '+(f.required?'required':'optional')+'</li>').join('')+'</ul><p>Unselected fields and existing rules remain unchanged.</p>';
+        if(await chooseAction('Review selected field rules',body,[['add','Add reviewed fields'],['cancel','Cancel']])!=='add')return;
+        if(ppSite!==site||action!==$("pp_path").value||configText(readPagePolicy())!==baseline){toast('Page settings changed during review. Select and review again.','warn');return;}
+        const wasEmpty=ppFields.length===0;
+        for(const f of selected)if(!ppFields.some(x=>x.name===f.name&&(x.source||'ARGS_POST')==='ARGS_POST'))ppFields.push({name:f.name,source:'ARGS_POST',profile:suggestedFieldProfile(f),allow_pattern:'',required:!!f.required,min_length:0,max_length:0,exclude_rule_ids:[]});
+        const methods=selected.map(f=>f.method||'POST');if(!wasEmpty||uxState.pageOriginal)methods.push(...$("pp_methods").value.split(',').map(x=>x.trim()).filter(Boolean));$("pp_methods").value=[...new Set(methods)].join(',');
+        renderPPFields();seedDiscoveredAction(action);
+      };
+    }
     $("pp_candidates").querySelectorAll("[data-add-discovered]").forEach(b=>{
       b.dataset.unavailable=b.disabled?"1":"0";
       b.onclick=()=>{
@@ -2418,6 +2460,7 @@
   function ppToggle(){ const deny=$("pp_action").value==="deny"; $("pp_tune").style.display=deny?"none":""; $("pp_statuswrap").style.display=deny?"":"none"; }
   async function openPageEditor(site,path,match="",options={}){
     if(ppSite&&pageDirty()){toast("Apply or close the current page edits first.","warn");return false;}
+    if(!ppSite)workflow.pageReturn=captureTask();
     const serial=(uxState.pageLoadSerial||0)+1;uxState.pageLoadSerial=serial;
     let pages,context;
     try{[pages,context]=await Promise.all([api("/api/pagepolicy?site="+encodeURIComponent(site)),api("/api/config")]);}
@@ -2573,6 +2616,7 @@
   }
   function fillNotify(nt){
     nt=nt||{};
+    notifyClearPending=!!nt.clear_webhook;notifyClearPrevious="";
     $("nt_webhook_url").value=nt.webhook_url||"";
     $("nt_webhook_kind").value=nt.webhook_kind||"slack";
     $("nt_allow_private").checked=!!nt.webhook_allow_private;$("nt_allow_http").checked=!!nt.webhook_allow_http;
@@ -2582,9 +2626,11 @@
     $("nt_on_member_down").checked=nt.on_member_down!==false;
     $("nt_on_sync").checked=nt.on_sync!==false;
     $("nt_on_peer").checked=nt.on_peer!==false;
+    renderWebhookRemoval();
   }
   function collectNotify(){
     return { webhook_url:$("nt_webhook_url").value.trim(), webhook_kind:$("nt_webhook_kind").value,
+      ...(notifyClearPending?{clear_webhook:true}:{}),
       webhook_allow_http:$("nt_allow_http").checked,webhook_allow_private:$("nt_allow_private").checked,on_attack:$("nt_on_attack").checked,
       attack_threshold:Number($("nt_attack_threshold").value)||10,attack_window_seconds:Number($("nt_attack_window").value)||60,attack_min_severity:$("nt_attack_severity").value,
       on_suggestion:$("nt_on_suggestion").checked, on_ai_block:$("nt_on_ai_block").checked,
@@ -2593,10 +2639,17 @@
   $("ha_save").onclick=()=>saveConfig().then(()=>toast("HA settings — draft saved")).catch(e=>toast(e.message,"err"));
   $("nt_save").onclick=()=>saveConfig().then(()=>toast("notifications — draft saved")).catch(e=>toast(e.message,"err"));
   $("nt_clear_webhook").onclick=async()=>{
-    if(!confirm("Remove the stored notification webhook URL? This cannot be recovered from the Console.")) return;
-    try{ await api("/api/notifications/webhook",{method:"DELETE"}); $("nt_webhook_url").value=""; toast("stored notification webhook cleared"); }
-    catch(e){ toast(e.message,"err"); }
+    if(!hasCapability("edit")||uxState.writing)return;
+    if(notifyClearPending){notifyClearPending=false;$("nt_webhook_url").value=notifyClearPrevious;renderWebhookRemoval();updateChangeBar();return;}
+    if(await chooseAction("Stage webhook removal?",'<p>The active webhook stays unchanged until Apply. This stages removal instead of any new URL entered here; unrelated edits are preserved. Review the complete draft before applying.</p>',[['stage','Stage removal'],['cancel','Keep editing']])!=="stage")return;
+    notifyClearPrevious=$("nt_webhook_url").value;notifyClearPending=true;$("nt_webhook_url").value="";renderWebhookRemoval();updateChangeBar();
   };
+  function renderWebhookRemoval(){
+    $("nt_webhook_url").disabled=notifyClearPending;
+    $("nt_clear_webhook").textContent=notifyClearPending?"Undo staged removal":"Clear stored webhook";
+    $("nt_clear_status").textContent=notifyClearPending?"Removal is staged — not active. Save draft, then Review changes and Apply to remove the stored URL.":"Blank URL keeps the stored address; test buttons use active settings.";
+  }
+  $("nt_test").onclick=()=>testActiveDelivery("webhook").catch(e=>toast(e.message,"err"));
   $("ha_syncnow").onclick=()=>api("/api/ha/sync",{method:"POST"}).then(()=>toast("sync triggered")).catch(e=>toast(e.message,"err"));
 
   // ── notification bell ──
@@ -2624,16 +2677,19 @@
       $("bellempty").style.display=items.length?"none":"";
       $("belllist").innerHTML=items.map(n=>{
         const applyBtn=n.action==="apply_exclusion"?`<button class="btn sm applyn" data-id="${n.id}">Apply</button>`:"";
+        const investigate=n.kind==="attack"&&n.context?.site?`<button class="btn sm" data-investigate="${n.id}">View related logs</button>`:"";
         return `<div class="bellitem ${n.level} ${n.read?"":"unread"}">
           <div class="bt"><b>${esc(n.title)}</b><span class="tm">${esc(n.time)}</span></div>
           <div class="bb">${esc(n.body)}</div>
-          <div class="ba">${applyBtn}<button class="btn sm dismn" data-id="${n.id}">Dismiss</button></div></div>`;
+          <div class="ba">${applyBtn}${investigate}${n.read?'':`<button class="btn sm" data-bell-read="${n.id}" data-required-capability="review">Mark read</button>`}${n.handled?'<span>Handled</span>':`<button class="btn sm" data-bell-handle="${n.id}" data-required-capability="review">Mark handled</button>`}<button class="btn sm dismn" data-id="${n.id}" data-required-capability="review">Dismiss</button></div></div>`;
       }).join("");
       $("belllist").querySelectorAll(".applyn").forEach(b=>b.onclick=async()=>{
         try{ await api("/api/notifications/apply",{method:"POST",body:JSON.stringify({id:+b.dataset.id})}); toast("applied"); loadBell(); }catch(e){ toast(e.message,"err"); }
       });
       $("belllist").querySelectorAll(".dismn").forEach(b=>b.onclick=async()=>{ await api("/api/notifications/dismiss",{method:"POST",body:JSON.stringify({id:+b.dataset.id})}); loadBell(); });
-      await api("/api/notifications/read",{method:"POST",body:JSON.stringify({all:true})}); // opening marks read
+      $("belllist").querySelectorAll("[data-investigate]").forEach(b=>b.onclick=()=>investigateAlert(items.find(n=>n.id===+b.dataset.investigate)).catch(e=>toast(e.message,"err")));
+      for(const [attribute,path] of [["data-bell-read","/api/notifications/read"],["data-bell-handle","/api/notifications/handle"]])$("belllist").querySelectorAll("["+attribute+"]").forEach(b=>b.onclick=async()=>{try{await api(path,{method:"POST",body:JSON.stringify({id:Number(b.getAttribute(attribute))})});loadBell();}catch(e){toast(e.message,"err");}});
+      applyRoleUI();
     }catch(e){}
   }
 
@@ -2730,13 +2786,14 @@
     if($("logpause").checked) return;
     const q=($("logfilter").value||"").trim().toLowerCase();
     const sev=$("logsev").value;
+    $("log_scope").textContent=(workflow.logSite?"Site: "+workflow.logSite:"All sites")+(workflow.logStart?" · investigation "+workflow.logStart+" to "+workflow.logEnd:"")+" · recent stored sample only; older records without full timestamps cannot be restricted to the period.";
     try{
       if(logMode==="events"){
         $("logsev").style.display="";
         let rows=await api("/api/matches?limit=250");
         uxState.events=rows;
         if(sev) rows=rows.filter(r=>(r.severity||"").toUpperCase()===sev);
-        rows=rows.filter(r=>logMatchesFilter(r,q));
+        rows=rows.filter(r=>logMatchesFilter(r,q)&&workflowLogMatch(r));
         $("loghead").innerHTML=`<tr><th>Time</th><th>Site</th><th>Client</th><th>Severity</th><th>Rule</th><th>Inspection step</th><th>URL</th><th>Message</th><th>Review</th></tr>`;
         $("logbody").innerHTML=rows.map(r=>`<tr>
           <td class="nw">${esc(r.time)}</td><td class="nw">${esc(r.site)}</td><td class="nw">${esc(r.client)}</td>
@@ -2748,7 +2805,7 @@
       } else {
         $("logsev").style.display="none";
         let rows=await api("/api/access?limit=300");
-        rows=rows.filter(r=>logMatchesFilter(r,q));
+        rows=rows.filter(r=>logMatchesFilter(r,q)&&workflowLogMatch(r));
         $("loghead").innerHTML=`<tr><th>Time</th><th>Site</th><th>Client</th><th>Method</th><th>Path</th><th>Status</th></tr>`;
         $("logbody").innerHTML=rows.map(r=>`<tr>
           <td class="nw">${esc(r.time)}</td><td class="nw">${esc(r.site)}</td><td class="nw">${esc(r.client)}</td>
@@ -2879,7 +2936,7 @@
   function collectSyslog(){
     return {
       enabled:$("sl_enabled").checked, host:$("sl_host").value.trim(), port:+$("sl_port").value||6514,
-      protocol:$("sl_protocol").value, format:$("sl_format").value, facility:+$("sl_facility").value||16,
+      protocol:$("sl_protocol").value, format:$("sl_format").value, facility:$("sl_facility").value.trim()===""?16:Number($("sl_facility").value),
       app_name:$("sl_appname").value.trim(), tls_skip_verify:$("sl_tlsskip").checked,
       send_waf:$("sl_waf").checked, send_access:$("sl_access").checked,
       send_audit:$("sl_audit").checked, send_notify:$("sl_notify").checked,
@@ -2888,7 +2945,7 @@
   }
   $("sl_save").onclick=()=>saveConfig().then(()=>toast("syslog — draft saved")).catch(e=>toast(e.message,"err"));
   $("sl_test").onclick=async()=>{
-    try{ await api("/api/syslog/test",{method:"POST"}); toast("test message sent — check your SIEM"); }
+    try{ await testActiveDelivery("syslog"); }
     catch(e){ toast("test failed: "+e.message,"err"); }
   };
 
@@ -3158,6 +3215,7 @@
     // The dashboard call to action becomes a secondary "add" once a site is active.
     const hasSite=((uxState.active&&uxState.active.sites)||[]).length>0,wizard=$("ux_wizard");
     wizard.textContent=hasSite?"Add another site":"Set up a site";wizard.classList.toggle("primary",!hasSite);
+    renderWorkspace();
     updateStickyOffset();
   }
   function updateStickyOffset(){
@@ -3265,6 +3323,7 @@
     try{const res=await api("/api/config",{method:"PUT",body:JSON.stringify(proposed)});fill(res.config);renderNodes();renderPools();renderPolicies();
       uxState.saved=snapshotEditors();uxState.active=copyJSON(uxState.saved);uxState.activeRaw=copyJSON(res.config);uxState.baseline=configText(uxState.saved);
       uxState.applyReady=true;
+      workflow.requestVerified.clear();$("workspace_checklist").textContent="Settings applied. Next: Check readiness, then verify a real application request. No request has been sent by this console.";
       $("applystate").textContent=res.restart_required?"Settings applied — service restart still required":"Settings applied and active";
       if(res.draft_cleanup_warning)resourceFailure("/api/config",new Error("Settings are active, but the old draft could not be removed: "+res.draft_cleanup_warning));return res;
     }finally{uxState.writing=false;configControlLock(false);}
@@ -3286,7 +3345,9 @@
       else if(choice==='discard'){fill(copyJSON(uxState.saved));renderNodes();renderPools();renderPolicies();}
       else return;
     }
-    syncVisibleEditors();showView(view);updateChangeBar();
+    const previous=captureTask();
+    if(!workflow.restoring&&previous.view!==view){workflow.history.push(previous);if(workflow.history.length>20)workflow.history.shift();}
+    syncVisibleEditors();showView(view);updateChangeBar();return true;
   }
   function endpointOptions(rows,selected=""){
     const known=rows.some(o=>o.id===selected);
@@ -3304,6 +3365,7 @@
   }
 
   function setConfigBaseline(raw,active=false){
+    if(active&&uxState.activeRaw&&configText(raw)!==configText(uxState.activeRaw))workflow.requestVerified.clear();
     fill(raw);renderNodes();renderPools();renderPolicies();
     uxState.saved=snapshotEditors();uxState.baseline=configText(uxState.saved);
     if(active){uxState.active=copyJSON(uxState.saved);uxState.activeRaw=copyJSON(raw);uxState.applyReady=true;}
@@ -3391,6 +3453,7 @@
       if(configText(snapshotEditors())!==start)throw new Error("Settings changed during guided setup. Start again to use the latest draft.");
       nodes.push(...result.nodes);pools.push(...result.pools);sites.push(result.site);renderNodes();renderPools();renderSites();
       const saved=await writeConfigDraft();showView("sites");
+      workflow.site=input.name;renderWorkspace();$("workspace_checklist").textContent="Site draft saved, not active. Next: Review changes, Apply, Check readiness, then verify a real request. Saving does not prove connectivity.";
       toast(saved.apply_ready?"Site draft saved — review all changes before applying":"Site draft saved — "+saved.apply_error,saved.apply_ready?"":"warn");
     }catch(e){updateChangeBar();toast(e.message,"err");}
   }
@@ -3445,6 +3508,7 @@
     if(!force&&pageDirty()&&await chooseAction("Discard page edits?",'<p>These page changes have not been applied.</p>',[['discard','Discard page edits'],['cancel','Keep editing']])!=="discard")return;
     $("pp").hidden=true;ppSite=null;uxState.pageBaseline=null;
     uxState.pageReturn?.focus?.();uxState.pageReturn=null;
+    if(workflow.pageReturn){const task=workflow.pageReturn;workflow.pageReturn=null;restoreTaskPosition(task);}
   }
   async function ensureCleanLiveConfig(){
     if(hasUnsavedEdits()||configChanges(uxState.active,snapshotEditors()).length)throw new Error("Page actions update active protection directly. Apply or discard the full configuration draft first so it cannot later overwrite these page changes.");
@@ -3544,6 +3608,7 @@
   }
   function attentionItems(st,poolRows,matches,access,candidates){
     const out=[],add=(text,view)=>out.push({text,view});
+    for(const [key,label] of [["syslog_delivery","SIEM"],["webhook_delivery","Webhook"]]){const state=st[key];if(state?.enabled&&(state.state==="degraded"||state.state==="stale"||Number(state.dropped)>0))add(label+" delivery needs review: "+state.state+"; "+Number(state.failures||0)+" failures, "+Number(state.dropped||0)+" dropped.","setup");}
     for(const p of poolRows)for(const m of p.members||[])if(!m.healthy)add("Application server unavailable: "+m.node+" in "+p.name,"pools");
     const failures=access.filter(r=>r.status>=500).length,rejections=access.filter(r=>r.status===403||r.status===429).length;
     if(failures)add(failures+" server-error responses in the latest "+access.length+" stored requests.","logs");
@@ -3603,7 +3668,117 @@
     $("ux_dialog_body").querySelectorAll("[data-scan-field]").forEach(b=>b.onclick=()=>closeUXDialog(+b.dataset.scanField));
     const i=await result;if(typeof i==="number")await openPageEditor(site,fields[i].action||fields[i].page||"/");
   }
+  function captureTask(){
+    return {view:document.querySelector('.tab.sel')?.dataset.view||"config",scroll:window.scrollY||0,
+      filter:$("logfilter").value,severity:$("logsev").value,paused:$("logpause").checked,logMode,
+      logSite:workflow.logSite,logStart:workflow.logStart,logEnd:workflow.logEnd,
+      site:workflow.site,selectedSite,selectedPool,selectedPolicy,selectedMap};
+  }
+  function restoreTaskPosition(task){
+    $("logfilter").value=task.filter||"";$("logsev").value=task.severity||"";$("logpause").checked=!!task.paused;
+    logMode=task.logMode||"events";workflow.logSite=task.logSite||"";workflow.logStart=task.logStart||"";workflow.logEnd=task.logEnd||"";
+    document.querySelectorAll('.logmode').forEach(b=>b.classList.toggle('sel',b.dataset.mode===logMode));
+    requestAnimationFrame(()=>window.scrollTo({top:task.scroll||0,behavior:"instant"}));
+  }
+  async function previousTask(){
+    if(ppSite){toast("Close or apply page edits before returning.","warn");return;}
+    const task=workflow.history.at(-1);if(!task)return;
+    workflow.restoring=true;
+    try{if(!await navigateView(task.view))return;workflow.history.pop();workflow.site=task.site||"";selectedSite=task.selectedSite;selectedPool=task.selectedPool;selectedPolicy=task.selectedPolicy;selectedMap=task.selectedMap;
+      renderSites();renderPools();renderPolicies();restoreTaskPosition(task);renderWorkspace();if(task.view==="logs")await pollLogs();if(task.view==="map")await pollMap();restoreTaskPosition(task);
+    }finally{workflow.restoring=false;}
+  }
+  function renderWorkspace(){
+    const select=$("workspace_site");if(!select)return;
+    const options='<option value="">All sites — choose a site for guided actions</option>'+sites.map(s=>'<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>').join('');
+    if(select.innerHTML!==options)select.innerHTML=options;
+    if(!sites.some(s=>s.name===workflow.site))workflow.site="";
+    select.value=workflow.site;
+    const sc=sites.find(s=>s.name===workflow.site);
+    $("workspace_actions").hidden=!sc;$("workspace_actions").style.display=sc?"flex":"none";
+    $("workspace_context").textContent=sc?sc.name+" · "+sc.listen+" · server group "+(sc.pool||"not set")+" · policy "+(sc.policy||"not set")+" · "+((uxState.active?.sites||[]).some(s=>s.name===sc.name)?"has active configuration":"draft only — not active")+". Shared server groups and policies may affect other sites.":"Choose a site to carry its context between settings, fields and logs. Global settings remain shared.";
+    document.querySelectorAll('[data-workspace]').forEach(b=>b.disabled=!sc);$("workspace_check").disabled=!sc;$("workspace_back").disabled=!workflow.history.length;
+  }
+  async function workspaceJump(view){
+    const name=workflow.site,sc=sites.find(s=>s.name===name);if(!sc)return;
+    if(view==="fields")return openWorkspaceFields();
+    if(!await navigateView(view))return;
+    if(view==="sites"){selectedSite=sites.findIndex(s=>s.name===name);renderSites();}
+    if(view==="pools"){selectedPool=pools.findIndex(p=>p.name===sc.pool);renderPools();}
+    if(view==="policies"){selectedPolicy=policies.findIndex(p=>p.name===sc.policy);renderPolicies();}
+    if(view==="map"){selectedMap=name;await pollMap();}
+    if(view==="logs"){workflow.logSite=name;workflow.logStart="";workflow.logEnd="";await pollLogs();}
+  }
+  async function openWorkspaceFields(){
+    const site=workflow.site;if(!site)return;
+    if(hasUnsavedEdits()||uxState.pageWriting){toast("Save or discard configuration edits before opening a different task.","warn");return;}
+    let paths=[];
+    try{const maps=await api('/api/sitemap');const walk=n=>{if(!n||paths.length>=200)return;if(n.full)paths.push(n.full);(n.children||[]).forEach(walk);};walk(maps.find(m=>m.site===site)?.tree);}catch{}
+    paths=[...new Set(paths)];
+    const chosen=await askForm("Choose page / field protection",[{key:"known",label:"Observed page",options:[["","Enter an exact page or submission address"],...paths.map(p=>[p,p])]},{key:"path",label:"Page or submission address",help:"Enter only a URL path, not a hostname. A form may submit to a different address than the page."}],{},"Open page");
+    if(!chosen)return;const path=chosen.known||chosen.path;
+    if(!path.startsWith('/')||path.startsWith('//')||/[?#\r\n]/.test(path)){toast("Enter an exact URL path without query or fragment.","err");return;}
+    await openPageEditor(site,path);
+  }
+  function workflowLogMatch(row){
+    if(workflow.logSite&&row.site!==workflow.logSite)return false;
+    const at=Date.parse(row.occurred_at||"");
+    if(!Number.isFinite(at))return true; // Do not silently hide legacy records.
+    return (!workflow.logStart||at>=Date.parse(workflow.logStart))&&(!workflow.logEnd||at<=Date.parse(workflow.logEnd));
+  }
+  async function investigateAlert(item){
+    const ctx=item?.context;if(!ctx?.site)return;
+    if(!await navigateView('logs'))return;
+    workflow.site=sites.some(s=>s.name===ctx.site)?ctx.site:"";workflow.logSite=ctx.site;
+    workflow.logStart=Number.isFinite(Date.parse(ctx.started_at))?ctx.started_at:"";workflow.logEnd=Number.isFinite(Date.parse(ctx.ended_at))?ctx.ended_at:"";
+    $("logfilter").value="";$("logsev").value="";$("logpause").checked=false;logMode=ctx.kind==='block'?'access':'events';
+    document.querySelectorAll('.logmode').forEach(b=>b.classList.toggle('sel',b.dataset.mode===logMode));
+    bellOpen=false;$("bellpanel").hidden=true;renderWorkspace();await pollLogs();
+    if(ctx.kind==='block')toast("Access-log statuses alone do not prove WAF blocks; correlate rule events and diagnostics.","warn");
+  }
+  async function testActiveDelivery(kind){
+    if(!hasCapability('edit')||uxState.writing)return;
+    const status=await api('/api/status'),stats=status[kind==='syslog'?'syslog_delivery':'webhook_delivery'];
+    if(!stats||!stats.enabled)throw new Error("No active "+kind+" delivery is configured. Save the draft and Apply first.");
+    if(!stats.config_token)throw new Error("The active delivery target could not be identified. Refresh status before testing.");
+    const pending=hasUnsavedEdits()||configChanges(uxState.active,snapshotEditors()).length;
+    if(await chooseAction("Test active "+kind+" delivery?",'<p>Destination: '+esc(stats.target||"configured webhook — stored address hidden")+'</p><p>This sends one synthetic message using active settings, not the form or saved draft.'+(pending?' You have changes that are not active.':'')+' Success is a transport observation, not proof of indexing or ticket creation.</p>',[['test','Send active-settings test'],['cancel','Cancel']])!=='test')return;
+    const button=$(kind==='syslog'?'sl_test':'nt_test');button.disabled=true;
+    try{const path=kind==='syslog'?'/api/syslog/test':'/api/notifications/test';await api(path,{method:'POST',body:JSON.stringify({expected_generation:stats.config_generation,expected_token:stats.config_token})});toast("Test send succeeded — verify receipt at the destination");}
+    finally{button.disabled=false;await loadDeliveryHealth();applyRoleUI();}
+  }
+  async function checkWorkspace(){
+    const site=workflow.site;if(!site)return;
+    const host=$("workspace_checklist");host.textContent="Checking active settings, server health and recent stored requests…";
+    try{const [status,groups,access,activeConfig]=await Promise.all([api('/api/status'),api('/api/pools'),api('/api/access?limit=300'),api('/api/config')]);
+      if(workflow.site!==site)return;
+      const signature=configText(activeConfig),active=(activeConfig.sites||[]).find(s=>s.name===site),runtime=(status.sites||[]).find(s=>s.name===site),group=groups.find(p=>p.name===active?.pool);
+      const healthy=(group?.members||[]).some(m=>m.healthy),requestSeen=access.some(r=>r.site===site&&r.status>=200&&r.status<400);
+      const expiry=runtime?.tls_certificate_expires_at;
+      host.innerHTML='<b>Readiness — '+esc(site)+'</b><ul><li>Configuration: '+(runtime?'active':'not active — review draft and Apply')+'</li><li>Application servers: '+(healthy?'a server is reachable (health check only)':'not confirmed reachable')+'</li><li>Policy: '+esc(active?.policy||'not active')+'</li><li>TLS: '+(runtime?.tls?(expiry?'active certificate expires '+esc(expiry):'certificate verification unavailable — check TLS service'):'not confirmed as HTTPS')+'</li><li>Application request: '+(workflow.requestVerified.get(site)===signature?'operator recorded manual verification in this browser session':requestSeen?'a successful response exists in the recent stored sample, not a new probe':'not yet verified')+'</li></ul><div class="actions"><button class="btn sm" data-check-review>Review draft / Apply</button><button class="btn sm" data-check-logs>Inspect site requests</button><button class="btn sm" data-check-manual>Record manual verification</button></div><p>No request was sent by this check. Stored samples and health checks do not prove the entire application works.</p>';
+      host.querySelector('[data-check-review]').disabled=!hasCapability('edit');host.querySelector('[data-check-review]').onclick=()=>applyConfig().catch(e=>toast(e.message,'err'));
+      host.querySelector('[data-check-logs]').onclick=()=>workspaceJump('logs').catch(e=>toast(e.message,'err'));
+      host.querySelector('[data-check-manual]').onclick=async()=>{if(await chooseAction("Record manual verification?",'<p>Only confirm after you sent a real request through this site and verified the expected application result. This is a session-local operator note, not an automated test result.</p>',[['verified','I verified the request'],['cancel','Cancel']])==='verified'){workflow.requestVerified.set(site,signature);checkWorkspace();}};
+    }catch(e){host.textContent="Readiness incomplete — "+e.message;}
+  }
+  function installWorkflowUX(){
+    if(window.matchMedia){const media=window.matchMedia('(max-width:600px)'),details=$("workspace_more");details.open=!media.matches;details.querySelector('summary').onclick=()=>details.dataset.userSet='1';media.addEventListener('change',e=>{if(!details.dataset.userSet)details.open=!e.matches;});}
+    const selectSite=()=>{if($("workspace_site").value===workflow.site)return;if(hasUnsavedEdits()||pageDirty()){ $("workspace_site").value=workflow.site;toast("Save, apply or discard current edits before switching site context.","warn");return;}workflow.site=$("workspace_site").value;workflow.logSite=workflow.site;workflow.logStart="";workflow.logEnd="";$("workspace_checklist").textContent="";renderWorkspace();};
+    // Commit before the document-level input listener redraws the change bar.
+    $("workspace_site").oninput=selectSite;$("workspace_site").onchange=selectSite;
+    document.querySelectorAll('[data-workspace]').forEach(b=>b.onclick=()=>workspaceJump(b.dataset.workspace).catch(e=>toast(e.message,'err')));
+    $("workspace_back").onclick=()=>previousTask().catch(e=>toast(e.message,'err'));
+    $("workspace_check").onclick=checkWorkspace;
+    $("log_clear_scope").onclick=()=>{workflow.logSite="";workflow.logStart="";workflow.logEnd="";pollLogs();};
+    // Keep existing editors/IDs; group their advanced settings rather than clone them.
+    const names=[['tls_accel_mode','TLS service — advanced'],['ai_model','AI connection — optional'],['ai_only_on_match','AI analysis policy — advanced'],['upd_status','Software updates — advanced']];
+    for(const [id,label]of names){const section=$(id)?.closest?.('section');if(!section)continue;const details=document.createElement('details'),summary=document.createElement('summary');details.className='setup-group';summary.textContent=label;section.before(details);details.append(summary,section);}
+    const ha=$("ha_enabled")?.closest?.('.grid2')?.firstElementChild;
+    if(ha){const details=document.createElement('details'),summary=document.createElement('summary');details.className='setup-group';summary.textContent='HA synchronization — advanced';ha.before(details);details.append(summary,ha);}
+    document.querySelectorAll('[data-setup-target]').forEach(b=>b.onclick=()=>{const target=$(b.dataset.setupTarget);if(!target)return;let parent=target.parentElement;while(parent){if(parent.tagName==='DETAILS')parent.open=true;parent=parent.parentElement;}target.setAttribute('tabindex','-1');target.focus({preventScroll:true});target.scrollIntoView({behavior:'smooth',block:'center'});});
+  }
   function installUX(){
+    installWorkflowUX();
     $("ux_review").onclick=()=>applyConfig().catch(e=>toast(e.message,"err"));
     $("ux_save").onclick=()=>writeConfigDraft().then(()=>toast("Draft saved — not active")).catch(e=>toast(e.message,"err"));
     $("ux_discard").onclick=()=>discardUnsaved();

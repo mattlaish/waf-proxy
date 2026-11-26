@@ -26,7 +26,8 @@ import (
 
 type NotifyConfig struct {
 	WebhookURL          string `json:"webhook_url,omitempty"`
-	WebhookKind         string `json:"webhook_kind,omitempty"` // slack | generic
+	WebhookKind         string `json:"webhook_kind,omitempty"`  // slack | generic
+	ClearWebhook        bool   `json:"clear_webhook,omitempty"` // draft intent, consumed on Apply; never HA-shared
 	WebhookAllowHTTP    bool   `json:"webhook_allow_http,omitempty"`
 	WebhookAllowPrivate bool   `json:"webhook_allow_private,omitempty"`
 	OnAttack            bool   `json:"on_attack"`
@@ -50,6 +51,10 @@ func redactNotifySecrets(c Config) Config {
 
 func preserveNotifySecrets(cur Config, next *Config) {
 	if next == nil {
+		return
+	}
+	if next.Notify.ClearWebhook {
+		next.Notify.WebhookURL = ""
 		return
 	}
 	if strings.TrimSpace(next.Notify.WebhookURL) == "" {
@@ -77,15 +82,17 @@ const (
 )
 
 type notification struct {
-	ID      int64          `json:"id"`
-	Time    string         `json:"time"`
-	Kind    string         `json:"kind"`
-	Level   string         `json:"level"` // info | warn | alert
-	Title   string         `json:"title"`
-	Body    string         `json:"body"`
-	Read    bool           `json:"read"`
-	Action  string         `json:"action,omitempty"` // e.g. "apply_exclusion"
-	Payload map[string]any `json:"payload,omitempty"`
+	ID      int64                `json:"id"`
+	Time    string               `json:"time"`
+	Kind    string               `json:"kind"`
+	Level   string               `json:"level"` // info | warn | alert
+	Title   string               `json:"title"`
+	Body    string               `json:"body"`
+	Read    bool                 `json:"read"`
+	Handled bool                 `json:"handled"`
+	Context *notificationContext `json:"context,omitempty"`
+	Action  string               `json:"action,omitempty"` // e.g. "apply_exclusion"
+	Payload map[string]any       `json:"payload,omitempty"`
 }
 
 type webhookJob struct {
@@ -162,6 +169,17 @@ func (n *notifier) enabledFor(kind string) bool {
 // push adds a notification (respecting per-kind toggles and a dedupe window)
 // and fires the webhook asynchronously.
 func (n *notifier) push(kind, level, title, body, dedupeKey string, action string, payload map[string]any) {
+	n.pushContext(kind, level, title, body, dedupeKey, action, payload, nil)
+}
+
+type notificationContext struct {
+	Site      string    `json:"site"`
+	Kind      string    `json:"kind"`
+	StartedAt time.Time `json:"started_at"`
+	EndedAt   time.Time `json:"ended_at"`
+}
+
+func (n *notifier) pushContext(kind, level, title, body, dedupeKey string, action string, payload map[string]any, ctx *notificationContext) {
 	if !n.enabledFor(kind) {
 		return
 	}
@@ -189,6 +207,7 @@ func (n *notifier) push(kind, level, title, body, dedupeKey string, action strin
 	item := notification{
 		ID: n.nextID, Time: time.Now().Format("15:04:05"), Kind: kind, Level: level,
 		Title: title, Body: body, Action: action, Payload: payload,
+		Context: ctx,
 	}
 	n.items = append(n.items, item)
 	if len(n.items) > n.cap {
@@ -318,8 +337,24 @@ func (n *notifier) webhookDeliveryStats() map[string]any {
 	}
 	n.mu.Lock()
 	enabled := n.cfg.WebhookURL != ""
-	n.mu.Unlock()
-	return n.delivery.snapshot(enabled, len(n.webhookQ), cap(n.webhookQ), atomic.LoadUint64(&n.webhookDropped))
+	defer n.mu.Unlock()
+	stats := n.delivery.snapshot(enabled, len(n.webhookQ), cap(n.webhookQ), atomic.LoadUint64(&n.webhookDropped))
+	stats["config_generation"] = n.delivery.current()
+	stats["config_token"] = n.delivery.configToken()
+	return stats
+}
+
+func (n *notifier) markHandled(id int64) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for i := range n.items {
+		if n.items[i].ID == id {
+			n.items[i].Handled = true
+			n.items[i].Read = true
+			return true
+		}
+	}
+	return false
 }
 
 func (n *notifier) markRead(id int64, all bool) {

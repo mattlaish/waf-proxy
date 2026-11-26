@@ -3,6 +3,20 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
+test('Facility zero survives serialization and webhook removal is explicit draft state',()=>{
+  const {copy,element}=consoleHarness();element('sl_facility').value='0';assert.equal(copy.collectSyslog().facility,0);
+  copy.fillNotify({clear_webhook:true});assert.equal(copy.collectNotify().clear_webhook,true);assert.equal(element('nt_webhook_url').disabled,true);
+  copy.fillNotify({});assert.equal(copy.collectNotify().clear_webhook,undefined);
+});
+test('delivery failures appear in attention while intentional disable does not',()=>{
+  const {copy}=consoleHarness();const state={sites:[],syslog_delivery:{enabled:true,state:'degraded',dropped:2,failures:1},webhook_delivery:{enabled:false,state:'disabled',dropped:4}};
+  const findings=copy.attentionItems(state,[],[],[],[]);assert.equal(findings.length,1);assert.match(findings[0].text,/SIEM delivery/);assert.equal(findings[0].view,'setup');
+});
+test('investigation filtering carries site and precise period without hiding legacy records',()=>{
+  const {copy}=consoleHarness();Object.assign(copy.workflow,{logSite:'shop',logStart:'2026-11-25T00:00:00Z',logEnd:'2026-11-25T01:00:00Z'});
+  assert.equal(copy.workflowLogMatch({site:'other'}),false);assert.equal(copy.workflowLogMatch({site:'shop',occurred_at:'2026-11-24T00:00:00Z'}),false);assert.equal(copy.workflowLogMatch({site:'shop',occurred_at:'2026-11-25T00:30:00Z'}),true);assert.equal(copy.workflowLogMatch({site:'shop',time:'00:30:00'}),true);
+});
+
 test('security notification settings round-trip and delivery states do not imply receipt', () => {
   const { copy, element } = consoleHarness();
   const settings = {webhook_allow_http:true,webhook_allow_private:true,on_attack:false,attack_threshold:20,attack_window_seconds:120,attack_min_severity:'ERROR'};
@@ -57,7 +71,7 @@ function consoleHarness(fixtures = {}) {
       policyCard, loadAPISecurity, loadDoctor, collectL7Abuse, collectCIDRPolicy,
       configChanges, changeTable, stableConfig, affectedSites, validListen,
       validBackend, buildWizardSite, pageContext, pageErrors, pageRecord,
-      attentionItems, api, loadIndependent, uxState, fillNotify, collectNotify, deliveryText };
+      attentionItems, api, loadIndependent, uxState, fillNotify, collectNotify, deliveryText, collectSyslog, workflowLogMatch, workflow };
   `;
   assert.equal((script.match(/  resume\(\);/g) || []).length, 1);
   vm.runInContext(script.replace('  resume();', exports + '\n  resume();'), context);

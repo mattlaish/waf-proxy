@@ -35,15 +35,16 @@ var adminThemeCSS []byte
 // ── rule-match ring buffer ──────────────────────────────────────────────
 
 type matchRec struct {
-	Time     string `json:"time"`
-	Site     string `json:"site"`
-	RuleID   int    `json:"rule_id"`
-	Severity string `json:"severity"`
-	Phase    int    `json:"phase"`
-	Client   string `json:"client"`
-	URI      string `json:"uri"`
-	Msg      string `json:"msg"`
-	Data     string `json:"data"`
+	OccurredAt string `json:"occurred_at,omitempty"`
+	Time       string `json:"time"`
+	Site       string `json:"site"`
+	RuleID     int    `json:"rule_id"`
+	Severity   string `json:"severity"`
+	Phase      int    `json:"phase"`
+	Client     string `json:"client"`
+	URI        string `json:"uri"`
+	Msg        string `json:"msg"`
+	Data       string `json:"data"`
 }
 
 type matchRing struct {
@@ -107,15 +108,17 @@ type accessRec struct {
 
 func (a accessRec) MarshalJSON() ([]byte, error) {
 	type accessWire struct {
-		Time   string `json:"time"`
-		Site   string `json:"site"`
-		Client string `json:"client"`
-		Method string `json:"method"`
-		Path   string `json:"path"`
-		Status int    `json:"status"`
+		OccurredAt string `json:"occurred_at"`
+		Time       string `json:"time"`
+		Site       string `json:"site"`
+		Client     string `json:"client"`
+		Method     string `json:"method"`
+		Path       string `json:"path"`
+		Status     int    `json:"status"`
 	}
 	return json.Marshal(accessWire{
-		Time: a.At.Format("15:04:05"), Site: a.Site, Client: a.Client,
+		OccurredAt: a.At.UTC().Format(time.RFC3339Nano),
+		Time:       a.At.Format("15:04:05"), Site: a.Site, Client: a.Client,
 		Method: a.Method, Path: a.Path, Status: a.Status,
 	})
 }
@@ -324,6 +327,8 @@ func (a *adminServer) handler() http.Handler {
 	mux.HandleFunc("POST /api/learn/clear", a.authRole(roleReviewer, a.handleLearnClear))
 	mux.HandleFunc("GET /api/notifications", a.auth(a.handleNotifications))
 	mux.HandleFunc("POST /api/notifications/read", a.authRole(roleReviewer, a.handleNotifyRead))
+	mux.HandleFunc("POST /api/notifications/handle", a.authRole(roleReviewer, a.handleNotifyHandle))
+	mux.HandleFunc("POST /api/notifications/test", a.authRole(roleOperator, a.handleNotifyTest))
 	mux.HandleFunc("POST /api/notifications/dismiss", a.authRole(roleReviewer, a.handleNotifyDismiss))
 	mux.HandleFunc("DELETE /api/notifications/webhook", a.authRole(roleOperator, a.handleNotifyWebhookClear))
 	mux.HandleFunc("POST /api/notifications/apply", a.authRole(roleReviewer, a.handleNotifyApply))
@@ -1565,6 +1570,7 @@ func (a *adminServer) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			return nil
 		}
+		c.Notify.ClearWebhook = false // intent was resolved by preserveNotifySecrets
 		if err := c.validate(); err != nil {
 			errKind = "validation"
 			return err
@@ -1653,12 +1659,21 @@ func (a *adminServer) handleReload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
-func (a *adminServer) handleSyslogTest(w http.ResponseWriter, _ *http.Request) {
-	if err := a.srv.syslog.test(); err != nil {
+func (a *adminServer) handleSyslogTest(w http.ResponseWriter, r *http.Request) {
+	expected, ok := decodeDeliveryTest(w, r)
+	if !ok {
+		return
+	}
+	if err := a.srv.syslog.testForTarget(expected.ExpectedGeneration, expected.ExpectedToken); err != nil {
+		if errors.Is(err, errDeliveryConfigChanged) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true})
+	a.audit.add(who(r).user, "syslog.test", "active configuration; transport send only")
+	writeJSON(w, map[string]any{"ok": true, "source": "active", "receipt_verified": false, "delivery": a.srv.syslog.deliveryStats()})
 }
 
 func (a *adminServer) handleMetrics(w http.ResponseWriter, _ *http.Request) {
