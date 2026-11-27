@@ -68,9 +68,16 @@ func (t *observedCorazaTx) observe() {
 		// Use the authoritative interruption, not response status: an application
 		// 403 is not a WAF block; response-phase denies count as well as requests.
 		if in := t.Transaction.Interruption(); in != nil && t.attack != nil && (in.Action == "deny" || in.Action == "drop") {
+			t.attack.mu.Lock()
 			t.attack.blocked = true
+			t.attack.mu.Unlock()
 		}
 		matches := t.Transaction.MatchedRules()
+		if t.attack != nil {
+			for _, m := range matches {
+				t.attack.noteSeverity(m.Rule().Severity().String())
+			}
+		}
 		ids := make([]int, 0, len(matches))
 		seen := make(map[int]struct{}, len(matches))
 		for _, m := range matches {

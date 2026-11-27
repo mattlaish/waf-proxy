@@ -216,7 +216,7 @@ generic environments. It is not the primary enterprise distribution path.
 
 - Debian 12 / Ubuntu 22.04+ or supported RHEL-family Linux (systemd), x86-64/x86_64 or arm64/aarch64 as appropriate to the package format
 - **Go ≥ 1.26.0** to build. `go.mod` declares this minimum (Go 1.25 is end-of-life and no longer receives standard-library security fixes); distro Go may be too old, so install an upstream Go 1.26+ toolchain when necessary.
-- Network/module-cache access for Coraza v3.7.0 dependencies and to fetch OWASP CRS
+- Network/module-cache access for Coraza v3.8.1 dependencies and to fetch OWASP CRS
 - `openssl` (token generation) and `curl`/`tar` (CRS fetch)
 - Root for the install step
 
@@ -234,7 +234,7 @@ Produces `./waf-proxy` and `./waf-tlsfront`. Set `VERSION=` / `COMMIT=` to stamp
 
 ## 2a. Optional VectorScan Learning Accelerator
 
-VectorScan is never authoritative; Coraza v3.7.0 remains the final rule engine. The accelerator begins in Learning and only skips an eligible regex group after its learning thresholds have been met with zero observed false negatives. Any false negative or native scan error moves the group to `FAILSAFE` and Coraza-only processing continues.
+VectorScan is never authoritative; Coraza v3.8.1 remains the final rule engine. The accelerator begins in Learning and only skips an eligible regex group after its learning thresholds have been met with zero observed false negatives. Any false negative or native scan error moves the group to `FAILSAFE` and Coraza-only processing continues.
 
 On Debian/Ubuntu, install the native build dependency before a required build:
 

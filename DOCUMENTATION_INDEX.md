@@ -1,5 +1,16 @@
 # Documentation Index and Current Project Truth
 
+## 2026-11-26 — Review fixes: CI, Coraza v3.8.1, attack alerts, delivery health
+
+CI restored (runner pinned to ubuntu-24.04, browser tests in their own job);
+Coraza upgraded to v3.8.1 for 12 reachable advisories; attack alerts count
+requests and real security blocks with one alert per incident; delivery
+health, syslog backoff, webhook egress proxy and rate-limiter saturation
+visibility. Full detail: `AI_HANDOFF.md` (2026-11-26) and `patch.md`.
+Validation: go1.26.9 build/vet/test/race/real-Coraza, 18/18 gates, 26/26 copy
+and 40/40 browser tests PASS.
+
+
 ## 2026-11-25 — Complete operator-workflow pass
 
 Implemented the approved five workflow fixes plus site-centered navigation,

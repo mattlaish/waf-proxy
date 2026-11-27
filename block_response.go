@@ -35,9 +35,6 @@ func acceptsHTML(r *http.Request) bool {
 }
 
 func writeBlockResponse(w http.ResponseWriter, r *http.Request, status int, reason string, jsonMode bool) {
-	if status >= 400 && status < 500 {
-		markAttackBlock(r)
-	}
 	id := requestCorrelationID(r)
 	if id != "" {
 		w.Header().Set("X-Request-ID", id)

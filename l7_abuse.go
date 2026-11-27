@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"waf-proxy/internal/tlsfront"
@@ -58,6 +59,38 @@ type l7AbuseController struct {
 	tlsShards  [l7AbuseShardCount]l7AbuseShard
 	overflowMu sync.Mutex
 	overflows  map[abuseClientKey]*abuseClientState
+
+	// Saturation telemetry: while the client table is full, new identities
+	// share a per-site overflow allowance. Operators need to see that.
+	overflowAdmitted atomic.Uint64
+	overflowRefused  atomic.Uint64
+	lastOverflow     atomic.Int64 // unix nanoseconds
+}
+
+func (c *l7AbuseController) noteOverflow(allowed bool) {
+	c.lastOverflow.Store(time.Now().UnixNano())
+	if allowed {
+		c.overflowAdmitted.Add(1)
+	} else {
+		c.overflowRefused.Add(1)
+	}
+}
+
+// saturationStats reports overflow use. "active" means overflow was used in
+// the last ten minutes, i.e. new clients are currently sharing an allowance.
+func (c *l7AbuseController) saturationStats() map[string]any {
+	if c == nil || !c.cfg.Enabled {
+		return map[string]any{"enabled": false, "active": false}
+	}
+	last := c.lastOverflow.Load()
+	stamp := ""
+	if last != 0 {
+		stamp = time.Unix(0, last).UTC().Format(time.RFC3339)
+	}
+	return map[string]any{"enabled": true,
+		"active":            last != 0 && time.Since(time.Unix(0, last)) < 10*time.Minute,
+		"overflow_admitted": c.overflowAdmitted.Load(), "overflow_refused": c.overflowRefused.Load(),
+		"last_overflow": stamp}
 }
 
 func newL7AbuseController(cfg L7AbuseConfig) *l7AbuseController {
@@ -96,10 +129,16 @@ func validateL7AbuseConfig(cfg L7AbuseConfig, accel tlsfront.AccelerationConfig)
 // because no HTTP forwarding metadata exists before the TLS handshake. The
 // scope is the public listener rather than SNI so rotating hostnames cannot
 // evade the bucket.
-func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time.Time) bool {
+func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time.Time) (allowed bool) {
 	if c == nil || !c.cfg.Enabled || c.cfg.TLSHandshakePerWindow <= 0 {
 		return true
 	}
+	overflow := false
+	defer func() {
+		if overflow {
+			c.noteOverflow(allowed)
+		}
+	}()
 	key := abuseClientKey{site: scope, identity: c.limiterIdentity(identity)}
 	shard := &c.tlsShards[l7AbuseShardIndex(key)]
 	shard.mu.Lock()
@@ -121,6 +160,7 @@ func (c *l7AbuseController) allowTLSHandshakeAt(scope, identity string, now time
 			// Saturation must not turn the limiter off. Unknown identities share a
 			// bounded overflow bucket until an idle per-identity slot is available.
 			st = c.overflowState(scope, "tls")
+			overflow = true
 			if st == nil {
 				return false
 			}
@@ -179,7 +219,13 @@ func (c *l7AbuseController) wrap(site string, next http.Handler) http.Handler {
 	})
 }
 
-func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (*abuseClientState, bool) {
+func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (state *abuseClientState, allowed bool) {
+	overflow := false
+	defer func() {
+		if overflow {
+			c.noteOverflow(allowed)
+		}
+	}()
 	key := abuseClientKey{site: site, identity: c.limiterIdentity(identity)}
 	shard := &c.shards[l7AbuseShardIndex(key)]
 	shard.mu.Lock()
@@ -202,6 +248,7 @@ func (c *l7AbuseController) allowAt(site, identity string, now time.Time) (*abus
 			// Bound memory without creating an attacker-controlled fail-open bypass.
 			// One bucket per configured site, shared across shards, not sites.
 			st = c.overflowState(site, "http")
+			overflow = true
 			if st == nil {
 				return nil, false
 			}

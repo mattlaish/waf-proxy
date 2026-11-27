@@ -821,6 +821,7 @@ func (s *positiveSchemaStore) wrap(site string, next http.Handler) http.Handler 
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		markAttackBlock(r)
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(`{"error":"request rejected by API schema policy"}`))
 	})

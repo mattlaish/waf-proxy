@@ -112,7 +112,7 @@ func NewManager(cfg Config) (*Manager, error) {
 func (m *Manager) NativeAvailable() bool { return m.native }
 func (m *Manager) NativeVersion() string { return m.version }
 
-const corazaLearningSemanticVersion = "coraza-v3.7.0-matchedrules-v1"
+const corazaLearningSemanticVersion = "coraza-v3.8.1-matchedrules-v1"
 
 func groupRuntimeFingerprint(ruleFingerprint, nativeVersion string) string {
 	h := sha256.Sum256([]byte(ruleFingerprint + "|" + nativeVersion + "|" + corazaLearningSemanticVersion))

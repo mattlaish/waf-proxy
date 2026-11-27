@@ -16,6 +16,7 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -112,6 +113,11 @@ type syslogEngine struct {
 	cancel   chan struct{}
 	dropped  uint64
 	delivery deliveryHealth
+
+	// Reconnect backoff while the SIEM is unreachable (guarded by mu): lines
+	// are dropped without dialling until retryAt, and the outage is logged once.
+	dialFailures int
+	retryAt      time.Time
 }
 
 func newSyslogEngine(log *slog.Logger) *syslogEngine {
@@ -147,6 +153,7 @@ func (s *syslogEngine) configure(c SyslogConfig) {
 	// Publish the immutable snapshot while the connection is serialized, then
 	// force a reconnect so the next background delivery uses the new endpoint.
 	s.storeConfig(c)
+	s.dialFailures, s.retryAt = 0, time.Time{}
 	if s.conn != nil {
 		s.conn.Close()
 		s.conn = nil
@@ -171,7 +178,8 @@ func (s *syslogEngine) enqueue(line string) {
 	case s.queue <- line:
 	default:
 		atomic.AddUint64(&s.dropped, 1)
-		s.delivery.record(false)
+		s.delivery.fail(s.delivery.current(), errors.New("delivery queue full"))
+		s.delivery.noteDrop()
 	}
 }
 
@@ -212,17 +220,48 @@ func (s *syslogEngine) deliver(line string) {
 		atomic.AddUint64(&s.dropped, 1)
 		return
 	}
-	success := false
+	var failure error
+	backingOff := false
 	defer func() {
-		s.delivery.recordAt(generation, success)
-		if !success {
+		switch {
+		case backingOff:
+			// Dropped without an attempt: counted, but neither a success nor a
+			// new failure, so the last real failure reason stays visible.
+			atomic.AddUint64(&s.dropped, 1)
+			s.delivery.noteDrop()
+		case failure == nil:
+			s.delivery.recordAt(generation, true)
+		default:
+			s.delivery.fail(generation, failure)
+			s.delivery.noteDrop()
 			atomic.AddUint64(&s.dropped, 1)
 		}
 	}()
 	if conn == nil {
+		s.mu.Lock()
+		waiting := time.Now().Before(s.retryAt)
+		s.mu.Unlock()
+		if waiting {
+			// Still backing off: drop without dialling (fail-open) and without
+			// logging every line.
+			backingOff = true
+			return
+		}
 		c, err := s.dial(cfg)
 		if err != nil {
-			s.log.Warn("syslog dial failed", "err", err) // fail-open: drop this line
+			failure = err
+			s.mu.Lock()
+			s.dialFailures++
+			delay := time.Second << min(s.dialFailures-1, 6)
+			if delay > time.Minute {
+				delay = time.Minute
+			}
+			s.retryAt = time.Now().Add(delay)
+			first := s.dialFailures == 1
+			s.mu.Unlock()
+			if first {
+				s.log.Warn("syslog dial failed; backing off and dropping lines until the SIEM is reachable", "err", err)
+			}
 			return
 		}
 		s.mu.Lock()
@@ -231,6 +270,10 @@ func (s *syslogEngine) deliver(line string) {
 			c.Close()
 			return
 		}
+		if s.dialFailures > 0 {
+			s.log.Info("syslog connection restored", "failed_attempts", s.dialFailures)
+		}
+		s.dialFailures, s.retryAt = 0, time.Time{}
 		s.conn = c
 		conn = c
 		s.mu.Unlock()
@@ -247,6 +290,7 @@ func (s *syslogEngine) deliver(line string) {
 		err = io.ErrShortWrite
 	}
 	if err != nil {
+		failure = err
 		s.log.Warn("syslog write failed; will reconnect", "err", err)
 		s.mu.Lock()
 		if s.conn != nil {
@@ -256,7 +300,6 @@ func (s *syslogEngine) deliver(line string) {
 		s.mu.Unlock()
 		return
 	}
-	success = true
 }
 
 func (s *syslogEngine) deliveryStats() map[string]any {
@@ -267,6 +310,10 @@ func (s *syslogEngine) deliveryStats() map[string]any {
 	defer s.mu.Unlock()
 	stats := s.delivery.snapshot(s.snapshotCfg().Enabled, len(s.queue), cap(s.queue), atomic.LoadUint64(&s.dropped))
 	stats["receipt_verified"] = false
+	// UDP has no transport acknowledgement: a send never proves delivery.
+	if s.snapshotCfg().Protocol == "udp" && stats["state"] == "last_send_succeeded" {
+		stats["state"] = "sent_unconfirmed"
+	}
 	stats["config_generation"] = s.delivery.current()
 	stats["config_token"] = s.delivery.configToken()
 	cfg := s.snapshotCfg()
@@ -450,10 +497,17 @@ func (s *syslogEngine) testForTarget(expected *uint64, token string) error {
 	if !cfg.Enabled {
 		return fmt.Errorf("syslog is disabled — enable and Apply first")
 	}
-	success := false
-	defer func() { s.delivery.recordAt(generation, success) }()
+	var failure error
+	defer func() {
+		if failure == nil {
+			s.delivery.recordAt(generation, true)
+		} else {
+			s.delivery.fail(generation, failure)
+		}
+	}()
 	conn, err := s.dial(cfg)
 	if err != nil {
+		failure = err
 		return err
 	}
 	defer conn.Close()
@@ -476,6 +530,6 @@ func (s *syslogEngine) testForTarget(expected *uint64, token string) error {
 	if err == nil && n != len(line) {
 		err = io.ErrShortWrite
 	}
-	success = err == nil
+	failure = err
 	return err
 }

@@ -306,7 +306,7 @@ def load_provenance(root: Path) -> dict:
     if not p.is_file():
         raise BuildError("canonical build did not produce BUILD_PROVENANCE.json")
     obj = json.loads(p.read_text(encoding="utf-8"))
-    if obj.get("coraza_version") != "v3.7.0":
+    if obj.get("coraza_version") != "v3.8.1":
         raise BuildError(f"unexpected built Coraza version: {obj.get('coraza_version')!r}")
     return obj
 

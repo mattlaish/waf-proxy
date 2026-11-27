@@ -1,5 +1,52 @@
 # AI Development Handoff
 
+## 2026-11-26 — Review fixes: CI, Coraza v3.8.1, attack alerts, delivery health
+
+Base: `main` at `e371979`. Implements the 2026-11-26 review findings (design,
+code and workflow), approved by the user. Full change list: `patch.md`.
+
+- **CI ran nothing since `97c60be`.** `ubuntu-latest` moved to 26.04, where
+  pinned Playwright 1.56.1 cannot install, so every Go/source gate was skipped.
+  All jobs now pin `ubuntu-24.04`; browser tests are their own job and can no
+  longer skip the Go checks.
+- **Coraza v3.7.0 → v3.8.1** (also libinjection-go v0.3.3, goccy/go-yaml
+  v1.19.2): 12 reachable advisories (GO-2026-6668..6698: body-processor,
+  multipart, cookie and jsDecode WAF bypasses, CPU/file-handle exhaustion,
+  audit-log forgery). Pins updated in build, packaging, qualification and the
+  VectorScan learning-semantics version (learned groups relearn under the new
+  engine). `qualify-release-host.sh` never matched the `require ( … )` block
+  form of go.mod; fixed. The API-3 gate no longer pins go-yaml's exact version
+  (its "not indirect" check had silently become a no-op; fixed and tested).
+- **Attack alerts.** Count requests, not rule hits (one observation per
+  request with its highest matched severity; no per-rule global lock).
+  Rate-limit 429s and IP-allowlist 403s no longer count; API-4 schema, API-5
+  identity (not issuer-outage 503s) and API-8 GraphQL enforcement blocks now
+  do. One alert per incident; an incident ends after one quiet window; at most
+  one "still ongoing" follow-up per hour (was up to 60 tickets/hour/site).
+- **Delivery health.** No age-based "stale" (quiet ≠ broken); drops flag for
+  one hour and clear on config change; last failure reason recorded (URL
+  wrappers stripped); syslog reconnect backoff 1s→60s with one log line per
+  outage; UDP reported as "sent, unconfirmed".
+- **Webhook egress proxy** `notify.webhook_proxy_url` (http/https, no
+  credentials). Destination DNS is still checked before each send; the proxy
+  re-resolves the name (documented residual gap).
+- **Rate-limiter saturation** (`l7_saturation` in /api/status, Needs attention
+  item) when new clients share the per-site overflow allowance.
+
+Not done here: `AGENTS.md` workflow edits (cloud WIP pushes, commit-message
+and doc-slice rules, CI-gate wording) were blocked for an agent to self-apply;
+proposed text is in the PR for the user. Branch protection on `main` is a
+GitHub setting for the user to enable. The SOC/ticketing on/off slice was lost
+with an earlier container and is still to be redone.
+
+Validation (go1.26.9, linux/amd64): tidy clean; build, vet, `go test ./...`,
+`go test -race ./...` and the real-Coraza gate PASS; root shape PASS (119
+files); 18/18 source gates PASS; 26/26 console-copy and 40/40 Playwright
+workflow tests PASS; package-builder 9/9 PASS. govulncheck could not run in this
+session (vuln.go.dev blocked); CI provides it. Native VectorScan and hardware
+qualification not run. State: `IMPLEMENTED_TESTING_DEFERRED`.
+
+
 ## 2026-11-25 — Complete operator-workflow pass
 
 Approved implementation of the 2026-11-24 workflow backlog and all six

@@ -73,10 +73,11 @@ if grep -Eq '^go 1\.26\.0$' go.mod; then
 else
   fail "go.mod no longer pins Go 1.26.0"
 fi
-if grep -Eq '^require[[:space:]]+github\.com/corazawaf/coraza/v3[[:space:]]+v3\.7\.0[[:space:]]*$' go.mod; then
-  pass "go.mod pins Coraza v3.7.0"
+# Accept both the single-line form and the usual require ( ... ) block form.
+if grep -Eq '^(require[[:space:]]+)?[[:space:]]*github\.com/corazawaf/coraza/v3[[:space:]]+v3\.8\.1[[:space:]]*$' go.mod; then
+  pass "go.mod pins Coraza v3.8.1"
 else
-  fail "go.mod no longer pins Coraza v3.7.0"
+  fail "go.mod no longer pins Coraza v3.8.1"
 fi
 
 if ! command -v pkg-config >/dev/null 2>&1; then

@@ -163,7 +163,7 @@ links=[]
 if "vectorscan" in variant: links.append("DYNAMIC_LIBHS_REQUIRED_AT_RUNTIME")
 else: links.append("NO_LIBHS_LINK")
 if hsm == "enabled": links.append("PKCS11_DLOPEN_RUNTIME_WHEN_CONFIGURED")
-obj={"schema_version":2,"version":version,"commit":commit,"artifact_type":artifact_type,"build_variant":variant,"go_version":gov,"coraza_version":"v3.7.0","vectorscan_version":vs,"hsm_pkcs11_enabled":hsm=="enabled","linkage_expectation":";".join(links),"binaries":files}
+obj={"schema_version":2,"version":version,"commit":commit,"artifact_type":artifact_type,"build_variant":variant,"go_version":gov,"coraza_version":"v3.8.1","vectorscan_version":vs,"hsm_pkcs11_enabled":hsm=="enabled","linkage_expectation":";".join(links),"binaries":files}
 pathlib.Path("BUILD_PROVENANCE.json").write_text(json.dumps(obj,indent=2,sort_keys=True)+"\n",encoding="utf-8")
 pathlib.Path("BUILD_SHA256SUMS.txt").write_text("".join(f"{x['sha256']}  {x['name']}\n" for x in files),encoding="utf-8")
 PY2

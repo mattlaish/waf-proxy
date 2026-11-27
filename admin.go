@@ -506,6 +506,7 @@ func (a *adminServer) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		"notify_unread":       a.srv.notify.unreadCount(),
 		"webhook_delivery":    a.srv.notify.webhookDeliveryStats(),
 		"syslog_delivery":     a.srv.syslog.deliveryStats(),
+		"l7_saturation":       rt.l7Abuse.saturationStats(),
 	})
 }
 

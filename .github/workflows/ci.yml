@@ -12,7 +12,7 @@ permissions:
 jobs:
   build-test:
     name: build, vet, test (portable)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -27,16 +27,6 @@ jobs:
 
       - name: Console startup, product wording, and unchanged setting values
         run: node --test tools/tests/test-console-copy.mjs
-
-      - name: Install pinned Playwright + Chromium for console workflow tests
-        run: |
-          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
-          npm init -y >/dev/null
-          npm install --no-audit --no-fund playwright@1.56.1
-          npx playwright install --with-deps chromium
-
-      - name: Console browser workflows (draft/apply, guided setup, permissions, keyboard)
-        run: WAF_PLAYWRIGHT_MODULE="$RUNNER_TEMP/pw/node_modules/playwright" node --test tools/tests/test-console-workflows.mjs
 
       - name: dependency-free root source-shape gate
         run: ./tools/tests/test-go-root-shape.sh
@@ -105,9 +95,28 @@ jobs:
       - name: real Coraza transaction truth gate
         run: GOTOOLCHAIN=local CGO_ENABLED=1 go test -tags realcoraza -run 'TestRealCoraza' ./...
 
+  # Browser workflow tests run in their own job so a browser-install problem can
+  # never skip the Go build, test and source gates above.
+  console-browser:
+    name: console browser workflows
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Playwright + Chromium
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Console browser workflows (draft/apply, guided setup, permissions, keyboard)
+        run: WAF_PLAYWRIGHT_MODULE="$RUNNER_TEMP/pw/node_modules/playwright" node --test tools/tests/test-console-workflows.mjs
+
   govulncheck:
     name: dependency vulnerabilities
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

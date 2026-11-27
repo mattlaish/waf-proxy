@@ -1316,9 +1316,14 @@ func identityAction(mode string) string {
 	return "detect"
 }
 
-func writeIdentityReject(w http.ResponseWriter, status int) {
+func writeIdentityReject(w http.ResponseWriter, r *http.Request, status int) {
 	if status != http.StatusUnauthorized && status != http.StatusForbidden && status != http.StatusServiceUnavailable {
 		status = http.StatusForbidden
+	}
+	// A policy rejection is security enforcement. 503 means the issuer or key
+	// set is unreachable: an operational fault, not attack evidence.
+	if status != http.StatusServiceUnavailable {
+		markAttackBlock(r)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -1356,7 +1361,7 @@ func (s *apiIdentityStore) wrap(site string, next http.Handler) http.Handler {
 			v := APIIdentityViolation{OperationID: opID, Mode: rp.Policy.Mode, Action: identityAction(rp.Policy.Mode), Type: vType, IssuerID: rp.Policy.IssuerID, Expected: "cryptographically verified Bearer JWT", Observed: observed}
 			s.recordViolation(v)
 			if rp.Policy.Mode == apiIdentityModeEnforce {
-				writeIdentityReject(w, rp.Policy.UnauthorizedCode)
+				writeIdentityReject(w, r, rp.Policy.UnauthorizedCode)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -1365,7 +1370,7 @@ func (s *apiIdentityStore) wrap(site string, next http.Handler) http.Handler {
 		if rp.Issuer == nil {
 			s.recordViolation(APIIdentityViolation{OperationID: opID, Mode: rp.Policy.Mode, Action: identityAction(rp.Policy.Mode), Type: "JWT_ISSUER_UNAVAILABLE", IssuerID: rp.Policy.IssuerID, Expected: "enabled trusted issuer runtime", Observed: "issuer configuration unavailable"})
 			if rp.Policy.Mode == apiIdentityModeEnforce {
-				writeIdentityReject(w, http.StatusServiceUnavailable)
+				writeIdentityReject(w, r, http.StatusServiceUnavailable)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -1383,7 +1388,7 @@ func (s *apiIdentityStore) wrap(site string, next http.Handler) http.Handler {
 				if code == "JWKS_UNAVAILABLE" {
 					status = http.StatusServiceUnavailable
 				}
-				writeIdentityReject(w, status)
+				writeIdentityReject(w, r, status)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -1394,7 +1399,7 @@ func (s *apiIdentityStore) wrap(site string, next http.Handler) http.Handler {
 		if typ, expected, observed := evaluateIdentityRequirements(rp.Policy, id); typ != "" {
 			s.recordViolation(APIIdentityViolation{OperationID: opID, Mode: rp.Policy.Mode, Action: identityAction(rp.Policy.Mode), Type: typ, IssuerID: rp.Policy.IssuerID, SubjectHash: identitySubjectHash(id), Expected: expected, Observed: observed})
 			if rp.Policy.Mode == apiIdentityModeEnforce {
-				writeIdentityReject(w, rp.Policy.ForbiddenCode)
+				writeIdentityReject(w, r, rp.Policy.ForbiddenCode)
 				return
 			}
 		}
